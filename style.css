@@ -665,15 +665,14 @@ body {
   text-rendering: optimizeLegibility;
   /* Razor Sharp Layered Extrusion (Crisp Solid Steps - No Blur Halos) */
   text-shadow:
-    0 1px 0 #71717a,
-    0 2px 0 #52525b,
-    0 3px 0 #3f3f46,
-    0 4px 0 #27272a,
-    0 5px 0 #1c1c20,
-    0 6px 0 #141417,
+    0 1px 0 #8e8e93,
+    0 2px 0 #71717a,
+    0 3px 0 #52525b,
+    0 4px 0 #3f3f46,
+    0 5px 0 #27272a,
+    0 6px 0 #18181b,
     0 7px 0 #09090b,
-    0 8px 1px rgba(0, 0, 0, 0.6),
-    0 10px 14px rgba(0, 0, 0, 0.8);
+    0 8px 4px rgba(0, 0, 0, 0.45);
   animation: floatCrisp 3.6s ease-in-out infinite alternate;
   animation-delay: calc(var(--i) * 0.12s);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), text-shadow 0.2s ease;
@@ -689,10 +688,8 @@ body {
     0 5px 0 #3f3f46,
     0 6px 0 #27272a,
     0 7px 0 #18181b,
-    0 8px 0 #121215,
-    0 9px 0 #09090b,
-    0 10px 1px rgba(0, 0, 0, 0.7),
-    0 14px 20px rgba(0, 0, 0, 0.9);
+    0 8px 0 #09090b,
+    0 9px 4px rgba(0, 0, 0, 0.55);
 }
 
 .char-3d.char-ai {
@@ -705,8 +702,8 @@ body {
     0 5px 0 #52525b,
     0 6px 0 #3f3f46,
     0 7px 0 #27272a,
-    0 8px 1px rgba(0, 0, 0, 0.6),
-    0 10px 14px rgba(0, 0, 0, 0.8);
+    0 8px 0 #09090b,
+    0 9px 4px rgba(0, 0, 0, 0.45);
 }
 
 .char-3d.char-ai:hover {
@@ -719,10 +716,8 @@ body {
     0 5px 0 #a1a1aa,
     0 6px 0 #71717a,
     0 7px 0 #52525b,
-    0 8px 0 #3f3f46,
-    0 9px 0 #27272a,
-    0 10px 1px rgba(0, 0, 0, 0.7),
-    0 14px 20px rgba(0, 0, 0, 0.9);
+    0 8px 0 #27272a,
+    0 9px 4px rgba(0, 0, 0, 0.55);
 }
 
 @keyframes floatCrisp {
