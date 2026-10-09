@@ -144,6 +144,7 @@ class JobTrackerApp {
     this.sidebar = document.getElementById('sidebar');
     this.btnToggleSidebar = document.getElementById('btnToggleSidebar');
     this.brandIconCollapse = document.getElementById('brandIconCollapse');
+    this.btnSidebarDashboard = document.getElementById('btnSidebarDashboard');
     this.btnNewChat = document.getElementById('btnNewChat');
     this.sidebarSearchInput = document.getElementById('sidebarSearchInput');
     this.historyList = document.getElementById('historyList');
@@ -471,7 +472,15 @@ class JobTrackerApp {
       });
     }
 
-    // Sidebar
+    // Sidebar Navigation
+    if (this.btnSidebarDashboard) {
+      this.btnSidebarDashboard.addEventListener('click', () => {
+        this.switchView('dashboard');
+        if (window.innerWidth <= 768) {
+          this.closeSidebar();
+        }
+      });
+    }
     this.btnNewChat.addEventListener('click', () => this.startNewChatSession());
     this.sidebarSearchInput.addEventListener('input', (e) => this.filterHistoryList(e.target.value));
     if (this.btnToggleSidebar) {
@@ -481,12 +490,13 @@ class JobTrackerApp {
       this.brandIconCollapse.addEventListener('click', () => this.closeSidebar());
     }
 
-    // Sidebar Activity Dashboard Events
+    // Dashboard Analytics Banner Events
     if (this.sidebarDateFilter) {
       this.sidebarDateFilter.addEventListener('change', (e) => {
         this.activeSidebarDate = e.target.value || null;
         this.updateSidebarDatePresetUi();
         this.updateSidebarDashboard();
+        this.renderApplicationsGrid();
       });
     }
 
@@ -496,6 +506,7 @@ class JobTrackerApp {
         if (this.sidebarDateFilter) this.sidebarDateFilter.value = '';
         this.updateSidebarDatePresetUi();
         this.updateSidebarDashboard();
+        this.renderApplicationsGrid();
       });
     }
 
@@ -506,6 +517,7 @@ class JobTrackerApp {
         if (this.sidebarDateFilter) this.sidebarDateFilter.value = todayStr;
         this.updateSidebarDatePresetUi();
         this.updateSidebarDashboard();
+        this.renderApplicationsGrid();
       });
     }
 
@@ -515,14 +527,23 @@ class JobTrackerApp {
         if (this.sidebarDateFilter) this.sidebarDateFilter.value = '';
         this.updateSidebarDatePresetUi();
         this.updateSidebarDashboard();
+        this.renderApplicationsGrid();
       });
     }
 
     // Interactive card clicks to navigate and filter
+    const resetActiveMetricCards = () => {
+      [this.sStatCardApplied, this.sStatCardCalls, this.sStatCardPending, this.sStatCardRejected].forEach(c => {
+        if (c) c.classList.remove('active');
+      });
+    };
+
     if (this.sStatCardApplied) {
       this.sStatCardApplied.addEventListener('click', () => {
         this.switchView('dashboard');
-        this.filterStatus.value = 'all';
+        resetActiveMetricCards();
+        this.sStatCardApplied.classList.add('active');
+        if (this.filterStatus) this.filterStatus.value = 'all';
         this.currentFilterStatus = 'all';
         this.renderApplicationsGrid();
       });
@@ -531,8 +552,10 @@ class JobTrackerApp {
     if (this.sStatCardCalls) {
       this.sStatCardCalls.addEventListener('click', () => {
         this.switchView('dashboard');
-        this.filterStatus.value = 'Interviewing';
-        this.currentFilterStatus = 'Interviewing';
+        resetActiveMetricCards();
+        this.sStatCardCalls.classList.add('active');
+        if (this.filterStatus) this.filterStatus.value = 'all';
+        this.currentFilterStatus = 'Calls';
         this.renderApplicationsGrid();
       });
     }
@@ -540,7 +563,9 @@ class JobTrackerApp {
     if (this.sStatCardPending) {
       this.sStatCardPending.addEventListener('click', () => {
         this.switchView('dashboard');
-        this.filterStatus.value = 'Applied';
+        resetActiveMetricCards();
+        this.sStatCardPending.classList.add('active');
+        if (this.filterStatus) this.filterStatus.value = 'Applied';
         this.currentFilterStatus = 'Applied';
         this.renderApplicationsGrid();
       });
@@ -549,7 +574,9 @@ class JobTrackerApp {
     if (this.sStatCardRejected) {
       this.sStatCardRejected.addEventListener('click', () => {
         this.switchView('dashboard');
-        this.filterStatus.value = 'Rejected';
+        resetActiveMetricCards();
+        this.sStatCardRejected.classList.add('active');
+        if (this.filterStatus) this.filterStatus.value = 'Rejected';
         this.currentFilterStatus = 'Rejected';
         this.renderApplicationsGrid();
       });
@@ -671,6 +698,9 @@ class JobTrackerApp {
 
     this.filterStatus.addEventListener('change', (e) => {
       this.currentFilterStatus = e.target.value;
+      [this.sStatCardApplied, this.sStatCardCalls, this.sStatCardPending, this.sStatCardRejected].forEach(c => {
+        if (c) c.classList.remove('active');
+      });
       this.renderApplicationsGrid();
     });
 
@@ -756,6 +786,9 @@ class JobTrackerApp {
   // ==========================================
   switchView(viewName) {
     this.activeView = viewName;
+    if (this.btnSidebarDashboard) {
+      this.btnSidebarDashboard.classList.toggle('active', viewName === 'dashboard');
+    }
     if (viewName === 'chat') {
       this.viewChat.classList.add('active');
       this.viewDashboard.classList.remove('active');
@@ -778,6 +811,7 @@ class JobTrackerApp {
       this.navTabChat.classList.remove('active');
       this.navTabDashboard.classList.add('active');
       if (this.navTabProfile) this.navTabProfile.classList.remove('active');
+      this.updateSidebarDashboard();
       this.renderApplicationsGrid();
     }
   }
@@ -1741,9 +1775,24 @@ class JobTrackerApp {
   renderApplicationsGrid() {
     let filtered = [...this.applications];
 
+    // Date filter from Dashboard banner / calendar picker
+    if (this.activeSidebarDate) {
+      filtered = filtered.filter(a => {
+        const appDate = a.appliedDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
+        return appDate === this.activeSidebarDate;
+      });
+    }
+
     // Status filter
     if (this.currentFilterStatus !== 'all') {
-      filtered = filtered.filter(a => a.status === this.currentFilterStatus);
+      if (this.currentFilterStatus === 'Calls') {
+        filtered = filtered.filter(a => {
+          const s = (a.status || '').toLowerCase();
+          return s === 'interviewing' || s === 'offer';
+        });
+      } else {
+        filtered = filtered.filter(a => a.status === this.currentFilterStatus);
+      }
     }
 
     // Work Mode filter

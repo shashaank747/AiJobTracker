@@ -34,69 +34,10 @@
           </div>
         </div>
 
-        <!-- SIDEBAR ACTIVITY DASHBOARD WIDGET -->
-        <div class="sidebar-dashboard-widget" id="sidebarDashboardWidget">
-          <div class="s-dash-top">
-            <div class="s-dash-title">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-              <span>Application Stats</span>
-            </div>
-            <div class="s-dash-presets">
-              <button type="button" class="s-dash-preset-btn active" data-date-filter="all" id="btnSDashAll">All</button>
-              <button type="button" class="s-dash-preset-btn" data-date-filter="today" id="btnSDashToday">Today</button>
-            </div>
-          </div>
-
-          <div class="s-dash-date-picker-row">
-            <span class="s-dash-date-icon">📅</span>
-            <input type="date" id="sidebarDateFilter" class="s-dash-date-input" title="Filter applications by specific date" />
-            <button type="button" id="btnClearDateFilter" class="s-dash-clear-date" title="Clear specific date filter" style="display: none;">&times;</button>
-          </div>
-
-          <div class="s-dash-stats-grid">
-            <div class="s-stat-card" id="sStatCardApplied" title="Total jobs applied (Click to view)">
-              <div class="s-stat-header">
-                <span class="s-stat-icon s-icon-applied">📝</span>
-                <span class="s-stat-value" id="sStatAppliedCount">0</span>
-              </div>
-              <span class="s-stat-label" id="sStatAppliedLabel">Applied</span>
-            </div>
-
-            <div class="s-stat-card s-stat-calls" id="sStatCardCalls" title="Applications that got calls/interviews (Click to filter)">
-              <div class="s-stat-header">
-                <span class="s-stat-icon s-icon-calls">📞</span>
-                <span class="s-stat-value" id="sStatCallsCount">0</span>
-              </div>
-              <span class="s-stat-label">Got Calls</span>
-            </div>
-
-            <div class="s-stat-card s-stat-pending" id="sStatCardPending" title="Waiting for callback / in review (Click to filter)">
-              <div class="s-stat-header">
-                <span class="s-stat-icon s-icon-pending">⏳</span>
-                <span class="s-stat-value" id="sStatPendingCount">0</span>
-              </div>
-              <span class="s-stat-label">No Call Yet</span>
-            </div>
-
-            <div class="s-stat-card s-stat-rejected" id="sStatCardRejected" title="No call / Rejected (Click to filter)">
-              <div class="s-stat-header">
-                <span class="s-stat-icon s-icon-rejected">🛑</span>
-                <span class="s-stat-value" id="sStatRejectedCount">0</span>
-              </div>
-              <span class="s-stat-label">No Call (Rej)</span>
-            </div>
-          </div>
-
-          <div class="s-dash-rate-bar" title="Callback conversion rate">
-            <div class="s-rate-header">
-              <span class="s-rate-label">Call / Response Rate</span>
-              <span class="s-rate-percent" id="sStatCallRate">0%</span>
-            </div>
-            <div class="s-rate-track">
-              <div class="s-rate-fill" id="sStatCallProgress" style="width: 0%;"></div>
-            </div>
-          </div>
-        </div>
+        <button id="btnSidebarDashboard" class="btn btn-sidebar-nav" title="Open Applications Dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span>Dashboard</span>
+        </button>
 
         <button id="btnNewChat" class="btn btn-primary btn-new-chat" title="Start new job tracking session">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -144,7 +85,7 @@
             </button>
             <button id="navTabDashboard" class="tab-btn">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-              <span>Applications Tracker</span>
+              <span>Dashboard</span>
             </button>
             <button id="navTabProfile" class="tab-btn">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -365,45 +306,83 @@
       <section id="viewDashboard" class="view-container">
         <div class="dashboard-wrapper">
           
-          <!-- Stats Summary Cards -->
-          <div class="stats-grid">
-            <div class="stat-card" data-filter="all">
-              <div class="stat-icon stat-icon-total">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          <!-- Top Analytics & Date Explorer Banner -->
+          <div class="dash-analytics-banner">
+            <div class="dash-banner-header">
+              <div class="dash-title-group">
+                <h2 class="dash-main-title">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                  <span>Applications Analytics & Callback Tracker</span>
+                </h2>
+                <p class="dash-subtitle">Track your application throughput, callbacks, pending reviews, and interview conversion by specific dates.</p>
               </div>
-              <div class="stat-info">
-                <div class="stat-value" id="statTotalCount">0</div>
-                <div class="stat-title">Total Applications</div>
+
+              <!-- Date Explorer Controls -->
+              <div class="dash-date-controls">
+                <div class="dash-date-presets">
+                  <button type="button" class="dash-preset-btn active" data-date-filter="all" id="btnSDashAll">All Time</button>
+                  <button type="button" class="dash-preset-btn" data-date-filter="today" id="btnSDashToday">Today</button>
+                </div>
+                <div class="dash-date-picker-box">
+                  <span class="dash-calendar-icon">📅</span>
+                  <input type="date" id="sidebarDateFilter" class="dash-date-input" title="Filter applications by specific date" />
+                  <button type="button" id="btnClearDateFilter" class="dash-clear-btn" title="Clear specific date filter" style="display: none;">&times;</button>
+                </div>
               </div>
             </div>
 
-            <div class="stat-card" data-filter="Applied">
-              <div class="stat-icon stat-icon-applied">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            <!-- 4 Metrics & Conversion Rate Bar -->
+            <div class="dash-metrics-grid">
+              <div class="dash-metric-card" id="sStatCardApplied" title="Total jobs applied (Click to view all)">
+                <div class="metric-top">
+                  <span class="metric-icon icon-applied">📝</span>
+                  <span class="metric-number" id="sStatAppliedCount">0</span>
+                </div>
+                <div class="metric-label" id="sStatAppliedLabel">Total Applied</div>
+                <div class="metric-hint">Applications submitted</div>
+                <!-- Hidden stat counter anchors for compatibility -->
+                <span id="statTotalCount" style="display:none;">0</span>
+                <span id="statAppliedCount" style="display:none;">0</span>
               </div>
-              <div class="stat-info">
-                <div class="stat-value" id="statAppliedCount">0</div>
-                <div class="stat-title">Submitted</div>
+
+              <div class="dash-metric-card metric-calls" id="sStatCardCalls" title="Applications that got calls/interviews (Click to filter)">
+                <div class="metric-top">
+                  <span class="metric-icon icon-calls">📞</span>
+                  <span class="metric-number" id="sStatCallsCount">0</span>
+                </div>
+                <div class="metric-label">Got Calls</div>
+                <div class="metric-hint">Interviewing & Offers</div>
+                <span id="statInterviewCount" style="display:none;">0</span>
+                <span id="statOfferCount" style="display:none;">0</span>
+              </div>
+
+              <div class="dash-metric-card metric-pending" id="sStatCardPending" title="Waiting for callback / in review (Click to filter)">
+                <div class="metric-top">
+                  <span class="metric-icon icon-pending">⏳</span>
+                  <span class="metric-number" id="sStatPendingCount">0</span>
+                </div>
+                <div class="metric-label">No Call Yet</div>
+                <div class="metric-hint">Awaiting recruiter response</div>
+              </div>
+
+              <div class="dash-metric-card metric-rejected" id="sStatCardRejected" title="No call / Rejected (Click to filter)">
+                <div class="metric-top">
+                  <span class="metric-icon icon-rejected">🛑</span>
+                  <span class="metric-number" id="sStatRejectedCount">0</span>
+                </div>
+                <div class="metric-label">No Call (Rej)</div>
+                <div class="metric-hint">Closed applications</div>
               </div>
             </div>
 
-            <div class="stat-card" data-filter="Interviewing">
-              <div class="stat-icon stat-icon-interview">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <!-- Callback Response Rate Progress -->
+            <div class="dash-response-rate-bar" title="Callback conversion rate">
+              <div class="rate-header">
+                <span class="rate-title">📈 Overall Callback / Interview Rate</span>
+                <span class="rate-value" id="sStatCallRate">0%</span>
               </div>
-              <div class="stat-info">
-                <div class="stat-value" id="statInterviewCount">0</div>
-                <div class="stat-title">In Interviews</div>
-              </div>
-            </div>
-
-            <div class="stat-card" data-filter="Offer">
-              <div class="stat-icon stat-icon-offer">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value" id="statOfferCount">0</div>
-                <div class="stat-title">Job Offers</div>
+              <div class="rate-track">
+                <div class="rate-fill" id="sStatCallProgress" style="width: 0%;"></div>
               </div>
             </div>
           </div>
