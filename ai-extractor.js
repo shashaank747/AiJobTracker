@@ -7,19 +7,19 @@ import { Config } from './config.js';
  * Smart Date Parser for relative & explicit application dates
  * Handles "yesterday", "X days ago", "last week", "2 weeks ago", "Oct 2nd", "2026-10-02"
  */
-export function parseAppliedDate(text, defaultDate = null) {
+export function parseAppliedDate(text, defaultDate = undefined) {
   const now = new Date();
   const lower = (text || '').toLowerCase();
 
   // "yesterday"
-  if (/\b(?:applied\s+)?yesterday\b/i.test(lower)) {
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?yesterday\b/i.test(lower)) {
     const d = new Date(now);
     d.setDate(d.getDate() - 1);
     return d.toISOString().split('T')[0];
   }
 
   // "X days ago" or "X days back"
-  const daysAgoMatch = lower.match(/\b(?:applied\s+)?(\d+)\s*days?\s*(?:ago|back)\b/i);
+  const daysAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(\d+)\s*days?\s*(?:ago|back)\b/i);
   if (daysAgoMatch) {
     const days = parseInt(daysAgoMatch[1], 10);
     const d = new Date(now);
@@ -28,7 +28,7 @@ export function parseAppliedDate(text, defaultDate = null) {
   }
 
   // "last week" / "a week ago" / "X weeks ago"
-  const weeksAgoMatch = lower.match(/\b(?:applied\s+)?(?:(\d+)\s*weeks?\s*(?:ago|back)|last\s*week|a\s*week\s*ago)\b/i);
+  const weeksAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*weeks?\s*(?:ago|back)|last\s*week|a\s*week\s*ago)\b/i);
   if (weeksAgoMatch) {
     const weeks = weeksAgoMatch[1] ? parseInt(weeksAgoMatch[1], 10) : 1;
     const d = new Date(now);
@@ -37,7 +37,7 @@ export function parseAppliedDate(text, defaultDate = null) {
   }
 
   // "last month" / "X months ago"
-  const monthsAgoMatch = lower.match(/\b(?:applied\s+)?(?:(\d+)\s*months?\s*(?:ago|back)|last\s*month|a\s*month\s*ago)\b/i);
+  const monthsAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*months?\s*(?:ago|back)|last\s*month|a\s*month\s*ago)\b/i);
   if (monthsAgoMatch) {
     const months = monthsAgoMatch[1] ? parseInt(monthsAgoMatch[1], 10) : 1;
     const d = new Date(now);
@@ -51,14 +51,23 @@ export function parseAppliedDate(text, defaultDate = null) {
     return isoMatch[1].replace(/\//g, '-');
   }
 
-  // Explicit month names (e.g. "applied on 2nd Oct", "applied Sep 28", "applied on 15 September 2026")
-  const monthRegex = /\b(?:applied\s+(?:on\s+)?)?(?:(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?)?(?:,?\s+(202\d))?\b/i;
+  // Explicit DD/MM/YYYY or DD-MM-YYYY: "21/09/2026" or "21-09-2026"
+  const ddmmyyyyMatch = text.match(/\b(0?[1-9]|[12]\d|3[01])[-/.](0?[1-9]|1[0-2])[-/.](202\d)\b/);
+  if (ddmmyyyyMatch) {
+    const day = ddmmyyyyMatch[1].padStart(2, '0');
+    const month = ddmmyyyyMatch[2].padStart(2, '0');
+    const year = ddmmyyyyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // Explicit month names (e.g. "applied on 2nd Oct", "i had applied on 21 sept", "applied Sep 28", "21st sept")
+  const monthRegex = /\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on\s+)?)?(?:(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?)?(?:,?\s+(202\d))?\b/i;
   const monthMatch = lower.match(monthRegex);
   if (monthMatch && (monthMatch[1] || monthMatch[3])) {
     const monthMap = {
       jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
       may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
-      sep: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
+      sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
     };
     const mStr = monthMatch[2].toLowerCase();
     const month = monthMap[mStr];
@@ -75,7 +84,7 @@ export function parseAppliedDate(text, defaultDate = null) {
     }
   }
 
-  return defaultDate || now.toISOString().split('T')[0];
+  return defaultDate !== undefined ? defaultDate : now.toISOString().split('T')[0];
 }
 
 
@@ -205,57 +214,76 @@ export const AiExtractor = {
     const settings = Config.getSettings();
 
     const provider = settings.aiProvider || 'gemini';
+    let result = null;
 
     // 1. If user explicitly chose Offline Heuristics
     if (provider === 'heuristic') {
-      return this.extractWithHeuristics(text, existingJob);
-    }
+      result = await this.extractWithHeuristics(text, existingJob);
+    } else {
+      // 2. Try Vercel Serverless /api/chat with selected provider
+      try {
+        const serverRes = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            existingJob,
+            history,
+            provider,
+            apiKey: (provider === 'openai' ? settings.openaiKey : settings.geminiKey) || undefined
+          })
+        });
 
-    // 2. Try Vercel Serverless /api/chat with selected provider
-    try {
-      const serverRes = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          existingJob,
-          history,
-          provider,
-          apiKey: (provider === 'openai' ? settings.openaiKey : settings.geminiKey) || undefined
-        })
-      });
+        if (serverRes.ok) {
+          const json = await serverRes.json();
+          if (json.message) {
+            result = {
+              message: json.message,
+              data: json.data || null,
+              provider: json.provider || provider
+            };
+          }
+        }
+      } catch (serverErr) {
+        console.warn('Serverless endpoint not reachable, trying direct client API:', serverErr);
+      }
 
-      if (serverRes.ok) {
-        const json = await serverRes.json();
-        if (json.message) {
-          return {
-            message: json.message,
-            data: json.data || null,
-            provider: json.provider || provider
-          };
+      // 3. Direct Client Fallback:
+      if (!result && provider === 'openai' && settings.openaiKey) {
+        try {
+          result = await this.extractWithOpenAI(text, existingJob, history, settings);
+        } catch (err) {
+          console.warn('Client OpenAI extraction failed:', err);
+        }
+      } else if (!result && provider === 'gemini' && settings.geminiKey) {
+        try {
+          result = await this.extractWithGemini(text, existingJob, history, settings);
+        } catch (err) {
+          console.warn('Client Gemini extraction failed:', err);
         }
       }
-    } catch (serverErr) {
-      console.warn('Serverless endpoint not reachable, trying direct client API:', serverErr);
-    }
 
-    // 3. Direct Client Fallback:
-    if (provider === 'openai' && settings.openaiKey) {
-      try {
-        return await this.extractWithOpenAI(text, existingJob, history, settings);
-      } catch (err) {
-        console.warn('Client OpenAI extraction failed:', err);
-      }
-    } else if (provider === 'gemini' && settings.geminiKey) {
-      try {
-        return await this.extractWithGemini(text, existingJob, history, settings);
-      } catch (err) {
-        console.warn('Client Gemini extraction failed:', err);
+      // 4. Fallback: Offline Smart Career Advisor & Heuristic Extractor
+      if (!result) {
+        result = await this.extractWithHeuristics(text, existingJob);
       }
     }
 
-    // 4. Fallback: Offline Smart Career Advisor & Heuristic Extractor
-    return this.extractWithHeuristics(text, existingJob);
+    // Post-processing deterministic guarantee for applied date:
+    const detectedDate = parseAppliedDate(text, null);
+    if (detectedDate) {
+      if (result && result.data) {
+        result.data.appliedDate = detectedDate;
+      } else if (result && !result.data && existingJob) {
+        result.data = {
+          ...existingJob,
+          appliedDate: detectedDate
+        };
+        result.message = (result.message ? result.message + '\n\n' : '') + `Updated applied date to **${detectedDate}** for **${existingJob.companyName}**.`;
+      }
+    }
+
+    return result;
   },
 
   /**
@@ -541,6 +569,8 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     // 7. Job Extraction Flow
     // ==========================================
     const today = new Date().toISOString().split('T')[0];
+    const detectedDate = parseAppliedDate(text, null);
+
     const data = existingJob ? { ...existingJob } : {
       companyName: '',
       roleTitle: '',
@@ -552,12 +582,19 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
       applicationUrl: '',
       sourceUrl: '',
       status: 'Applied',
-      appliedDate: parseAppliedDate(text, existingJob?.appliedDate || today),
+      appliedDate: detectedDate || today,
       skills: [],
       notes: ''
     };
 
+    if (existingJob && detectedDate) {
+      data.appliedDate = detectedDate;
+    }
+
     let summaryNotes = [];
+    if (detectedDate) {
+      summaryNotes.push(`Applied date set to ${detectedDate}.`);
+    }
 
     // Detect URLs
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
@@ -605,7 +642,6 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     if (/(?:offer|offered)/i.test(text) && !text.includes('offer letter requirements')) {
       data.status = 'Offer';
       summaryNotes.push('Updated status to Offer.');
-    if (data.appliedDate && data.appliedDate !== today) { summaryNotes.push(`Applied date set to ${data.appliedDate}.`); }
     } else if (/(?:interview|interviewing|round \d|screening)/i.test(text) && text.length < 100) {
       data.status = 'Interviewing';
       summaryNotes.push('Updated status to Interviewing.');

@@ -232,6 +232,19 @@ Ensure output is valid JSON.`;
       }
     }
 
+    const detectedDate = parseAppliedDate(text, null);
+    if (detectedDate) {
+      if (parsed.data) {
+        parsed.data.appliedDate = detectedDate;
+      } else if (existingJob) {
+        parsed.data = {
+          ...existingJob,
+          appliedDate: detectedDate
+        };
+        parsed.message = (parsed.message ? parsed.message + '\n\n' : '') + `Updated applied date to **${detectedDate}** for **${existingJob.companyName}**.`;
+      }
+    }
+
     return res.status(200).json({
       message: parsed.message || candidateText,
       data: parsed.data || null,
@@ -243,4 +256,84 @@ Ensure output is valid JSON.`;
       error: err.message || 'Internal server error while processing AI request.'
     });
   }
+}
+
+function parseAppliedDate(text, defaultDate = undefined) {
+  const now = new Date();
+  const lower = (text || '').toLowerCase();
+
+  // "yesterday"
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?yesterday\b/i.test(lower)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  }
+
+  // "X days ago" or "X days back"
+  const daysAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(\d+)\s*days?\s*(?:ago|back)\b/i);
+  if (daysAgoMatch) {
+    const days = parseInt(daysAgoMatch[1], 10);
+    const d = new Date(now);
+    d.setDate(d.getDate() - days);
+    return d.toISOString().split('T')[0];
+  }
+
+  // "last week" / "a week ago" / "X weeks ago"
+  const weeksAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*weeks?\s*(?:ago|back)|last\s*week|a\s*week\s*ago)\b/i);
+  if (weeksAgoMatch) {
+    const weeks = weeksAgoMatch[1] ? parseInt(weeksAgoMatch[1], 10) : 1;
+    const d = new Date(now);
+    d.setDate(d.getDate() - (weeks * 7));
+    return d.toISOString().split('T')[0];
+  }
+
+  // "last month" / "X months ago"
+  const monthsAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*months?\s*(?:ago|back)|last\s*month|a\s*month\s*ago)\b/i);
+  if (monthsAgoMatch) {
+    const months = monthsAgoMatch[1] ? parseInt(monthsAgoMatch[1], 10) : 1;
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - months);
+    return d.toISOString().split('T')[0];
+  }
+
+  // Explicit ISO date: "2026-10-02" or "2026/10/02"
+  const isoMatch = text.match(/\b(202\d[-/](?:0?[1-9]|1[0-2])[-/](?:0?[1-9]|[12]\d|3[01]))\b/);
+  if (isoMatch) {
+    return isoMatch[1].replace(/\//g, '-');
+  }
+
+  // Explicit DD/MM/YYYY or DD-MM-YYYY: "21/09/2026" or "21-09-2026"
+  const ddmmyyyyMatch = text.match(/\b(0?[1-9]|[12]\d|3[01])[-/.](0?[1-9]|1[0-2])[-/.](202\d)\b/);
+  if (ddmmyyyyMatch) {
+    const day = ddmmyyyyMatch[1].padStart(2, '0');
+    const month = ddmmyyyyMatch[2].padStart(2, '0');
+    const year = ddmmyyyyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // Explicit month names (e.g. "applied on 2nd Oct", "i had applied on 21 sept", "applied Sep 28", "21st sept")
+  const monthRegex = /\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on\s+)?)?(?:(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?)?(?:,?\s+(202\d))?\b/i;
+  const monthMatch = lower.match(monthRegex);
+  if (monthMatch && (monthMatch[1] || monthMatch[3])) {
+    const monthMap = {
+      jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+      may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+      sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
+    };
+    const mStr = monthMatch[2].toLowerCase();
+    const month = monthMap[mStr];
+    if (month !== undefined) {
+      const day = parseInt(monthMatch[1] || monthMatch[3] || '1', 10);
+      const year = monthMatch[4] ? parseInt(monthMatch[4], 10) : now.getFullYear();
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dt = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dt}`;
+      }
+    }
+  }
+
+  return defaultDate !== undefined ? defaultDate : now.toISOString().split('T')[0];
 }
