@@ -147,9 +147,7 @@ class JobTrackerApp {
     this.updateAiModelTag();
     await this.loadApplications();
     await this.checkSupabaseConnectionStatus();
-    this.setup3dTilt();
 
-    // Check active session
     const savedSessionId = Config.getActiveSessionId();
     if (savedSessionId) {
       const found = this.applications.find(a => a.id === savedSessionId);
@@ -159,29 +157,7 @@ class JobTrackerApp {
     }
   }
 
-  setup3dTilt() {
-    const stage = document.getElementById('hero3dStage');
-    const viewport = this.chatViewport;
-    if (!stage || !viewport) return;
 
-    viewport.addEventListener('mousemove', (e) => {
-      if (this.welcomeHero.style.display === 'none') return;
-      const rect = stage.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const deltaX = (e.clientX - centerX) / (window.innerWidth / 2);
-      const deltaY = (e.clientY - centerY) / (window.innerHeight / 2);
-
-      const rotateY = deltaX * 12;
-      const rotateX = -deltaY * 10;
-
-      stage.style.transform = `perspective(1000px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg)`;
-    });
-
-    viewport.addEventListener('mouseleave', () => {
-      if (stage) stage.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
-    });
-  }
 
   bindEvents() {
     // Tab switching
@@ -212,17 +188,6 @@ class JobTrackerApp {
     });
 
     this.btnSend.addEventListener('click', () => this.handleSendMessage());
-
-    // Quick sample chips in welcome hero
-    document.querySelectorAll('.sample-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        const sampleKey = chip.getAttribute('data-sample');
-        if (SAMPLE_JDS[sampleKey]) {
-          this.chatInput.value = SAMPLE_JDS[sampleKey];
-          this.handleSendMessage();
-        }
-      });
-    });
 
     // Quick prompt pills
     document.querySelectorAll('.quick-pill').forEach(pill => {
