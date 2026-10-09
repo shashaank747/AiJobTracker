@@ -105,12 +105,71 @@
         <div class="chat-viewport" id="chatViewport">
           <div class="chat-messages" id="chatMessages">
             
-            <!-- Welcome Hero (shown when no messages yet) -->
+            <!-- 3D WELCOME HERO SECTION -->
             <div class="welcome-hero" id="welcomeHero">
-              <div class="hero-badge">AI Job Tracking Agent</div>
-              <h1 class="hero-title">Paste Any Job Description</h1>
-              <p class="hero-desc">Drop raw JD text, an application email, or a link. AI will instantly extract the company, role, salary, work mode, and application links, then sync everything to Supabase.</p>
-              
+              <div class="hero-3d-scene" id="hero3dScene">
+                <div class="hero-3d-stage" id="hero3dStage">
+                  
+                  <div class="badge-3d">
+                    <span class="badge-dot-pulse"></span>
+                    <span>AI APPLICATION VAULT</span>
+                  </div>
+
+                  <!-- 3D Extruded Letters Header -->
+                  <div class="letters-3d-container" id="letters3dContainer" title="Interactive 3D Letters">
+                    <div class="word-3d" data-text="JOB">
+                      <span class="char-3d" style="--i:0">J</span>
+                      <span class="char-3d" style="--i:1">O</span>
+                      <span class="char-3d" style="--i:2">B</span>
+                    </div>
+                    <div class="word-3d" data-text="TRACKER">
+                      <span class="char-3d" style="--i:3">T</span>
+                      <span class="char-3d" style="--i:4">R</span>
+                      <span class="char-3d" style="--i:5">A</span>
+                      <span class="char-3d" style="--i:6">C</span>
+                      <span class="char-3d" style="--i:7">K</span>
+                      <span class="char-3d" style="--i:8">E</span>
+                      <span class="char-3d" style="--i:9">R</span>
+                    </div>
+                    <div class="word-3d word-ai" data-text="AI">
+                      <span class="char-3d char-ai" style="--i:10">A</span>
+                      <span class="char-3d char-ai" style="--i:11">I</span>
+                    </div>
+                  </div>
+
+                  <p class="hero-tagline-3d">
+                    Conversational Job Intelligence • OCR • Voice Dictation • Cloud Synced
+                  </p>
+
+                  <!-- 3D Feature Cards -->
+                  <div class="features-3d-grid">
+                    <div class="feature-card-3d">
+                      <span class="feature-icon-3d">📄</span>
+                      <div class="feature-text-3d">
+                        <strong>Drop PDF / OCR</strong>
+                        <p>Extract from resumes & JD images</p>
+                      </div>
+                    </div>
+                    <div class="feature-card-3d">
+                      <span class="feature-icon-3d">⚡</span>
+                      <div class="feature-text-3d">
+                        <strong>Auto Extraction</strong>
+                        <p>Company, salary, role & links</p>
+                      </div>
+                    </div>
+                    <div class="feature-card-3d">
+                      <span class="feature-icon-3d">🎙️</span>
+                      <div class="feature-text-3d">
+                        <strong>Voice Dictate</strong>
+                        <p>Speak job notes in real time</p>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Quick Samples -->
               <div class="quick-samples">
                 <span class="samples-title">Try an example:</span>
                 <div class="sample-chips">
