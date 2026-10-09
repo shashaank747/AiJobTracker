@@ -114,8 +114,12 @@ CORE CAPABILITIES:
     - For semester marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
     - For 10th marks: { "type": "update_education_10th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
     - For 12th marks: { "type": "update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
-    - For college: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
-    - For personal details: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "..." }
+    - For personal details & links: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
+  * STRICT URL ROUTING RULE:
+    - If user provides a GitHub link, assign it to "githubUrl" in update_personal. NEVER put it in "bio"!
+    - If user provides a LinkedIn link, assign it to "linkedinUrl" in update_personal. NEVER put it in "bio"!
+    - If user provides a Portfolio or personal website link, assign it to "portfolioUrl" in update_personal. NEVER put it in "bio"!
+    - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
 - When user asks about their profile, semester marks, or projects ("What projects have I done?", "What are my sem marks?"), answer from "USER ABOUT ME PROFILE / DOSSIER" and set "data": null.
 
 4. JOB APPLICATION EXTRACTION & TRACKING:

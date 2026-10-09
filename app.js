@@ -2455,6 +2455,25 @@ class JobTrackerApp {
   // ==========================================
   async loadUserProfile() {
     this.userProfile = await SupabaseService.getUserProfile();
+    // Auto-clean & migrate: If bio contains a GitHub, LinkedIn, or Portfolio link, move it to its dedicated field
+    if (this.userProfile && this.userProfile.bio) {
+      let needsSave = false;
+      const ghMatch = this.userProfile.bio.match(/https?:\/\/(?:www\.)?github\.com\/[a-zA-Z0-9_\-\.\/]+/i);
+      if (ghMatch && (!this.userProfile.githubUrl || this.userProfile.githubUrl.includes('username'))) {
+        this.userProfile.githubUrl = ghMatch[0];
+        this.userProfile.bio = this.userProfile.bio.replace(/(?:my\s+)?(?:github(?:\s+profile|\s+link|\s+url)?\s*[:=\-]?\s*)?https?:\/\/(?:www\.)?github\.com\/[a-zA-Z0-9_\-\.\/]+/gi, '').trim();
+        needsSave = true;
+      }
+      const liMatch = this.userProfile.bio.match(/https?:\/\/(?:www\.)?linkedin\.com\/[a-zA-Z0-9_\-\.\/]+/i);
+      if (liMatch && (!this.userProfile.linkedinUrl || this.userProfile.linkedinUrl.includes('username'))) {
+        this.userProfile.linkedinUrl = liMatch[0];
+        this.userProfile.bio = this.userProfile.bio.replace(/(?:my\s+)?(?:linkedin(?:\s+profile|\s+link|\s+url)?\s*[:=\-]?\s*)?https?:\/\/(?:www\.)?linkedin\.com\/[a-zA-Z0-9_\-\.\/]+/gi, '').trim();
+        needsSave = true;
+      }
+      if (needsSave) {
+        await SupabaseService.saveUserProfile(this.userProfile);
+      }
+    }
     this.renderProfileView();
   }
 
@@ -2765,10 +2784,38 @@ class JobTrackerApp {
     } else if (update.type === 'update_personal') {
       if (update.fullName) this.userProfile.fullName = update.fullName;
       if (update.headline) this.userProfile.headline = update.headline;
-      if (update.bio) this.userProfile.bio = update.bio;
       if (update.email) this.userProfile.email = update.email;
       if (update.phone) this.userProfile.phone = update.phone;
       if (update.location) this.userProfile.location = update.location;
+      if (update.githubUrl) this.userProfile.githubUrl = update.githubUrl;
+      if (update.linkedinUrl) this.userProfile.linkedinUrl = update.linkedinUrl;
+      if (update.portfolioUrl) this.userProfile.portfolioUrl = update.portfolioUrl;
+      if (update.avatarUrl) this.userProfile.avatarUrl = update.avatarUrl;
+
+      // Smart auto-routing: If bio contains GitHub / LinkedIn / Portfolio URLs, route them to their proper fields!
+      if (update.bio) {
+        let cleanBio = update.bio;
+
+        const ghMatch = cleanBio.match(/https?:\/\/(?:www\.)?github\.com\/[a-zA-Z0-9_\-\.\/]+/i);
+        if (ghMatch) {
+          this.userProfile.githubUrl = ghMatch[0];
+          cleanBio = cleanBio.replace(/(?:my\s+)?(?:github(?:\s+profile|\s+link|\s+url)?\s*[:=\-]?\s*)?https?:\/\/(?:www\.)?github\.com\/[a-zA-Z0-9_\-\.\/]+/gi, '').trim();
+        }
+
+        const liMatch = cleanBio.match(/https?:\/\/(?:www\.)?linkedin\.com\/[a-zA-Z0-9_\-\.\/]+/i);
+        if (liMatch) {
+          this.userProfile.linkedinUrl = liMatch[0];
+          cleanBio = cleanBio.replace(/(?:my\s+)?(?:linkedin(?:\s+profile|\s+link|\s+url)?\s*[:=\-]?\s*)?https?:\/\/(?:www\.)?linkedin\.com\/[a-zA-Z0-9_\-\.\/]+/gi, '').trim();
+        }
+
+        const portMatch = cleanBio.match(/https?:\/\/(?!github\.com|linkedin\.com)[a-zA-Z0-9_\-\.\/]+/i);
+        if (portMatch && (cleanBio.toLowerCase().includes('portfolio') || cleanBio.toLowerCase().includes('website'))) {
+          this.userProfile.portfolioUrl = portMatch[0];
+          cleanBio = cleanBio.replace(/(?:my\s+)?(?:portfolio|website|site)\s*[:=\-]?\s*https?:\/\/[a-zA-Z0-9_\-\.\/]+/gi, '').trim();
+        }
+
+        this.userProfile.bio = cleanBio;
+      }
     } else if (update.type === 'add_skill' && update.skill) {
       this.userProfile.skills = this.userProfile.skills || [];
       if (!this.userProfile.skills.includes(update.skill)) {

@@ -350,8 +350,19 @@ Your capabilities:
      * Answer directly, accurately, and thoroughly using the database records.
      * Set "data": null.
 3. PROFILE / ABOUT ME INTELLIGENCE & UPDATES:
-   - When user tells you to add/update projects, semester marks, certifications, 10th/12th marks, or personal details:
-     * Confirm in "message", set "data": null, and provide "profileUpdate" in JSON output!
+   - When user tells you to add/update projects, semester marks, certifications, 10th/12th marks, personal details, or social links:
+     * Confirm in "message", set "data": null, and provide "profileUpdate" in JSON output:
+       - Projects: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+       - Certifications: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+       - Semester marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
+       - 10th/12th: { "type": "update_education_10th"|"update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
+       - College: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
+       - Personal details: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
+     * STRICT URL ROUTING RULE:
+       - If user provides a GitHub link, assign it to "githubUrl" in update_personal. NEVER put it in "bio"!
+       - If user provides a LinkedIn link, assign it to "linkedinUrl" in update_personal. NEVER put it in "bio"!
+       - If user provides a Portfolio or personal website link, assign it to "portfolioUrl" in update_personal. NEVER put it in "bio"!
+       - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
    - When user asks about their profile, answer using their data.
 4. CAREER & COMPANY QUESTIONS: When user asks questions about a company, interview questions, role expectations, or career tips:
    - Provide a comprehensive, structured, and insightful markdown answer in "message".
@@ -726,7 +737,49 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       };
     }
 
-    // H. Querying Profile Information (Semester Marks, Projects, Summary)
+    // H. GitHub Profile Link
+    const ghMatch = trimmed.match(/(?:(?:my\s+)?github(?:\s+(?:link|profile|url|account))?\s*(?:is|:|=)?\s*)?(https?:\/\/(?:www\.)?github\.com\/[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)?)/i);
+    if (ghMatch || (trimmed.toLowerCase().includes('github.com') && /https?:\/\//i.test(trimmed))) {
+      const ghUrl = ghMatch ? ghMatch[1] : trimmed.match(/https?:\/\/[^\s]+/)[0];
+      return {
+        message: `### 🐙 GitHub Profile Updated!\n\nLinked **${ghUrl}** directly to your **GitHub Profile** field in your About Me dossier.`,
+        profileUpdate: {
+          type: 'update_personal',
+          githubUrl: ghUrl
+        },
+        data: null
+      };
+    }
+
+    // I. LinkedIn Profile Link
+    const liMatch = trimmed.match(/(?:(?:my\s+)?linkedin(?:\s+(?:link|profile|url))?\s*(?:is|:|=)?\s*)?(https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_\-]+)/i);
+    if (liMatch || (trimmed.toLowerCase().includes('linkedin.com/in') && /https?:\/\//i.test(trimmed))) {
+      const liUrl = liMatch ? liMatch[1] : trimmed.match(/https?:\/\/[^\s]+/)[0];
+      return {
+        message: `### 💼 LinkedIn Profile Updated!\n\nLinked **${liUrl}** to your **LinkedIn Profile** field in your About Me dossier.`,
+        profileUpdate: {
+          type: 'update_personal',
+          linkedinUrl: liUrl
+        },
+        data: null
+      };
+    }
+
+    // J. Portfolio Link
+    const portMatch = trimmed.match(/(?:my\s+)?(?:portfolio|personal\s+site|website)\s*(?:is|:|=)?\s*(https?:\/\/[^\s]+)/i);
+    if (portMatch) {
+      const portUrl = portMatch[1];
+      return {
+        message: `### 🌐 Portfolio Link Updated!\n\nLinked **${portUrl}** to your **Portfolio Link** field in your About Me dossier.`,
+        profileUpdate: {
+          type: 'update_personal',
+          portfolioUrl: portUrl
+        },
+        data: null
+      };
+    }
+
+    // K. Querying Profile Information (Semester Marks, Projects, Summary)
     const isProfileQuery = /\b(what\s+are\s+my\s+sem\s+marks|show\s+my\s+sem\s+marks|my\s+semester\s+marks|what\s+projects\s+(?:have\s+i|did\s+i)\s+(?:done|built|make)|show\s+my\s+projects|list\s+my\s+projects|show\s+(?:my\s+)?profile|what\s+is\s+my\s+profile|tell\s+me\s+about\s+my\s+profile|my\s+education|my\s+certifications?)\b/i.test(lower);
     if (isProfileQuery) {
       const prof = userProfile || Config.getUserProfile();
