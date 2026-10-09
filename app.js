@@ -135,10 +135,12 @@ class JobTrackerApp {
     this.attachmentStatus = document.getElementById('attachmentStatus');
     this.btnRemoveAttachment = document.getElementById('btnRemoveAttachment');
     this.voiceStatusBanner = document.getElementById('voiceStatusBanner');
+    this.voiceStatusText = document.getElementById('voiceStatusText');
     this.dropZoneContainer = document.getElementById('dropZoneContainer');
 
     this.isRecording = false;
     this.speechRecognition = null;
+    this.baseVoiceText = '';
     this.currentAttachment = null;
 
     // Toast Container
@@ -1079,35 +1081,77 @@ class JobTrackerApp {
 
     recognition.onstart = () => {
       this.isRecording = true;
+      this.baseVoiceText = this.chatInput.value;
       this.btnVoiceDictate.classList.add('recording');
+      this.btnVoiceDictate.title = 'Click to stop live voice transcription';
       this.voiceStatusBanner.style.display = 'flex';
-      this.showToast('Microphone active. Speak your job details now...', 'info');
+      if (this.voiceStatusText) {
+        this.voiceStatusText.textContent = 'Listening live... Speak now (words will appear as you speak)';
+      }
+      this.showToast('🎙️ Live speech active — speak freely!', 'info');
     };
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript + ' ';
+      let interimTranscript = '';
+
+      for (let i = 0; i < event.results.length; ++i) {
+        const item = event.results[i];
+        if (item.isFinal) {
+          finalTranscript += item[0].transcript + ' ';
+        } else {
+          interimTranscript += item[0].transcript;
         }
       }
-      if (finalTranscript) {
-        this.chatInput.value = (this.chatInput.value ? this.chatInput.value.trim() + ' ' : '') + finalTranscript.trim();
-        this.chatInput.style.height = 'auto';
-        this.chatInput.style.height = Math.min(this.chatInput.scrollHeight, 180) + 'px';
+
+      // Stream words live to the input box in real time
+      const prefix = this.baseVoiceText ? this.baseVoiceText.trim() + ' ' : '';
+      const liveText = (prefix + finalTranscript + interimTranscript).trim();
+
+      this.chatInput.value = liveText;
+
+      // Auto-grow input box smoothly
+      this.chatInput.style.height = 'auto';
+      const scrollH = this.chatInput.scrollHeight;
+      this.chatInput.style.height = Math.min(scrollH, 180) + 'px';
+      this.chatInput.style.overflowY = scrollH > 180 ? 'auto' : 'hidden';
+      this.chatInput.scrollTop = this.chatInput.scrollHeight;
+
+      // Update banner with real-time speech preview
+      if (this.voiceStatusText) {
+        if (interimTranscript.trim()) {
+          this.voiceStatusText.textContent = `Speaking: "${interimTranscript.trim()}"`;
+        } else {
+          this.voiceStatusText.textContent = 'Listening live... Keep speaking or click mic to finish';
+        }
       }
     };
 
     recognition.onerror = (event) => {
-      console.warn('Speech recognition event:', event.error);
+      console.warn('Speech recognition error event:', event.error);
+      if (event.error === 'no-speech') {
+        return; // Ignore brief pauses
+      }
       this.stopVoiceDictation();
-      if (event.error !== 'no-speech') {
+      if (event.error === 'not-allowed') {
+        this.showToast('Microphone permission blocked. Please allow mic in browser settings.', 'error');
+      } else {
         this.showToast(`Microphone: ${event.error}`, 'error');
       }
     };
 
     recognition.onend = () => {
-      this.stopVoiceDictation();
+      // If user hasn't clicked stop and browser paused on silence, keep listening
+      if (this.isRecording) {
+        try {
+          this.baseVoiceText = this.chatInput.value;
+          recognition.start();
+        } catch (e) {
+          this.stopVoiceDictation();
+        }
+      } else {
+        this.stopVoiceDictation();
+      }
     };
 
     return recognition;
@@ -1116,21 +1160,24 @@ class JobTrackerApp {
   toggleVoiceDictation() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      this.showToast('Voice dictation is supported in Google Chrome, Edge, and modern browsers.', 'error');
+      this.showToast('Voice dictation requires Google Chrome, Microsoft Edge, or a browser with Web Speech API.', 'error');
       return;
     }
 
     if (this.isRecording) {
+      this.isRecording = false;
       if (this.speechRecognition) {
         try { this.speechRecognition.stop(); } catch (e) {}
       }
       this.stopVoiceDictation();
+      this.showToast('Voice dictation stopped.', 'info');
     } else {
       if (!this.speechRecognition) {
         this.speechRecognition = this.initSpeechRecognition();
       }
       if (this.speechRecognition) {
         try {
+          this.baseVoiceText = this.chatInput.value;
           this.speechRecognition.start();
         } catch (e) {
           console.warn('Speech recognition start error:', e);
@@ -1142,7 +1189,9 @@ class JobTrackerApp {
 
   stopVoiceDictation() {
     this.isRecording = false;
+    this.baseVoiceText = this.chatInput.value;
     this.btnVoiceDictate.classList.remove('recording');
+    this.btnVoiceDictate.title = 'Voice Dictation (Speak your JD)';
     this.voiceStatusBanner.style.display = 'none';
   }
 
