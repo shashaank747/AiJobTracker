@@ -423,6 +423,29 @@ class JobTrackerApp {
       }
     });
 
+    // Real-time synchronization of all About Me inputs to memory & storage
+    const allProfileFormInputs = [
+      this.profFullName, this.profHeadline, this.profBio, this.profEmail, this.profPhone,
+      this.profLocation, this.profPortfolio, this.profGithub, this.profLinkedin,
+      this.prof10thSchool, this.prof10thBoard, this.prof10thMarks, this.prof10thYear,
+      this.prof12thSchool, this.prof12thBoard, this.prof12thMarks, this.prof12thYear,
+      this.profCollegeName, this.profCollegeDegree, this.profCollegeBranch, this.profCollegeCgpa, this.profCollegeGradYear,
+      ...this.profSemInputs
+    ];
+
+    let profileAutoSyncTimer = null;
+    allProfileFormInputs.forEach(inp => {
+      if (inp) {
+        inp.addEventListener('input', () => {
+          this.getEffectiveUserProfile();
+          clearTimeout(profileAutoSyncTimer);
+          profileAutoSyncTimer = setTimeout(() => {
+            SupabaseService.saveUserProfile(this.userProfile);
+          }, 800);
+        });
+      }
+    });
+
     // Project Modal bindings
     if (this.btnOpenAddProjectModal) {
       this.btnOpenAddProjectModal.addEventListener('click', () => this.openProjectModal());
@@ -1254,10 +1277,7 @@ class JobTrackerApp {
       return;
     }
 
-    // Ensure latest profile data is loaded
-    if (!this.userProfile) {
-      this.userProfile = await SupabaseService.getUserProfile();
-    }
+    const effectiveProfile = this.getEffectiveUserProfile();
 
     const displayText = rawText || `/compare ${targetApp.companyName || ''}`;
     this.appendUserMessage(displayText);
@@ -1269,7 +1289,7 @@ class JobTrackerApp {
         targetApp,
         this.chatMessages,
         this.applications,
-        this.userProfile
+        effectiveProfile
       );
 
       thinkingEl.remove();
@@ -1423,12 +1443,13 @@ class JobTrackerApp {
     this.scrollToBottom();
 
     try {
+      const effectiveProfile = this.getEffectiveUserProfile();
       const result = await AiExtractor.processInput(
         text,
         this.activeApplication,
         this.chatMessages,
         this.applications,
-        this.userProfile
+        effectiveProfile
       );
 
       thinkingEl.remove();
@@ -2744,57 +2765,62 @@ class JobTrackerApp {
     });
   }
 
-  async saveProfileManually() {
+  getEffectiveUserProfile() {
     if (!this.userProfile) {
       this.userProfile = Config.getUserProfile();
     }
+    const prof = JSON.parse(JSON.stringify(this.userProfile));
 
-    // Read form values
-    this.userProfile.fullName = this.profFullName?.value?.trim() || '';
-    this.userProfile.headline = this.profHeadline?.value?.trim() || '';
-    this.userProfile.bio = this.profBio?.value?.trim() || '';
-    this.userProfile.email = this.profEmail?.value?.trim() || '';
-    this.userProfile.phone = this.profPhone?.value?.trim() || '';
-    this.userProfile.location = this.profLocation?.value?.trim() || '';
-    this.userProfile.portfolioUrl = this.profPortfolio?.value?.trim() || '';
-    this.userProfile.githubUrl = this.profGithub?.value?.trim() || '';
-    this.userProfile.linkedinUrl = this.profLinkedin?.value?.trim() || '';
-    this.userProfile.avatarUrl = this.profAvatarUrl?.value?.trim() || this.userProfile.avatarUrl || '';
+    if (this.profFullName && this.profFullName.value !== undefined) prof.fullName = this.profFullName.value.trim();
+    if (this.profHeadline && this.profHeadline.value !== undefined) prof.headline = this.profHeadline.value.trim();
+    if (this.profBio && this.profBio.value !== undefined) prof.bio = this.profBio.value.trim();
+    if (this.profEmail && this.profEmail.value !== undefined) prof.email = this.profEmail.value.trim();
+    if (this.profPhone && this.profPhone.value !== undefined) prof.phone = this.profPhone.value.trim();
+    if (this.profLocation && this.profLocation.value !== undefined) prof.location = this.profLocation.value.trim();
+    if (this.profPortfolio && this.profPortfolio.value !== undefined) prof.portfolioUrl = this.profPortfolio.value.trim();
+    if (this.profGithub && this.profGithub.value !== undefined) prof.githubUrl = this.profGithub.value.trim();
+    if (this.profLinkedin && this.profLinkedin.value !== undefined) prof.linkedinUrl = this.profLinkedin.value.trim();
+    if (this.profAvatarUrl && this.profAvatarUrl.value !== undefined) prof.avatarUrl = this.profAvatarUrl.value.trim();
 
-    // 10th
-    this.userProfile.education = this.userProfile.education || {};
-    this.userProfile.education.tenth = {
-      schoolName: this.prof10thSchool?.value?.trim() || '',
-      board: this.prof10thBoard?.value?.trim() || '',
-      marks: this.prof10thMarks?.value?.trim() || '',
-      year: this.prof10thYear?.value?.trim() || ''
-    };
+    prof.education = prof.education || {};
+    prof.education.tenth = prof.education.tenth || {};
+    if (this.prof10thSchool && this.prof10thSchool.value !== undefined) prof.education.tenth.schoolName = this.prof10thSchool.value.trim();
+    if (this.prof10thBoard && this.prof10thBoard.value !== undefined) prof.education.tenth.board = this.prof10thBoard.value.trim();
+    if (this.prof10thMarks && this.prof10thMarks.value !== undefined) prof.education.tenth.marks = this.prof10thMarks.value.trim();
+    if (this.prof10thYear && this.prof10thYear.value !== undefined) prof.education.tenth.year = this.prof10thYear.value.trim();
 
-    // 12th
-    this.userProfile.education.twelfth = {
-      schoolName: this.prof12thSchool?.value?.trim() || '',
-      board: this.prof12thBoard?.value?.trim() || '',
-      marks: this.prof12thMarks?.value?.trim() || '',
-      year: this.prof12thYear?.value?.trim() || ''
-    };
+    prof.education.twelfth = prof.education.twelfth || {};
+    if (this.prof12thSchool && this.prof12thSchool.value !== undefined) prof.education.twelfth.schoolName = this.prof12thSchool.value.trim();
+    if (this.prof12thBoard && this.prof12thBoard.value !== undefined) prof.education.twelfth.board = this.prof12thBoard.value.trim();
+    if (this.prof12thMarks && this.prof12thMarks.value !== undefined) prof.education.twelfth.marks = this.prof12thMarks.value.trim();
+    if (this.prof12thYear && this.prof12thYear.value !== undefined) prof.education.twelfth.year = this.prof12thYear.value.trim();
 
-    // College
-    const sMarks = {};
+    prof.education.college = prof.education.college || {};
+    if (this.profCollegeName && this.profCollegeName.value !== undefined) prof.education.college.collegeName = this.profCollegeName.value.trim();
+    if (this.profCollegeDegree && this.profCollegeDegree.value !== undefined) prof.education.college.degree = this.profCollegeDegree.value.trim();
+    if (this.profCollegeBranch && this.profCollegeBranch.value !== undefined) prof.education.college.branch = this.profCollegeBranch.value.trim();
+    if (this.profCollegeCgpa && this.profCollegeCgpa.value !== undefined) prof.education.college.overallCgpa = this.profCollegeCgpa.value.trim();
+    if (this.profCollegeGradYear && this.profCollegeGradYear.value !== undefined) prof.education.college.graduationYear = this.profCollegeGradYear.value.trim();
+
+    prof.education.college.semesterMarks = prof.education.college.semesterMarks || {};
     for (let i = 1; i <= 8; i++) {
-      const val = document.getElementById(`profSem${i}`)?.value?.trim();
-      if (val) sMarks[`sem${i}`] = val;
+      const semInput = document.getElementById(`profSem${i}`);
+      if (semInput && semInput.value !== undefined) {
+        prof.education.college.semesterMarks[`sem${i}`] = semInput.value.trim();
+      }
     }
 
-    this.userProfile.education.college = {
-      collegeName: this.profCollegeName?.value?.trim() || '',
-      degree: this.profCollegeDegree?.value?.trim() || '',
-      branch: this.profCollegeBranch?.value?.trim() || '',
-      overallCgpa: this.profCollegeCgpa?.value?.trim() || '',
-      graduationYear: this.profCollegeGradYear?.value?.trim() || '',
-      semesterMarks: sMarks
-    };
+    prof.projects = Array.isArray(this.userProfile?.projects) ? this.userProfile.projects : [];
+    prof.certifications = Array.isArray(this.userProfile?.certifications) ? this.userProfile.certifications : [];
+    prof.skills = Array.isArray(this.userProfile?.skills) ? this.userProfile.skills : [];
 
-    const res = await SupabaseService.saveUserProfile(this.userProfile);
+    this.userProfile = prof;
+    return prof;
+  }
+
+  async saveProfileManually() {
+    this.getEffectiveUserProfile();
+    await SupabaseService.saveUserProfile(this.userProfile);
     this.showToast('Candidate profile and dossier saved successfully!', 'success');
   }
 
@@ -2803,43 +2829,110 @@ class JobTrackerApp {
       this.userProfile = Config.getUserProfile();
     }
 
-    if (update.type === 'add_project' && update.project) {
-      this.userProfile.projects = this.userProfile.projects || [];
-      this.userProfile.projects.unshift(update.project);
-    } else if (update.type === 'add_certification' && update.certification) {
-      this.userProfile.certifications = this.userProfile.certifications || [];
-      this.userProfile.certifications.unshift(update.certification);
-    } else if (update.type === 'update_sem_marks' && update.sem) {
-      if (!this.userProfile.education.college.semesterMarks) {
-        this.userProfile.education.college.semesterMarks = {};
+    this.userProfile.education = this.userProfile.education || {};
+    this.userProfile.education.tenth = this.userProfile.education.tenth || {};
+    this.userProfile.education.twelfth = this.userProfile.education.twelfth || {};
+    this.userProfile.education.college = this.userProfile.education.college || {};
+    this.userProfile.education.college.semesterMarks = this.userProfile.education.college.semesterMarks || {};
+    this.userProfile.projects = Array.isArray(this.userProfile.projects) ? this.userProfile.projects : [];
+    this.userProfile.certifications = Array.isArray(this.userProfile.certifications) ? this.userProfile.certifications : [];
+    this.userProfile.skills = Array.isArray(this.userProfile.skills) ? this.userProfile.skills : [];
+
+    if (update.type === 'update_college') {
+      if (update.collegeName !== undefined) this.userProfile.education.college.collegeName = update.collegeName;
+      if (update.degree !== undefined) this.userProfile.education.college.degree = update.degree;
+      if (update.branch !== undefined) this.userProfile.education.college.branch = update.branch;
+      if (update.overallCgpa !== undefined) this.userProfile.education.college.overallCgpa = update.overallCgpa;
+      if (update.graduationYear !== undefined) this.userProfile.education.college.graduationYear = update.graduationYear;
+    } else if (update.type === 'add_skills' || update.type === 'add_skill') {
+      const skillsToAdd = Array.isArray(update.skills) ? update.skills : (update.skill ? [update.skill] : []);
+      skillsToAdd.forEach(s => {
+        const trimmed = String(s).trim();
+        if (trimmed && !this.userProfile.skills.some(existing => existing.toLowerCase() === trimmed.toLowerCase())) {
+          this.userProfile.skills.push(trimmed);
+        }
+      });
+    } else if (update.type === 'remove_skill') {
+      const targetSkill = String(update.skill || '').toLowerCase().trim();
+      this.userProfile.skills = this.userProfile.skills.filter(s => s.toLowerCase().trim() !== targetSkill);
+    } else if (update.type === 'set_skills' && Array.isArray(update.skills)) {
+      this.userProfile.skills = update.skills.map(s => String(s).trim()).filter(Boolean);
+    } else if (update.type === 'add_project' && update.project) {
+      const proj = update.project;
+      const newProj = {
+        id: proj.id || 'proj_' + Date.now(),
+        title: proj.title || 'Untitled Project',
+        description: proj.description || '',
+        techStack: proj.techStack || '',
+        projectUrl: proj.projectUrl || '',
+        startDate: proj.startDate || '',
+        finishDate: proj.finishDate || new Date().toISOString().split('T')[0]
+      };
+      const existingIdx = this.userProfile.projects.findIndex(p => p.title.toLowerCase().trim() === newProj.title.toLowerCase().trim());
+      if (existingIdx !== -1) {
+        this.userProfile.projects[existingIdx] = { ...this.userProfile.projects[existingIdx], ...newProj };
+      } else {
+        this.userProfile.projects.unshift(newProj);
       }
+    } else if (update.type === 'edit_project') {
+      const target = String(update.targetTitle || update.project?.title || '').toLowerCase().trim();
+      const idx = this.userProfile.projects.findIndex(p => p.title.toLowerCase().trim() === target || p.id === update.projectId);
+      if (idx !== -1) {
+        this.userProfile.projects[idx] = { ...this.userProfile.projects[idx], ...(update.project || {}) };
+      } else if (update.project) {
+        this.userProfile.projects.unshift({ id: 'proj_' + Date.now(), ...(update.project || {}) });
+      }
+    } else if (update.type === 'delete_project') {
+      const delTitle = String(update.targetTitle || '').toLowerCase().trim();
+      this.userProfile.projects = this.userProfile.projects.filter(p => p.title.toLowerCase().trim() !== delTitle && p.id !== update.projectId);
+    } else if (update.type === 'add_certification' && update.certification) {
+      const cert = update.certification;
+      const newCert = {
+        id: cert.id || 'cert_' + Date.now(),
+        name: cert.name || 'Untitled Certification',
+        issuer: cert.issuer || 'Verified Org',
+        issueDate: cert.issueDate || new Date().toISOString().split('T')[0],
+        credentialUrl: cert.credentialUrl || ''
+      };
+      const existingCertIdx = this.userProfile.certifications.findIndex(c => c.name.toLowerCase().trim() === newCert.name.toLowerCase().trim());
+      if (existingCertIdx !== -1) {
+        this.userProfile.certifications[existingCertIdx] = { ...this.userProfile.certifications[existingCertIdx], ...newCert };
+      } else {
+        this.userProfile.certifications.unshift(newCert);
+      }
+    } else if (update.type === 'edit_certification') {
+      const certTarget = String(update.targetName || update.certification?.name || '').toLowerCase().trim();
+      const idx = this.userProfile.certifications.findIndex(c => c.name.toLowerCase().trim() === certTarget || c.id === update.certId);
+      if (idx !== -1) {
+        this.userProfile.certifications[idx] = { ...this.userProfile.certifications[idx], ...(update.certification || {}) };
+      } else if (update.certification) {
+        this.userProfile.certifications.unshift({ id: 'cert_' + Date.now(), ...(update.certification || {}) });
+      }
+    } else if (update.type === 'delete_certification') {
+      const delName = String(update.targetName || '').toLowerCase().trim();
+      this.userProfile.certifications = this.userProfile.certifications.filter(c => c.name.toLowerCase().trim() !== delName && c.id !== update.certId);
+    } else if (update.type === 'update_sem_marks' && update.sem) {
       this.userProfile.education.college.semesterMarks[update.sem] = update.score;
     } else if (update.type === 'update_education_10th') {
-      if (update.marks) this.userProfile.education.tenth.marks = update.marks;
-      if (update.schoolName) this.userProfile.education.tenth.schoolName = update.schoolName;
-      if (update.board) this.userProfile.education.tenth.board = update.board;
-      if (update.year) this.userProfile.education.tenth.year = update.year;
+      if (update.marks !== undefined) this.userProfile.education.tenth.marks = update.marks;
+      if (update.schoolName !== undefined) this.userProfile.education.tenth.schoolName = update.schoolName;
+      if (update.board !== undefined) this.userProfile.education.tenth.board = update.board;
+      if (update.year !== undefined) this.userProfile.education.tenth.year = update.year;
     } else if (update.type === 'update_education_12th') {
-      if (update.marks) this.userProfile.education.twelfth.marks = update.marks;
-      if (update.schoolName) this.userProfile.education.twelfth.schoolName = update.schoolName;
-      if (update.board) this.userProfile.education.twelfth.board = update.board;
-      if (update.year) this.userProfile.education.twelfth.year = update.year;
-    } else if (update.type === 'update_college') {
-      if (update.collegeName) this.userProfile.education.college.collegeName = update.collegeName;
-      if (update.degree) this.userProfile.education.college.degree = update.degree;
-      if (update.branch) this.userProfile.education.college.branch = update.branch;
-      if (update.overallCgpa) this.userProfile.education.college.overallCgpa = update.overallCgpa;
-      if (update.graduationYear) this.userProfile.education.college.graduationYear = update.graduationYear;
+      if (update.marks !== undefined) this.userProfile.education.twelfth.marks = update.marks;
+      if (update.schoolName !== undefined) this.userProfile.education.twelfth.schoolName = update.schoolName;
+      if (update.board !== undefined) this.userProfile.education.twelfth.board = update.board;
+      if (update.year !== undefined) this.userProfile.education.twelfth.year = update.year;
     } else if (update.type === 'update_personal') {
-      if (update.fullName) this.userProfile.fullName = update.fullName;
-      if (update.headline) this.userProfile.headline = update.headline;
-      if (update.email) this.userProfile.email = update.email;
-      if (update.phone) this.userProfile.phone = update.phone;
-      if (update.location) this.userProfile.location = update.location;
-      if (update.githubUrl) this.userProfile.githubUrl = update.githubUrl;
-      if (update.linkedinUrl) this.userProfile.linkedinUrl = update.linkedinUrl;
-      if (update.portfolioUrl) this.userProfile.portfolioUrl = update.portfolioUrl;
-      if (update.avatarUrl) this.userProfile.avatarUrl = update.avatarUrl;
+      if (update.fullName !== undefined) this.userProfile.fullName = update.fullName;
+      if (update.headline !== undefined) this.userProfile.headline = update.headline;
+      if (update.email !== undefined) this.userProfile.email = update.email;
+      if (update.phone !== undefined) this.userProfile.phone = update.phone;
+      if (update.location !== undefined) this.userProfile.location = update.location;
+      if (update.githubUrl !== undefined) this.userProfile.githubUrl = update.githubUrl;
+      if (update.linkedinUrl !== undefined) this.userProfile.linkedinUrl = update.linkedinUrl;
+      if (update.portfolioUrl !== undefined) this.userProfile.portfolioUrl = update.portfolioUrl;
+      if (update.avatarUrl !== undefined) this.userProfile.avatarUrl = update.avatarUrl;
 
       // Smart auto-routing: If bio contains GitHub / LinkedIn / Portfolio URLs, route them to their proper fields!
       if (update.bio) {
@@ -2864,11 +2957,6 @@ class JobTrackerApp {
         }
 
         this.userProfile.bio = cleanBio;
-      }
-    } else if (update.type === 'add_skill' && update.skill) {
-      this.userProfile.skills = this.userProfile.skills || [];
-      if (!this.userProfile.skills.includes(update.skill)) {
-        this.userProfile.skills.push(update.skill);
       }
     }
 

@@ -60,17 +60,29 @@ export default async function handler(req, res) {
     };
 
     const formatProfileContext = (prof) => {
-      if (!prof) return "USER ABOUT ME PROFILE / DOSSIER: None recorded yet.";
-      return `USER ABOUT ME PROFILE / DOSSIER:
-- Name: ${prof.fullName || 'Not set'} | Title: ${prof.headline || 'Not set'}
-- Contact: ${prof.email || ''} | ${prof.phone || ''} | ${prof.location || ''}
-- 10th Marks: ${prof.education?.tenth?.marks || 'N/A'} (School: ${prof.education?.tenth?.schoolName || 'N/A'}, Board: ${prof.education?.tenth?.board || 'N/A'})
-- 12th Marks: ${prof.education?.twelfth?.marks || 'N/A'} (School: ${prof.education?.twelfth?.schoolName || 'N/A'}, Board/Stream: ${prof.education?.twelfth?.board || 'N/A'})
-- College / Degree: ${prof.education?.college?.collegeName || 'N/A'} (${prof.education?.college?.degree || 'N/A'} - ${prof.education?.college?.branch || 'N/A'}, CGPA: ${prof.education?.college?.overallCgpa || 'N/A'})
-- Semester Marks: Sem 1: ${prof.education?.college?.semesterMarks?.sem1 || '-'}, Sem 2: ${prof.education?.college?.semesterMarks?.sem2 || '-'}, Sem 3: ${prof.education?.college?.semesterMarks?.sem3 || '-'}, Sem 4: ${prof.education?.college?.semesterMarks?.sem4 || '-'}, Sem 5: ${prof.education?.college?.semesterMarks?.sem5 || '-'}, Sem 6: ${prof.education?.college?.semesterMarks?.sem6 || '-'}, Sem 7: ${prof.education?.college?.semesterMarks?.sem7 || '-'}, Sem 8: ${prof.education?.college?.semesterMarks?.sem8 || '-'}
-- Certifications (${(prof.certifications || []).length}): ${(prof.certifications || []).map(c => `${c.name} (${c.issuer || ''})`).join('; ') || 'None'}
-- Projects (${(prof.projects || []).length}): ${(prof.projects || []).map(p => `${p.title} [Tech: ${p.techStack || 'N/A'}, Link: ${p.projectUrl || 'N/A'}, Done: ${p.finishDate || 'N/A'}]`).join('; ') || 'None'}
-- Skills: ${(prof.skills || []).join(', ') || 'None'}`;
+      if (!prof) return "USER ABOUT ME PROFILE / CANDIDATE DOSSIER: None recorded yet.";
+      const college = prof.education?.college || {};
+      const sMarks = college.semesterMarks || {};
+      const projs = Array.isArray(prof.projects) ? prof.projects : [];
+      const certs = Array.isArray(prof.certifications) ? prof.certifications : [];
+      const skills = Array.isArray(prof.skills) ? prof.skills : [];
+
+      return `USER ABOUT ME PROFILE / CANDIDATE DOSSIER:
+- Full Name: ${prof.fullName || 'Not specified'} | Title / Headline: ${prof.headline || 'Not specified'}
+- Bio: ${prof.bio || 'Not specified'}
+- Contact: Email: ${prof.email || 'N/A'} | Phone: ${prof.phone || 'N/A'} | Location: ${prof.location || 'N/A'}
+- Social Links: GitHub: ${prof.githubUrl || 'N/A'} | LinkedIn: ${prof.linkedinUrl || 'N/A'} | Portfolio: ${prof.portfolioUrl || 'N/A'}
+- Degree College / University: ${college.collegeName || 'Not specified'}
+- Degree & Branch: ${college.degree || 'Not specified'} ${college.branch ? `(${college.branch})` : ''}
+- College CGPA: ${college.overallCgpa || 'Not specified'} | Graduation Year: ${college.graduationYear || 'Not specified'}
+- Semester Marks (Sem 1 to 8): Sem 1: ${sMarks.sem1 || '-'}, Sem 2: ${sMarks.sem2 || '-'}, Sem 3: ${sMarks.sem3 || '-'}, Sem 4: ${sMarks.sem4 || '-'}, Sem 5: ${sMarks.sem5 || '-'}, Sem 6: ${sMarks.sem6 || '-'}, Sem 7: ${sMarks.sem7 || '-'}, Sem 8: ${sMarks.sem8 || '-'}
+- 10th Standard: School: ${prof.education?.tenth?.schoolName || 'N/A'} | Board: ${prof.education?.tenth?.board || 'N/A'} | Marks: ${prof.education?.tenth?.marks || 'N/A'} (${prof.education?.tenth?.year || 'N/A'})
+- 12th Standard: School: ${prof.education?.twelfth?.schoolName || 'N/A'} | Board: ${prof.education?.twelfth?.board || 'N/A'} | Marks: ${prof.education?.twelfth?.marks || 'N/A'} (${prof.education?.twelfth?.year || 'N/A'})
+- Technical Skills (${skills.length}): ${skills.length > 0 ? skills.join(', ') : 'None recorded yet'}
+- Portfolio Projects (${projs.length}):
+${projs.length > 0 ? projs.map((p, i) => `  [Project #${i + 1}] Title: "${p.title}" | Tech: ${p.techStack || 'N/A'} | Link: ${p.projectUrl || 'N/A'} | Dates: ${p.startDate || ''} to ${p.finishDate || ''} | Description: ${p.description || 'N/A'}`).join('\n') : '  None recorded yet'}
+- Certifications (${certs.length}):
+${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" | Issuer: ${c.issuer || 'N/A'} | Date: ${c.issueDate || 'N/A'} | Link: ${c.credentialUrl || 'N/A'}`).join('\n') : '  None recorded yet'}`;
     };
 
     const databaseContext = formatDatabaseContext(allApplications);
@@ -103,24 +115,39 @@ CORE CAPABILITIES:
   * Provide accurate, friendly, and comprehensive answers, tables, or summaries using their real data.
   * Set "data": null.
 
-3. CANDIDATE PROFILE & "ABOUT ME" INTELLIGENCE:
-- You have direct, live access to the user's personal portfolio & academic profile!
-- When the user tells you to add or update their projects, certifications, 10th marks, 12th marks, semester marks (sem 1-8), college, or personal info (e.g. "Add project: JobTracker with React, finished yesterday", "My 10th marks are 95% at DPS", "Add sem 4 marks: 9.1", "Add certification: AWS Solutions Architect"):
-  * Confirm enthusiastically in "message".
+3. CANDIDATE PROFILE & "ABOUT ME" ACCESS AND EDITING:
+- You have direct, live access to the candidate's degree college name, degree, branch, CGPA, semester marks (1-8), 10th/12th education, technical skills, projects, and certifications in "USER ABOUT ME PROFILE / CANDIDATE DOSSIER"!
+- When user asks ANY question about their profile (e.g., "what is my college name?", "which college do I attend?", "what is my degree?", "what are my sem marks?", "what technical skills do I have?", "what projects have I built?", "what certifications do I have?", "summarize my profile"):
+  * Answer accurately, warmly, and comprehensively using their actual data from the dossier.
+  * Set "data": null and "profileUpdate": null.
+- When the user tells you to add, edit, update, or remove details from their About Me profile:
+  * Confirm enthusiastically in "message" explaining what was updated.
   * Set "data": null.
-  * Supply "profileUpdate" object in your JSON output with:
-    - For projects: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
-    - For certifications: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
-    - For semester marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
-    - For 10th marks: { "type": "update_education_10th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
-    - For 12th marks: { "type": "update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
-    - For personal details & links: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
+  * Supply the structured "profileUpdate" object in your JSON output:
+    a) DEGREE COLLEGE & ACADEMIC INFO:
+       - Update College/Degree: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
+       - Update Semester Marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
+       - Update 10th Marks/School: { "type": "update_education_10th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
+       - Update 12th Marks/College: { "type": "update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
+    b) TECHNICAL SKILLS:
+       - Add Skills: { "type": "add_skills", "skills": ["React", "Node.js", "Docker"] } (can also provide "skill": "SingleSkill")
+       - Remove Skill: { "type": "remove_skill", "skill": "SkillToRemove" }
+       - Set All Skills: { "type": "set_skills", "skills": ["Skill1", "Skill2", ...] }
+    c) PROJECTS:
+       - Add Project: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+       - Edit Project: { "type": "edit_project", "targetTitle": "exact or close title of project to update", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+       - Delete Project: { "type": "delete_project", "targetTitle": "title of project to remove" }
+    d) CERTIFICATIONS:
+       - Add Certification: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+       - Edit Certification: { "type": "edit_certification", "targetName": "exact or close name of certification to update", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+       - Delete Certification: { "type": "delete_certification", "targetName": "name of cert to remove" }
+    e) PERSONAL DETAILS & SOCIAL LINKS:
+       - Update Personal Info: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
   * STRICT URL ROUTING RULE:
     - If user provides a GitHub link, assign it to "githubUrl" in update_personal. NEVER put it in "bio"!
     - If user provides a LinkedIn link, assign it to "linkedinUrl" in update_personal. NEVER put it in "bio"!
     - If user provides a Portfolio or personal website link, assign it to "portfolioUrl" in update_personal. NEVER put it in "bio"!
     - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
-- When user asks about their profile, semester marks, or projects ("What projects have I done?", "What are my sem marks?"), answer from "USER ABOUT ME PROFILE / DOSSIER" and set "data": null.
 
 4. JOB APPLICATION EXTRACTION & TRACKING:
 - Whenever the user pastes a job description (JD), job link, application confirmation email, or asks to track a job:

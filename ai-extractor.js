@@ -329,9 +329,33 @@ export const AiExtractor = {
       ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'}`).join('\n')
       : '0 applications in database.';
 
-    const profileSummary = userProfile
-      ? `Name: ${userProfile.fullName || 'N/A'} | 10th: ${userProfile.education?.tenth?.marks || 'N/A'} | 12th: ${userProfile.education?.twelfth?.marks || 'N/A'} | College: ${userProfile.education?.college?.collegeName || 'N/A'} | Projects: ${(userProfile.projects || []).length} | Certifications: ${(userProfile.certifications || []).length}`
-      : 'No profile recorded yet.';
+    const formatFullProfileDossier = (prof) => {
+      if (!prof) return 'USER ABOUT ME PROFILE / CANDIDATE DOSSIER: None recorded yet.';
+      const col = prof.education?.college || {};
+      const sMarks = col.semesterMarks || {};
+      const projs = Array.isArray(prof.projects) ? prof.projects : [];
+      const certs = Array.isArray(prof.certifications) ? prof.certifications : [];
+      const skills = Array.isArray(prof.skills) ? prof.skills : [];
+
+      return `USER ABOUT ME PROFILE / CANDIDATE DOSSIER:
+- Name: ${prof.fullName || 'Not specified'} | Title: ${prof.headline || 'Not specified'}
+- Bio: ${prof.bio || 'Not specified'}
+- Contact: Email: ${prof.email || 'N/A'} | Phone: ${prof.phone || 'N/A'} | Location: ${prof.location || 'N/A'}
+- Social Links: GitHub: ${prof.githubUrl || 'N/A'} | LinkedIn: ${prof.linkedinUrl || 'N/A'} | Portfolio: ${prof.portfolioUrl || 'N/A'}
+- Degree College / University: ${col.collegeName || 'Not specified'}
+- Degree & Branch: ${col.degree || 'Not specified'} ${col.branch ? `(${col.branch})` : ''}
+- College CGPA: ${col.overallCgpa || 'Not specified'} | Graduation Year: ${col.graduationYear || 'Not specified'}
+- Semester Marks (Sem 1 to 8): Sem 1: ${sMarks.sem1 || '-'}, Sem 2: ${sMarks.sem2 || '-'}, Sem 3: ${sMarks.sem3 || '-'}, Sem 4: ${sMarks.sem4 || '-'}, Sem 5: ${sMarks.sem5 || '-'}, Sem 6: ${sMarks.sem6 || '-'}, Sem 7: ${sMarks.sem7 || '-'}, Sem 8: ${sMarks.sem8 || '-'}
+- 10th Standard: School: ${prof.education?.tenth?.schoolName || 'N/A'} | Marks: ${prof.education?.tenth?.marks || 'N/A'}
+- 12th Standard: School: ${prof.education?.twelfth?.schoolName || 'N/A'} | Marks: ${prof.education?.twelfth?.marks || 'N/A'}
+- Technical Skills (${skills.length}): ${skills.length > 0 ? skills.join(', ') : 'None recorded yet'}
+- Portfolio Projects (${projs.length}):
+${projs.length > 0 ? projs.map((p, i) => `  [Project #${i + 1}] Title: "${p.title}" | Tech: ${p.techStack || 'N/A'} | Link: ${p.projectUrl || 'N/A'} | Dates: ${p.startDate || ''} to ${p.finishDate || ''} | Description: ${p.description || 'N/A'}`).join('\n') : '  None recorded yet'}
+- Certifications (${certs.length}):
+${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" | Issuer: ${c.issuer || 'N/A'} | Date: ${c.issueDate || 'N/A'} | Link: ${c.credentialUrl || 'N/A'}`).join('\n') : '  None recorded yet'}`;
+    };
+
+    const profileSummary = formatFullProfileDossier(userProfile);
 
     const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your identity.
@@ -349,21 +373,31 @@ Your capabilities:
    - When asked about their applications, history, stats, counts, interviews, offers, or specific companies they applied to:
      * Answer directly, accurately, and thoroughly using the database records.
      * Set "data": null.
-3. PROFILE / ABOUT ME INTELLIGENCE & UPDATES:
-   - When user tells you to add/update projects, semester marks, certifications, 10th/12th marks, personal details, or social links:
-     * Confirm in "message", set "data": null, and provide "profileUpdate" in JSON output:
-       - Projects: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
-       - Certifications: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+3. PROFILE / ABOUT ME INTELLIGENCE & ACCESS / EDITING:
+   - You have direct, live access to the candidate's degree college name, degree, branch, CGPA, semester marks (1-8), 10th/12th education, technical skills, projects, and certifications in "USER PROFILE"!
+   - When user asks ANY question about their profile (e.g., "what is my college name?", "which college do I attend?", "what is my degree?", "what are my sem marks?", "what technical skills do I have?", "what projects have I built?", "what certifications do I have?"):
+     * Answer accurately, warmly, and comprehensively using their actual data from the dossier.
+     * Set "data": null and "profileUpdate": null.
+   - When user tells you to add, edit, update, or remove details from their About Me profile:
+     * Confirm enthusiastically in "message", set "data": null, and provide "profileUpdate" in JSON output:
+       - Degree College / Academics: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
+       - Technical Skills: { "type": "add_skills", "skills": ["..."] } (or single "skill": "..."), { "type": "remove_skill", "skill": "..." }, { "type": "set_skills", "skills": ["..."] }
+       - Projects:
+         * Add: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+         * Edit: { "type": "edit_project", "targetTitle": "...", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+         * Delete: { "type": "delete_project", "targetTitle": "..." }
+       - Certifications:
+         * Add: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+         * Edit: { "type": "edit_certification", "targetName": "...", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+         * Delete: { "type": "delete_certification", "targetName": "..." }
        - Semester marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
        - 10th/12th: { "type": "update_education_10th"|"update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
-       - College: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
        - Personal details: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
      * STRICT URL ROUTING RULE:
        - If user provides a GitHub link, assign it to "githubUrl" in update_personal. NEVER put it in "bio"!
        - If user provides a LinkedIn link, assign it to "linkedinUrl" in update_personal. NEVER put it in "bio"!
        - If user provides a Portfolio or personal website link, assign it to "portfolioUrl" in update_personal. NEVER put it in "bio"!
        - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
-   - When user asks about their profile, answer using their data.
 4. CAREER & COMPANY QUESTIONS: When user asks questions about a company, interview questions, role expectations, or career tips:
    - Provide a comprehensive, structured, and insightful markdown answer in "message".
    - Set "data": null.
@@ -709,15 +743,73 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       };
     }
 
-    // F. College Name & Degree
-    const collegeMatch = lower.match(/(?:my\s+)?college\s+(?:is|name\s+is)\s+([a-zA-Z0-9\s\.\,\'\-]+?)(?:,|\.|$)/i);
+    // F. College Name & Degree / Branch / CGPA
+    const collegeMatch = trimmed.match(/(?:(?:my\s+)?(?:degree\s+)?college(?:\s+name)?|i\s+(?:study|studied|went)\s+(?:at|to)|degree\s+at|university(?:\s+name)?)\s*(?:is|:|=|\s+to)?\s*([a-zA-Z0-9\s\.\,\'\-]+?)(?:,|\.|$)/i)
+      || trimmed.match(/^(?:set|update|change|add)?\s*(?:degree\s+)?college(?:\s+name)?\s*[:\-=]\s*(.+)$/i);
     if (collegeMatch) {
-      const colName = collegeMatch[1].trim();
+      const colName = collegeMatch[1].replace(/^(?:to|is)\s+/i, '').replace(/^[:\-=]\s*/, '').trim();
       return {
-        message: `### 🏛️ College Updated!\n\nRecorded **${colName}** as your college in your academic profile.`,
+        message: `### 🏛️ Degree College Updated!\n\nRecorded **${colName}** as your degree college in your **About Me** academic dossier.`,
         profileUpdate: {
           type: 'update_college',
           collegeName: colName
+        },
+        data: null
+      };
+    }
+
+    // F2. Technical Skills Add / Update
+    const addSkillsMatch = trimmed.match(/^(?:add\s+(?:technical\s+|tech\s+)?skills?|my\s+(?:technical\s+|tech\s+)?skills?\s+(?:are|is|include)|skills?)\s*[:\-=]?\s*(.+)$/i);
+    if (addSkillsMatch) {
+      const raw = addSkillsMatch[1].replace(/^[:\-=]\s*/, '').trim();
+      const skillsArr = raw.split(/[,;\n]+/).map(s => s.trim().replace(/^and\s+/i, '')).filter(Boolean);
+      return {
+        message: `### 🛠️ Technical Skills Updated!\n\nAdded **${skillsArr.join(', ')}** to your technical skills in your **About Me** profile.`,
+        profileUpdate: {
+          type: 'add_skills',
+          skills: skillsArr
+        },
+        data: null
+      };
+    }
+
+    // F3. Remove Technical Skill
+    const removeSkillMatch = trimmed.match(/^(?:remove|delete)\s+(?:skill|technical\s+skill)\s*[:\-]?\s*(.+)$/i);
+    if (removeSkillMatch) {
+      const skillName = removeSkillMatch[1].trim();
+      return {
+        message: `### 🗑️ Technical Skill Removed!\n\nRemoved **${skillName}** from your technical skills in your About Me profile.`,
+        profileUpdate: {
+          type: 'remove_skill',
+          skill: skillName
+        },
+        data: null
+      };
+    }
+
+    // F4. Delete Project
+    const deleteProjMatch = trimmed.match(/^(?:delete|remove)\s+project\s*[:\-]?\s*(.+)$/i);
+    if (deleteProjMatch) {
+      const projTitle = deleteProjMatch[1].trim();
+      return {
+        message: `### 🗑️ Project Removed!\n\nRemoved project **"${projTitle}"** from your portfolio.`,
+        profileUpdate: {
+          type: 'delete_project',
+          targetTitle: projTitle
+        },
+        data: null
+      };
+    }
+
+    // F5. Delete Certification
+    const deleteCertMatch = trimmed.match(/^(?:delete|remove)\s+cert(?:ification)?\s*[:\-]?\s*(.+)$/i);
+    if (deleteCertMatch) {
+      const certName = deleteCertMatch[1].trim();
+      return {
+        message: `### 🗑️ Certification Removed!\n\nRemoved certification **"${certName}"** from your profile.`,
+        profileUpdate: {
+          type: 'delete_certification',
+          targetName: certName
         },
         data: null
       };
@@ -779,12 +871,78 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       };
     }
 
-    // K. Querying Profile Information (Semester Marks, Projects, Summary)
-    const isProfileQuery = /\b(what\s+are\s+my\s+sem\s+marks|show\s+my\s+sem\s+marks|my\s+semester\s+marks|what\s+projects\s+(?:have\s+i|did\s+i)\s+(?:done|built|make)|show\s+my\s+projects|list\s+my\s+projects|show\s+(?:my\s+)?profile|what\s+is\s+my\s+profile|tell\s+me\s+about\s+my\s+profile|my\s+education|my\s+certifications?)\b/i.test(lower);
-    if (isProfileQuery) {
+    // K. Querying Profile Information (College, Skills, Projects, Certifications, Marks)
+    const isCollegeQuery = /\b(what(?:\s+is)?\s+my\s+(?:degree\s+)?college|which\s+(?:degree\s+)?college|my\s+college\s+name|what\s+is\s+my\s+degree|what\s+degree\s+do\s+i|where\s+did\s+i\s+(?:study|graduate)|my\s+university)\b/i.test(lower);
+    const isSkillsQuery = /\b(what(?:\s+are)?\s+my\s+(?:technical\s+|tech\s+)?skills|show\s+my\s+skills|list\s+my\s+skills|my\s+tech\s+stack|what\s+skills\s+do\s+i\s+have|my\s+skills)\b/i.test(lower);
+    const isCertQuery = /\b(what(?:\s+are)?\s+my\s+certifications?|show\s+my\s+certifications?|list\s+my\s+certifications?|my\s+certificates?|my\s+certs)\b/i.test(lower);
+    const isProjectQuery = /\b(what\s+projects\s+(?:have\s+i|did\s+i)\s+(?:done|built|make)|show\s+my\s+projects|list\s+my\s+projects|my\s+projects|portfolio\s+projects)\b/i.test(lower);
+    const isSemQuery = /\b(what\s+are\s+my\s+sem\s+marks|show\s+my\s+sem\s+marks|my\s+semester\s+marks|sem\s+marks|sgpa)\b/i.test(lower);
+    const isGeneralProfileQuery = /\b(show\s+(?:my\s+)?profile|what\s+is\s+my\s+profile|tell\s+me\s+about\s+my\s+profile|my\s+education|summarize\s+my\s+profile|my\s+dossier)\b/i.test(lower);
+
+    if (isCollegeQuery || isSkillsQuery || isCertQuery || isProjectQuery || isSemQuery || isGeneralProfileQuery) {
       const prof = userProfile || Config.getUserProfile();
-      if (/\b(?:sem|semester)\b/i.test(lower)) {
-        const s = prof.education?.college?.semesterMarks || {};
+      const col = prof.education?.college || {};
+
+      if (isCollegeQuery) {
+        return {
+          message: `### 🏛️ Your Degree College & Academics:\n\n` +
+            `- **College / University:** **${col.collegeName || 'Not recorded yet'}**\n` +
+            `- **Degree:** ${col.degree || 'Not recorded yet'}\n` +
+            `- **Branch / Specialization:** ${col.branch || 'Not recorded yet'}\n` +
+            `- **Overall CGPA:** ${col.overallCgpa || 'Not recorded yet'}\n` +
+            `- **Graduation Year:** ${col.graduationYear || 'Not recorded yet'}\n\n` +
+            `*You can update this on your **About Me** page or tell me: "My college is [College Name]"*`,
+          data: null
+        };
+      } else if (isSkillsQuery) {
+        const skills = Array.isArray(prof.skills) ? prof.skills : [];
+        if (skills.length === 0) {
+          return {
+            message: `You don't have any technical skills listed in your **About Me** profile yet. You can say *\"Add skills: React, TypeScript, Python, Node.js\"* or add them directly in the About Me tab!`,
+            data: null
+          };
+        }
+        return {
+          message: `### 🛠️ Your Technical Skills (${skills.length}):\n\n` +
+            skills.map(s => `- \`${s}\``).join('\n') + `\n\n` +
+            `*To add more, say: "Add skills: Docker, AWS" or edit on the About Me tab.*`,
+          data: null
+        };
+      } else if (isCertQuery) {
+        const certs = Array.isArray(prof.certifications) ? prof.certifications : [];
+        if (certs.length === 0) {
+          return {
+            message: `You don't have any certifications recorded in your **About Me** profile yet. You can say *\"Add certification: AWS Solutions Architect by Amazon\"* or add one in the About Me tab!`,
+            data: null
+          };
+        }
+        let msg = `### 📜 Your Certifications (${certs.length}):\n\n`;
+        certs.forEach((c, idx) => {
+          msg += `${idx + 1}. **${c.name}**\n` +
+            `   - **Issuer:** ${c.issuer || 'Verified Org'}\n` +
+            (c.issueDate ? `   - **Date:** ${c.issueDate}\n` : '') +
+            (c.credentialUrl ? `   - **Credential Link:** [Verify Badge](${c.credentialUrl})\n` : '') + '\n';
+        });
+        return { message: msg, data: null };
+      } else if (isProjectQuery) {
+        const projs = Array.isArray(prof.projects) ? prof.projects : [];
+        if (projs.length === 0) {
+          return {
+            message: `You don't have any projects saved in your **About Me** profile yet. You can say *\"Add project: JobTrackerAI with React and Node\"* or add them in the About Me tab!`,
+            data: null
+          };
+        }
+        let msg = `### 💻 Your Portfolio Projects (${projs.length}):\n\n`;
+        projs.forEach((p, idx) => {
+          msg += `${idx + 1}. **${p.title}**\n` +
+            `   - **Tech Stack:** ${p.techStack || 'N/A'}\n` +
+            (p.projectUrl ? `   - **Link:** [Open Project](${p.projectUrl})\n` : '') +
+            (p.finishDate ? `   - **Completed:** ${p.finishDate}\n` : '') +
+            (p.description ? `   - **Description:** ${p.description}\n` : '') + '\n';
+        });
+        return { message: msg, data: null };
+      } else if (isSemQuery) {
+        const s = col.semesterMarks || {};
         return {
           message: `### 📊 Your Semester Marks (Sem 1 to 8):\n\n` +
             `| Semester | SGPA / Marks |\n` +
@@ -797,36 +955,25 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
             `| **Sem 6** | ${s.sem6 || 'Not set'} |\n` +
             `| **Sem 7** | ${s.sem7 || 'Not set'} |\n` +
             `| **Sem 8** | ${s.sem8 || 'Not set'} |\n\n` +
-            `*College: **${prof.education?.college?.collegeName || 'N/A'}** (${prof.education?.college?.degree || 'N/A'})*`,
+            `*College: **${col.collegeName || 'N/A'}** (${col.degree || 'N/A'})*`,
           data: null
         };
-      } else if (/\bprojects?\b/i.test(lower)) {
-        const projs = prof.projects || [];
-        if (projs.length === 0) {
-          return {
-            message: "You don't have any projects saved in your **About Me** profile yet. You can say *\"Add project: [title] [tech] [link]\"* or add them on your About Me page!",
-            data: null
-          };
-        }
-        let msg = `### 💻 Your Portfolio Projects (${projs.length}):\n\n`;
-        projs.forEach((p, idx) => {
-          msg += `${idx + 1}. **${p.title}**\n` +
-            `   - **Tech Stack:** ${p.techStack || 'N/A'}\n` +
-            (p.projectUrl ? `   - **Link:** [Open Project](${p.projectUrl})\n` : '') +
-            (p.finishDate ? `   - **Completed:** ${p.finishDate}\n` : '') + '\n';
-        });
-        return { message: msg, data: null };
       } else {
         // Overall profile summary
+        const skillsCount = (prof.skills || []).length;
+        const projsCount = (prof.projects || []).length;
+        const certsCount = (prof.certifications || []).length;
         return {
           message: `### 👤 Candidate Dossier Summary:\n\n` +
             `- **Name:** **${prof.fullName || 'Not specified'}**\n` +
             `- **Headline:** ${prof.headline || 'Not specified'}\n` +
+            `- **Degree College:** **${col.collegeName || 'Not specified'}** (${col.degree || 'N/A'} - ${col.branch || 'N/A'})\n` +
+            `- **CGPA:** ${col.overallCgpa || 'N/A'} (Grad Year: ${col.graduationYear || 'N/A'})\n` +
             `- **10th Standard:** ${prof.education?.tenth?.marks || 'N/A'} (${prof.education?.tenth?.schoolName || 'N/A'})\n` +
             `- **12th Standard:** ${prof.education?.twelfth?.marks || 'N/A'} (${prof.education?.twelfth?.schoolName || 'N/A'})\n` +
-            `- **Degree College:** ${prof.education?.college?.collegeName || 'N/A'} (${prof.education?.college?.degree || 'N/A'} - ${prof.education?.college?.branch || 'N/A'})\n` +
-            `- **Projects Tracked:** **${(prof.projects || []).length}** projects\n` +
-            `- **Certifications:** **${(prof.certifications || []).length}** credentials\n\n` +
+            `- **Technical Skills:** **${skillsCount}** skills tracked\n` +
+            `- **Projects Tracked:** **${projsCount}** projects\n` +
+            `- **Certifications:** **${certsCount}** credentials\n\n` +
             `*You can view and edit everything on the **About Me** tab in the top bar!*`,
           data: null
         };
