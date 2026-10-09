@@ -1,14 +1,109 @@
-// AI Extraction Engine for JobTrackerAI
-// Supports Google Gemini API, OpenAI API, and Offline Smart NLP Heuristic Extractor
+// AI Extraction & Career Advisory Engine for JobTrackerAI
+// Supports Google Gemini API, OpenAI API, and Offline Smart NLP Heuristic & Career Advisor
 
 import { Config } from './config.js';
+
+// Curated company intelligence database for offline mode
+const COMPANY_DATABASE = {
+  samsung: {
+    name: "Samsung",
+    overview: "Samsung is a global technology leader headquartered in Suwon, South Korea, best known for Samsung Electronics, Samsung Semiconductor / Foundry, Samsung MX (Mobile eXperience), and global R&D institutes (e.g., Samsung R&D Institute India - SRI-B/SRI-N, SAIT).",
+    divisions: ["Samsung Electronics (Consumer Devices, Displays)", "Samsung Semiconductor (Memory, Foundry, Exynos)", "Samsung MX (Galaxy Smartphones, Wearables, One UI)", "Samsung SDS (Enterprise Cloud & IT Solutions)"],
+    roles: ["Software Engineer (C++, Java, Android OS, Embedded)", "AI / Machine Learning Engineer (On-device AI, Vision)", "VLSI / Chip Design Engineer", "Cloud & Backend Engineer", "Firmware & Kernel Developer"],
+    interviewProcess: [
+      "Online Coding Test: Known for the Samsung Software Competency Test (focuses on DSA: BFS/DFS, Backtracking, Simulation, Graph theory with strict time/memory limits).",
+      "Technical Round 1: Core CS fundamentals (Operating Systems, Memory management, Pointers, OOPs, Multithreading, Cache coherence).",
+      "Technical Round 2: Domain specialization (Embedded C, Android internals, System Design, or Deep Learning depending on team).",
+      "HR & Culture Fit: Behavioral questions, work ethics, team collaboration, and alignment with Samsung's core values."
+    ],
+    sampleQuestions: [
+      "Implement a custom memory allocator or LRU Cache in C++ / Java.",
+      "Solve a multi-source shortest path or backtracking grid simulation problem with state constraints.",
+      "Explain the difference between process and thread, virtual memory, and page replacement algorithms.",
+      "How does inter-process communication (IPC) work, and how would you avoid deadlocks in a multi-threaded system?",
+      "How do you profile and optimize battery consumption and memory footprint in resource-constrained devices?"
+    ],
+    careerUrl: "https://www.samsung.com/global/careers/",
+    altCareerUrl: "https://semiconductor.samsung.com/careers/"
+  },
+  google: {
+    name: "Google (Alphabet)",
+    overview: "Google is one of the world's leading technology giants, specializing in search engine technology, cloud computing, generative AI (Gemini), software (Android, Chrome), and hardware (Pixel).",
+    divisions: ["Core Search & Ads", "Google Cloud Platform (GCP)", "Google DeepMind / AI Research", "Android & Pixel Platforms", "YouTube"],
+    roles: ["Software Engineer (SDE I, SDE II, Senior)", "AI / ML Research Scientist", "Site Reliability Engineer (SRE)", "Product Manager", "Cloud Solutions Architect"],
+    interviewProcess: [
+      "Online Assessment / Phone Screen: 1-2 LeetCode Medium/Hard algorithmic coding questions.",
+      "Onsite Technical Rounds (3-4 rounds): Data Structures, Algorithms, Complexity Analysis, Clean Code.",
+      "System Design Round: Distributed systems, scalability, caching, load balancing (for L4+ roles).",
+      "Googleyness & Leadership: Assessing intellectual humility, collaboration, ethics, and ambiguity navigation."
+    ],
+    sampleQuestions: [
+      "Design a distributed rate limiter or web crawler.",
+      "Trie-based autocomplete system with prefix frequency ranking.",
+      "Dynamic programming & graph optimization problems.",
+      "Tell me about a time you had to make a technical decision without having all the information."
+    ],
+    careerUrl: "https://careers.google.com/"
+  },
+  microsoft: {
+    name: "Microsoft",
+    overview: "Microsoft is a global leader in cloud computing (Azure), enterprise software (Windows, Office 365), developer tools (GitHub, VS Code), gaming (Xbox), and AI integrations (Copilot).",
+    divisions: ["Cloud + AI (Azure)", "Experiences & Devices (Windows, Office)", "GitHub & Developer Tools", "Gaming (Xbox)"],
+    roles: ["Software Engineer", "Cloud Solution Architect", "Data & Applied Scientist", "Program Manager (PM)"],
+    interviewProcess: [
+      "Codility / HackerRank Coding Screen: 2-3 algorithmic problems.",
+      "Virtual Onsite (4-5 rounds): Data structures, Object-oriented design, System Design, and Hiring Manager round.",
+      "The 'As-Appropriate' (AA) Interview: Focuses on high-level problem solving, architecture, and cultural fit."
+    ],
+    sampleQuestions: [
+      "Design a global file synchronization system like OneDrive.",
+      "Binary tree serialization and deserialization.",
+      "Concurrency handling and microservices resilience in Azure.",
+      "Describe a project where you demonstrated growth mindset after failure."
+    ],
+    careerUrl: "https://careers.microsoft.com/"
+  },
+  amazon: {
+    name: "Amazon (AWS)",
+    overview: "Amazon is an e-commerce, cloud computing (AWS), digital streaming, and artificial intelligence powerhouse guided by its 16 Leadership Principles.",
+    divisions: ["Amazon Web Services (AWS)", "Retail & Marketplace", "Prime Video & Studios", "Consumer Devices (Alexa, Ring)"],
+    roles: ["Software Development Engineer (SDE I/II/III)", "DevOps / Systems Engineer", "Technical Program Manager (TPM)"],
+    interviewProcess: [
+      "Online Assessment (OA): 2 coding problems + Work Style Assessment.",
+      "The 'Loop' (4-5 rounds): Coding, Object-Oriented Design, System Design, and the designated 'Bar Raiser' round.",
+      "Every single round dedicates 20-30 minutes to Amazon's 16 Leadership Principles using the STAR method."
+    ],
+    sampleQuestions: [
+      "Design Amazon's shopping cart or real-time package tracking system.",
+      "Top K frequent elements in a massive stream of data.",
+      "Leadership Principle: Tell me about a time you disagreed with your manager and committed anyway.",
+      "Leadership Principle: Give an example of a time you had to dive deep into a technical issue."
+    ],
+    careerUrl: "https://amazon.jobs/"
+  },
+  stripe: {
+    name: "Stripe",
+    overview: "Stripe is a financial infrastructure platform for the internet, powering transactions for millions of businesses from startups to Fortune 500s.",
+    divisions: ["Payments & Issuing", "Global Financial Infrastructure", "Billing & Subscriptions", "Connect & Platforms"],
+    roles: ["Full Stack Engineer", "Backend / Infrastructure Engineer", "Security Engineer", "Product Engineer"],
+    interviewProcess: [
+      "Take-home or Live Coding Screen: Practical coding using your own IDE, open book, real-world API building.",
+      "Virtual Onsite: Debugging existing production code, System Design, Architecture, and Integration challenge.",
+      "Manager & Cultural Alignment: Collaboration, code craft, empathy, and product velocity."
+    ],
+    sampleQuestions: [
+      "Design an idempotent payment processing API with webhooks and retry queues.",
+      "Live debugging: Find and fix bugs in a provided codebase under test conditions.",
+      "How do you design a database schema for multi-currency automated payouts?",
+      "Refactoring legacy payment endpoints with zero downtime."
+    ],
+    careerUrl: "https://stripe.com/jobs"
+  }
+};
 
 export const AiExtractor = {
   /**
    * Main entry point to parse a raw JD or a conversational follow-up
-   * @param {string} text - User prompt / pasted text
-   * @param {object|null} existingJob - If updating an existing session/application
-   * @param {Array} history - Previous messages in this chat session
    */
   async processInput(text, existingJob = null, history = []) {
     const settings = Config.getSettings();
@@ -18,7 +113,7 @@ export const AiExtractor = {
       try {
         return await this.extractWithGemini(text, existingJob, history, settings);
       } catch (err) {
-        console.warn('Gemini extraction failed, falling back to smart heuristics:', err);
+        console.warn('Gemini extraction failed, falling back to career advisor:', err);
       }
     }
 
@@ -27,28 +122,45 @@ export const AiExtractor = {
       try {
         return await this.extractWithOpenAI(text, existingJob, history, settings);
       } catch (err) {
-        console.warn('OpenAI extraction failed, falling back to smart heuristics:', err);
+        console.warn('OpenAI extraction failed, falling back to career advisor:', err);
       }
     }
 
-    // Fallback: Smart Heuristic Extractor
+    // Fallback: Smart Career Advisor & Heuristic Extractor
     return this.extractWithHeuristics(text, existingJob);
   },
 
   /**
-   * Gemini API Extraction
+   * Gemini API Extraction & Career Advisory
    */
   async extractWithGemini(text, existingJob, history, settings) {
     const model = settings.geminiModel || 'gemini-1.5-flash';
     const apiKey = settings.geminiKey;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    const systemPrompt = `You are an expert AI Job Application Tracker Assistant.
-Your task is to analyze user input (job descriptions, links, follow-up messages, status updates) and extract structured job application information.
-CRITICAL INSTRUCTION: If the user input is just a greeting (e.g., "hi", "hello", "hey"), casual conversation, or does not contain any job details or updates, respond politely in "message" and set "data" to null.
-Otherwise, extract the job info and return JSON matching this schema:
+    const systemPrompt = `You are an expert AI Job Application Tracker and Career Advisor Assistant.
+
+Your capabilities:
+1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
+   - Extract companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, skills, notes.
+   - Return this in the "data" object.
+2. CAREER & COMPANY QUESTIONS: When user asks questions about a company (e.g. "tell about samsung company", "how is google?"), interview questions, role expectations, or career tips:
+   - Provide a comprehensive, structured, and insightful markdown answer in "message" covering:
+     * Company overview, culture, and core divisions
+     * What technical roles and skills they hire for
+     * The typical interview process, technical rounds, and 4-5 sample interview questions
+     * Direct link to their careers portal
+   - Set "data": null (do NOT create or modify an application unless they specifically asked to track it).
+3. ACTIVE JOB ADVICE: If an existing job is currently loaded in context and user asks about it (e.g. "what is this role expecting?", "give interview questions"):
+   - Analyze the active job's role, company, and tech stack in detail.
+   - Set "data": null.
+4. GENERAL CONVERSATION: If user says "hi", "how are you", or casual remarks:
+   - Respond warmly, conversationally, and explain how you can help them track jobs and prepare for interviews.
+   - Set "data": null.
+
+Return ONLY valid JSON matching this schema:
 {
-  "message": "Friendly, concise response summarizing what was extracted or updated",
+  "message": "Your rich, formatted markdown answer to the user",
   "data": {
     "companyName": "Company name",
     "roleTitle": "Job title / role",
@@ -63,9 +175,9 @@ Otherwise, extract the job info and return JSON matching this schema:
     "appliedDate": "YYYY-MM-DD",
     "skills": ["Skill1", "Skill2", "Skill3"],
     "notes": "Short bullet summary of key perks, requirements or notes"
-  }
+  } or null
 }
-If existing application data is provided, MERGE and UPDATE with the new information. Preserve fields that were not changed.`;
+If existing application data is provided and new job info is pasted, MERGE and UPDATE with the new information.`;
 
     const requestBody = {
       contents: [
@@ -75,10 +187,10 @@ If existing application data is provided, MERGE and UPDATE with the new informat
             {
               text: `${systemPrompt}
 
-Current Existing Job State (if any):
-${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (New Application)'}
+Current Active Job in Session (if any):
+${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}
 
-User Input:
+User Message:
 "${text}"`
             }
           ]
@@ -86,7 +198,7 @@ User Input:
       ],
       generationConfig: {
         responseMimeType: "application/json",
-        temperature: 0.1
+        temperature: 0.2
       }
     };
 
@@ -109,22 +221,23 @@ User Input:
 
     const parsed = JSON.parse(candidateText);
     return {
-      message: parsed.message || 'Extracted job details successfully using Gemini AI.',
+      message: parsed.message || 'Processed request successfully.',
       data: parsed.data,
       provider: 'gemini'
     };
   },
 
   /**
-   * OpenAI API Extraction
+   * OpenAI API Extraction & Advisory
    */
   async extractWithOpenAI(text, existingJob, history, settings) {
     const apiKey = settings.openaiKey;
     const url = 'https://api.openai.com/v1/chat/completions';
 
-    const systemPrompt = `You are an expert AI Job Application Tracker Assistant.
-Your task is to extract structured job application information.
-Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobType", "workMode", "location", "salary", "source", "applicationUrl", "sourceUrl", "status", "appliedDate", "skills", "notes" } }.`;
+    const systemPrompt = `You are an expert AI Job Application Tracker and Career Advisor Assistant.
+When user asks questions about a company, interview questions, or casual chat: provide a comprehensive markdown answer in "message" and set "data": null.
+When user pastes a job description (JD) or update: extract the job details in "data".
+Return JSON with { "message": "...", "data": { ... } or null }.`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -139,10 +252,10 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Existing state: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
+            content: `Active Job: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
           }
         ],
-        temperature: 0.1
+        temperature: 0.2
       })
     });
 
@@ -156,46 +269,137 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
     const parsed = JSON.parse(content);
 
     return {
-      message: parsed.message || 'Extracted job details successfully using OpenAI.',
+      message: parsed.message || 'Processed request successfully.',
       data: parsed.data,
       provider: 'openai'
     };
   },
 
   /**
-   * Smart Offline NLP & Heuristic Extractor
-   * Provides immediate, robust extraction with zero API keys required
+   * Smart Offline NLP Heuristic & Career Advisor
+   * Handles company research, interview prep, greetings, AND job parsing offline
    */
   extractWithHeuristics(text, existingJob = null) {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
-    // 1. Detect greetings & casual conversational messages
+    // 1. Check for greetings
     const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
-    const isHelp = /^(help|what can you do|how does this work|who are you|commands|instructions)\b/i.test(lower);
-    const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
-
     if (isGreeting) {
       return {
-        message: "👋 **Hello!** I'm your **JobTrackerAI** assistant.\n\nTo track an application, simply paste a **Job Description**, an application email, or a job link here. I'll automatically extract the company, role, salary, work mode, and application link for you!",
+        message: "👋 **Hello!** I'm your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Paste a Job Description**: I will automatically extract the company, role, salary, work mode, and application link.\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.\n- **Manage Applications**: Everything syncs automatically to your dashboard and Supabase!",
         data: null
       };
     }
 
+    // 2. Check for "How are you"
+    if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
+      return {
+        message: "I'm doing great and fully energized to help you with your job search! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Ask me about a company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
+        data: null
+      };
+    }
+
+    // 3. Check for Help / Capabilities
+    const isHelp = /^(help|what can you do|how does this work|who are you|commands|instructions)\b/i.test(lower);
     if (isHelp) {
       return {
-        message: "💡 **How JobTrackerAI Works:**\n- **Paste a Job Description**: Drop raw text from LinkedIn, Indeed, Glassdoor, or company careers sites.\n- **Add Links**: Paste direct application links or portal URLs to add them to your tracking card.\n- **Status Updates**: Type *'Mark as interviewing'* or *'Received offer'*.\n- Everything syncs automatically to your **Applications Tracker** dashboard!",
+        message: "💡 **How JobTrackerAI Works:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n3. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.\n4. **Cloud Database**: Your applications sync directly to Supabase and persist on your tracker board.",
         data: null
       };
     }
 
+    // 4. Check for Casual affirmations
+    const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
     if (isCasual) {
       return {
-        message: "Glad to help! Paste a new job description or link whenever you're ready.",
+        message: "You're welcome! Whenever you have another job to track or a question about a company, feel free to ask.",
         data: null
       };
     }
 
+    // 5. Check for Company Information / Career Inquiries
+    // e.g. "tell about samsung", "can you tell about samsung company", "about google", "info on stripe"
+    const companyQueryMatch = lower.match(/(?:tell\s+(?:me\s+)?about|info\s+on|details\s+about|what\s+about|know\s+about|overview\s+of)\s+([a-zA-Z0-9.\- ]+?)(?:\s+company|\s+careers?|\s+jobs?|[?!.]*$)/i) ||
+                             lower.match(/^(?:about|tell)\s+([a-zA-Z0-9.\- ]+)/i);
+
+    // Also check if any known company name is specifically mentioned in a question
+    let targetedCompanyKey = null;
+    for (const key of Object.keys(COMPANY_DATABASE)) {
+      const regex = new RegExp(`\\b${key}\\b`, 'i');
+      if (regex.test(lower) && (companyQueryMatch || /\b(company|careers?|interview|jobs?|expect|rounds?)\b/i.test(lower))) {
+        targetedCompanyKey = key;
+        break;
+      }
+    }
+
+    if (targetedCompanyKey && COMPANY_DATABASE[targetedCompanyKey]) {
+      const info = COMPANY_DATABASE[targetedCompanyKey];
+      return {
+        message: `### 🏢 Company Overview: **${info.name}**\n\n` +
+          `**About the Company:**\n${info.overview}\n\n` +
+          `**Key Divisions & Product Lines:**\n` +
+          info.divisions.map(d => `- ${d}`).join('\n') + `\n\n` +
+          `**Roles They Regularly Hire For:**\n` +
+          info.roles.map(r => `- **${r}**`).join('\n') + `\n\n` +
+          `**🎯 Interview Process & Expectations:**\n` +
+          info.interviewProcess.map(s => `- ${s}`).join('\n') + `\n\n` +
+          `**Sample Interview Questions for ${info.name}:**\n` +
+          info.sampleQuestions.map((q, idx) => `${idx + 1}. *${q}*`).join('\n') + `\n\n` +
+          `🔗 **Official Career Portal:** [Explore ${info.name} Open Positions](${info.careerUrl})\n\n` +
+          `*(If you find a specific job listing you want to track, simply copy the job description and paste it here!)*`,
+        data: null
+      };
+    }
+
+    // If company inquiry for a company not in our hardcoded dictionary
+    if (companyQueryMatch && !existingJob) {
+      const companyCandidate = companyQueryMatch[1].replace(/company|corporation|inc|ltd/gi, '').trim();
+      const capCompany = companyCandidate.charAt(0).toUpperCase() + companyCandidate.slice(1);
+      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(capCompany + ' careers jobs open roles')}`;
+
+      return {
+        message: `### 🏢 Company Advisory: **${capCompany}**\n\n` +
+          `**Hiring & Role Expectations:**\n` +
+          `- **Core Engineering**: Companies like **${capCompany}** typically look for solid fundamentals in Data Structures & Algorithms, Clean Architecture, and hands-on system building.\n` +
+          `- **Key Competencies**: Proficiency in modern tech stacks, scalable system design, API development, and cross-functional collaboration.\n` +
+          `- **Typical Interview Rounds**:\n` +
+          `  1. Initial Recruiter Screening (Resume & background walk-through)\n` +
+          `  2. Online Coding Assessment (Algorithms & Problem Solving)\n` +
+          `  3. Technical In-depth Round (System Design & Code Craft)\n` +
+          `  4. Cultural Fit & Behavioral Leadership (STAR method)\n\n` +
+          `🔍 **Career Portal & Open Roles:** [Search ${capCompany} Career Portal & Job Openings](${searchUrl})\n\n` +
+          `💡 **Next Step:** Copy any job description for **${capCompany}** and paste it here to automatically extract the role, salary, location, and track your application!`,
+        data: null
+      };
+    }
+
+    // 6. Check for Interview Prep inquiries on the ACTIVE job
+    if (existingJob && /\b(interview|questions?|prepare|expecting|advice|tips|role details)\b/i.test(lower)) {
+      const skillsList = (existingJob.skills && existingJob.skills.length > 0)
+        ? existingJob.skills.join(', ')
+        : 'Data Structures, Algorithms, System Design';
+
+      return {
+        message: `### 🎯 Interview Preparation Guide for **${existingJob.roleTitle}** at **${existingJob.companyName}**\n\n` +
+          `**What the Company is Expecting:**\n` +
+          `- Demonstrated proficiency in core tech stack: **${skillsList}**.\n` +
+          `- Strong problem-solving skills, writing clean, maintainable, and well-tested code.\n` +
+          `- Understanding of production trade-offs (latency, scalability, fault tolerance).\n\n` +
+          `**Recommended Technical Questions to Prepare:**\n` +
+          `1. *How would you architect a scalable system using ${existingJob.skills?.[0] || 'your core stack'} with high availability?*\n` +
+          `2. *Explain how you debug and isolate performance bottlenecks or memory leaks in production.*\n` +
+          `3. *Walk me through a complex architectural challenge you solved in a past project.*\n` +
+          `4. *How do you handle database concurrency, caching, and state management in ${existingJob.workMode} environments?*\n` +
+          `5. *Tell me about a time you had to deliver a critical feature under tight deadlines.*\n\n` +
+          `💡 **Tip:** Need to update the status of this application? You can say *"Update status to Interviewing"* or click the status badge!`,
+        data: null
+      };
+    }
+
+    // ==========================================
+    // 7. Job Extraction Flow
+    // ==========================================
     const today = new Date().toISOString().split('T')[0];
     const data = existingJob ? { ...existingJob } : {
       companyName: '',
@@ -215,29 +419,28 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
 
     let summaryNotes = [];
 
-    // 1. Detect URLs
+    // Detect URLs
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
     const foundUrls = text.match(urlRegex) || [];
     
     if (foundUrls.length > 0) {
       for (const u of foundUrls) {
         const cleanUrl = u.replace(/[.,;!?)]+$/, '');
-        const lower = cleanUrl.toLowerCase();
+        const lowerUrl = cleanUrl.toLowerCase();
         
-        // Identify source portals
-        if (lower.includes('linkedin.com')) {
+        if (lowerUrl.includes('linkedin.com')) {
           data.source = 'LinkedIn';
           data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lower.includes('indeed.com')) {
+        } else if (lowerUrl.includes('indeed.com')) {
           data.source = 'Indeed';
           data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lower.includes('glassdoor.com')) {
+        } else if (lowerUrl.includes('glassdoor.com')) {
           data.source = 'Glassdoor';
           data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lower.includes('wellfound.com') || lower.includes('angel.co')) {
+        } else if (lowerUrl.includes('wellfound.com') || lowerUrl.includes('angel.co')) {
           data.source = 'Wellfound';
           data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lower.includes('greenhouse.io') || lower.includes('lever.co') || lower.includes('workday') || lower.includes('myworkdayjobs')) {
+        } else if (lowerUrl.includes('greenhouse.io') || lowerUrl.includes('lever.co') || lowerUrl.includes('workday') || lowerUrl.includes('myworkdayjobs')) {
           data.applicationUrl = cleanUrl;
           if (!data.source || data.source === 'Direct Portal') data.source = 'Company Career Site';
         } else {
@@ -251,8 +454,7 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       summaryNotes.push(`Extracted ${foundUrls.length} web link(s).`);
     }
 
-    // 2. Check for explicit follow-up phrases
-    // "link: https..." or "application link:"
+    // Check for explicit follow-up phrases
     const appLinkMatch = text.match(/(?:application|apply|careers?)\s*(?:link|url|portal)?[:\s]+(https?:\/\/[^\s]+)/i);
     if (appLinkMatch) {
       data.applicationUrl = appLinkMatch[1].replace(/[.,;!?)]+$/, '');
@@ -271,7 +473,7 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       summaryNotes.push('Updated status to Rejected.');
     }
 
-    // 3. Work Mode detection
+    // Work Mode detection
     if (/\bremote\b|\bwork from home\b|\bwfh\b/i.test(text)) {
       data.workMode = 'Remote';
     } else if (/\bhybrid\b/i.test(text)) {
@@ -280,7 +482,7 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       data.workMode = 'On-site';
     }
 
-    // 4. Job Type detection
+    // Job Type detection
     if (/\bintern\b|\binternship\b/i.test(text)) {
       data.jobType = 'Internship';
     } else if (/\bcontract\b|\bfreelance\b/i.test(text)) {
@@ -291,7 +493,7 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       data.jobType = 'Full-time';
     }
 
-    // 5. Salary extraction
+    // Salary extraction
     const salaryRegex = /(?:(\$|€|£|₹|INR|USD|CAD|EUR|GBP)\s*[\d,]+(?:\.\d+)?\s*(?:k|lpa|k\/yr|per year|\/yr|\/year|\/mo|\/hr|\/month|-|\s*to\s*|\s*–\s*)+[\d,]*\s*(?:k|lpa|per year|\/yr|\/year|\/hr|\/month)?)|(?:\b[\d,]+(?:\.\d+)?\s*(?:LPA|k\/year|k per year|USD|EUR)\b)/i;
     const salaryMatch = text.match(salaryRegex);
     if (salaryMatch) {
@@ -299,18 +501,15 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       summaryNotes.push(`Captured salary compensation: ${data.salary}`);
     }
 
-    // 6. Company Name extraction
-    // Look for patterns like "Company: X", "at X", "about X", "join X"
+    // Company Name extraction
     if (!data.companyName) {
       const companyMatch = text.match(/(?:Company|Organization|Employer)\s*[:\-]\s*([A-Za-z0-9&.\- ]{2,35})/i) ||
                            text.match(/(?:Join|About|Welcome to)\s+([A-Z][A-Za-z0-9&.\- ]{1,25})/);
       if (companyMatch) {
         data.companyName = companyMatch[1].trim();
       } else {
-        // Try reading the first line or email domain
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         if (lines.length > 0 && lines[0].length < 50 && !lines[0].toLowerCase().startsWith('http')) {
-          // If first line has format "Company - Role" or "Role at Company"
           const atSplit = lines[0].match(/(.+?)\s+at\s+([A-Za-z0-9 &.'\-]+)/i);
           const dashSplit = lines[0].match(/([A-Za-z0-9 &.'\-]+)\s*[-|–]\s*(.+)/);
           if (atSplit) {
@@ -324,7 +523,7 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       }
     }
 
-    // 7. Role Title extraction
+    // Role Title extraction
     if (!data.roleTitle) {
       const roleMatch = text.match(/(?:Role|Title|Position|Job Title)\s*[:\-]\s*([A-Za-z0-9&.\- /]{2,45})/i) ||
                         text.match(/\b(Software Engineer|Frontend Engineer|Backend Engineer|Full Stack Developer|Data Scientist|Product Manager|DevOps Engineer|UI\/UX Designer|Machine Learning Engineer|AI Engineer|QA Engineer|Systems Architect|Solutions Architect|Cloud Engineer|Intern)\b/i);
@@ -333,15 +532,15 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       }
     }
 
-    // If this is a new application and no concrete job signals were found, do NOT create a fake job
+    // If no concrete job signals found and creating new job, do NOT create a dummy record
     if (!existingJob && !data.companyName && !data.roleTitle && foundUrls.length === 0 && !salaryMatch) {
       return {
-        message: "I didn't detect any job details in that message. Please paste a **Job Description**, an application email, or a job posting link to track a new job!",
+        message: "I didn't detect any job details in that message.\n\nTo track a job, simply paste a **Job Description**, an application email, or a job link. You can also ask me about any company (e.g. *'Tell me about Samsung'*) or ask for interview preparation tips!",
         data: null
       };
     }
 
-    // Default company and role fallbacks if not detected
+    // Fallbacks if only partial info
     if (!data.companyName) {
       data.companyName = existingJob?.companyName || 'Target Company';
     }
@@ -349,7 +548,7 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       data.roleTitle = existingJob?.roleTitle || 'Software Professional';
     }
 
-    // 8. Location extraction
+    // Location extraction
     if (!data.location || data.location === 'Not specified') {
       const locMatch = text.match(/(?:Location|Place|Office|Based in)\s*[:\-]\s*([A-Za-z0-9,.\- ]{2,35})/i);
       if (locMatch) {
@@ -359,7 +558,7 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       }
     }
 
-    // 9. Skills extraction
+    // Skills extraction
     const techDictionary = [
       'JavaScript', 'TypeScript', 'Python', 'Java', 'C++', 'C#', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift', 'Kotlin',
       'React', 'Next.js', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'FastAPI', 'Spring Boot',
@@ -368,7 +567,6 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
     ];
     const foundSkills = new Set(data.skills || []);
     for (const tech of techDictionary) {
-      // Escape regex special chars: . * + ? ^ $ { } ( ) | [ ] \
       const escaped = tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`(?:^|[^a-zA-Z0-9_+#])${escaped}(?=[^a-zA-Z0-9_+#]|$)`, 'i');
       if (regex.test(text)) {

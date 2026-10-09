@@ -494,6 +494,34 @@ class JobTrackerApp {
     return div;
   }
 
+  renderMarkdown(text) {
+    if (!text) return '';
+    let html = text;
+
+    // Headers
+    html = html.replace(/^### (.*$)/gim, '<h4 style="margin: 12px 0 6px 0; color: #f8fafc; font-size: 1.05rem; font-weight: 700;">$1</h4>');
+    html = html.replace(/^## (.*$)/gim, '<h3 style="margin: 14px 0 8px 0; color: #f8fafc; font-size: 1.15rem; font-weight: 700;">$1</h3>');
+
+    // Bold & Italic
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+    // Markdown Links [text](url)
+    html = html.replace(/\[(.*?)\]\((https?:\/\/.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; text-decoration: underline; font-weight: 600;">$1 ↗</a>');
+
+    // Unordered lists
+    html = html.replace(/^- (.*$)/gim, '<li style="margin-left: 18px; margin-bottom: 4px; line-height: 1.5;">$1</li>');
+
+    // Ordered lists
+    html = html.replace(/^(\d+)\. (.*$)/gim, '<li style="margin-left: 18px; margin-bottom: 4px; list-style-type: decimal; line-height: 1.5;">$2</li>');
+
+    // Paragraph separation
+    html = html.replace(/\n\n/g, '<div style="height: 8px;"></div>');
+    html = html.replace(/\n/g, '<br/>');
+
+    return html;
+  }
+
   appendAssistantMessage(text, jobData, animate = true) {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'chat-msg assistant';
@@ -503,8 +531,7 @@ class JobTrackerApp {
       cardHtml = this.createExtractionCardHtml(jobData);
     }
 
-    // Format markdown bold
-    const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    const formattedText = this.renderMarkdown(text);
 
     msgDiv.innerHTML = `
       <div class="msg-avatar">AI</div>
