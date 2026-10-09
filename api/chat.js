@@ -233,15 +233,21 @@ Ensure output is valid JSON.`;
     }
 
     const detectedDate = parseAppliedDate(text, null);
-    if (detectedDate) {
-      if (parsed.data) {
+    const detectedSource = parseJobSource(text);
+
+    if (existingJob && (detectedDate || detectedSource)) {
+      if (!parsed.data) {
+        parsed.data = { ...existingJob };
+        parsed.message = parsed.message || `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`;
+      }
+    }
+
+    if (parsed.data) {
+      if (detectedDate) {
         parsed.data.appliedDate = detectedDate;
-      } else if (existingJob) {
-        parsed.data = {
-          ...existingJob,
-          appliedDate: detectedDate
-        };
-        parsed.message = (parsed.message ? parsed.message + '\n\n' : '') + `Updated applied date to **${detectedDate}** for **${existingJob.companyName}**.`;
+      }
+      if (detectedSource) {
+        parsed.data.source = detectedSource;
       }
     }
 
@@ -336,4 +342,20 @@ function parseAppliedDate(text, defaultDate = undefined) {
   }
 
   return defaultDate !== undefined ? defaultDate : now.toISOString().split('T')[0];
+}
+
+function parseJobSource(text) {
+  const lower = (text || '').toLowerCase();
+  
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?linkedin\b/i.test(lower)) return 'LinkedIn';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?indeed\b/i.test(lower)) return 'Indeed';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?glassdoor\b/i.test(lower)) return 'Glassdoor';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:wellfound|angel(?:\s*list)?)\b/i.test(lower)) return 'Wellfound';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?naukri\b/i.test(lower)) return 'Naukri';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?instahyre\b/i.test(lower)) return 'Instahyre';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:company\s*(?:website|portal|careers?)|careers?\s*(?:site|page)|direct\s*portal)\b/i.test(lower)) return 'Company Career Site';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:employee\s+)?referral\b/i.test(lower)) return 'Employee Referral';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:direct\s+)?email\b/i.test(lower)) return 'Direct Email';
+
+  return null;
 }

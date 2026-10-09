@@ -228,7 +228,10 @@ class JobTrackerApp {
     document.querySelectorAll('.quick-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         const action = pill.getAttribute('data-action');
-        if (action === 'link') {
+        if (action === 'store') {
+          this.handleStoreCommand();
+          return;
+        } else if (action === 'link') {
           this.chatInput.value = 'Application URL: ';
         } else if (action === 'salary') {
           this.chatInput.value = 'Salary range is: ';
@@ -449,6 +452,49 @@ class JobTrackerApp {
     this.showToast('🧹 Chat cleared successfully', 'info');
   }
 
+  async handleStoreCommand() {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+
+    if (!this.activeApplication || (!this.activeApplication.companyName && !this.activeApplication.roleTitle)) {
+      this.appendAssistantMessage(
+        "⚠️ **No active job application found to store.**\n\nTo store an application in your database:\n1. Paste a **Job Description (JD)**, job link, or company/role info.\n2. Add or refine any details in chat (e.g. *\"applied on 21 sept\"*, *\"applied through LinkedIn\"*).\n3. Type **/store** to save it to your database and Applications Tracker!",
+        null
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    // Mark as stored and record chat history
+    this.activeApplication.isStored = true;
+    this.activeApplication.chatHistory = this.chatMessages;
+
+    // Save to Supabase & local storage
+    const saveRes = await SupabaseService.saveApplication(this.activeApplication);
+    this.activeApplication = saveRes.data;
+    this.activeApplication.isStored = true;
+    Config.setActiveSessionId(this.activeApplication.id);
+
+    // Refresh application tracker list & counter
+    await this.loadApplications();
+    this.highlightActiveHistoryItem();
+
+    const storageLocation = saveRes.isRemote ? 'Supabase Cloud database' : 'local database';
+    const storeMsg = `🎉 **Successfully stored in database!**\n\n` +
+      `**${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** is now permanently saved in your ${storageLocation} and added to your **Applications Tracker** dashboard.\n\n` +
+      `• **Company:** ${this.activeApplication.companyName}\n` +
+      `• **Role:** ${this.activeApplication.roleTitle}\n` +
+      `• **Applied Date:** ${this.activeApplication.appliedDate || 'Today'}\n` +
+      `• **Source:** ${this.activeApplication.source || 'Direct Portal'}\n` +
+      `• **Salary:** ${this.activeApplication.salary || 'Not disclosed'}\n` +
+      `• **Status:** ${this.activeApplication.status || 'Applied'}\n\n` +
+      `You can view it anytime in the **Applications Tracker** dashboard above, or continue refining details right here in chat.`;
+
+    this.appendAssistantMessage(storeMsg, this.activeApplication);
+    this.scrollToBottom();
+    this.showToast(`Saved to database (${storageLocation})!`, 'success');
+  }
+
   async handleSendMessage() {
     const text = this.chatInput.value.trim();
     if (!text) return;
@@ -457,6 +503,12 @@ class JobTrackerApp {
     const lower = text.toLowerCase();
     if (lower === '/clear' || lower === '/cls' || lower === '/reset' || lower.startsWith('/clear ')) {
       this.clearCurrentChat();
+      return;
+    }
+
+    // Slash command to store currently drafted job in database
+    if (lower === '/store' || lower === '/save' || lower.startsWith('/store ')) {
+      await this.handleStoreCommand();
       return;
     }
 
@@ -480,43 +532,48 @@ class JobTrackerApp {
       thinkingEl.remove();
 
       if (result.data) {
-        // A job was created or updated!
+        // A job was created or updated in chat!
         const appData = {
           ...(this.activeApplication || {}),
           ...result.data,
           id: this.activeApplication?.id || crypto.randomUUID(),
-          createdAt: this.activeApplication?.createdAt || new Date().toISOString()
+          createdAt: this.activeApplication?.createdAt || new Date().toISOString(),
+          isStored: this.activeApplication?.isStored ? true : false
         };
+
+        this.activeApplication = appData;
+
+        // If it was ALREADY stored in DB, keep DB synced with edits
+        if (this.activeApplication.isStored) {
+          const saveRes = await SupabaseService.saveApplication(this.activeApplication);
+          this.activeApplication = saveRes.data;
+          this.activeApplication.isStored = true;
+          await this.loadApplications();
+        }
+
+        const promptHint = !this.activeApplication.isStored
+          ? '\n\n💡 *Type `/store` or click **Store in DB** on the card to save this job to your database!*'
+          : '';
 
         const assistantMsg = {
           role: 'assistant',
-          text: result.message,
-          data: appData
+          text: result.message + promptHint,
+          data: this.activeApplication
         };
 
         this.chatMessages.push({ role: 'user', text });
         this.chatMessages.push(assistantMsg);
-        appData.chatHistory = this.chatMessages;
-
-        // Save to Supabase & local storage
-        const saveRes = await SupabaseService.saveApplication(appData);
-        this.activeApplication = saveRes.data;
-        Config.setActiveSessionId(this.activeApplication.id);
+        this.activeApplication.chatHistory = this.chatMessages;
 
         // Render assistant bubble with extraction card
-        this.appendAssistantMessage(result.message, this.activeApplication);
+        this.appendAssistantMessage(assistantMsg.text, this.activeApplication);
 
         // Update UI
         this.topbarSessionMeta.style.display = 'flex';
         this.topbarCompany.textContent = this.activeApplication.companyName;
         this.topbarRole.textContent = this.activeApplication.roleTitle;
 
-        await this.loadApplications();
-        this.highlightActiveHistoryItem();
         this.scrollToBottom();
-
-        const syncNote = saveRes.isRemote ? 'Saved to Supabase!' : 'Saved locally!';
-        this.showToast(syncNote, 'success');
       } else {
         // Pure conversational message (e.g., greeting, help, inquiry) - DO NOT create a dummy card!
         const assistantMsg = {
@@ -673,7 +730,14 @@ class JobTrackerApp {
               <p class="card-company-name">${this.escapeHtml(data.companyName || 'Company')}</p>
             </div>
           </div>
-          <span class="status-pill ${statusClass}">${data.status || 'Applied'}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${data.isStored ? `
+              <span class="status-stored-badge" title="Stored in Database">✓ Saved in DB</span>
+            ` : `
+              <span class="status-draft-badge" title="Draft / Unsaved - Type /store to save">Draft • Unsaved</span>
+            `}
+            <span class="status-pill ${statusClass}">${data.status || 'Applied'}</span>
+          </div>
         </div>
 
         <div class="card-meta-chips">
@@ -681,6 +745,7 @@ class JobTrackerApp {
           <span class="meta-chip chip-mode">🏢 <strong>${this.escapeHtml(data.workMode || 'On-site')}</strong></span>
           <span class="meta-chip">📍 ${this.escapeHtml(data.location || 'Not specified')}</span>
           <span class="meta-chip">💼 ${this.escapeHtml(data.jobType || 'Full-time')}</span>
+          <span class="meta-chip chip-source">🌐 Source: <strong>${this.escapeHtml(data.source || 'Direct Portal')}</strong></span>
           <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
         </div>
 
@@ -690,9 +755,22 @@ class JobTrackerApp {
           <div class="card-external-links">
             ${linksHtml || '<span style="font-size: 0.78rem; color: var(--text-subtle);">No direct URLs detected yet. You can paste them in the chat.</span>'}
           </div>
-          <button class="btn btn-secondary btn-sm btn-view-in-dash">
-            <span>View in Tracker</span>
-          </button>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${!data.isStored ? `
+              <button class="btn btn-primary btn-sm btn-store-job" title="Save this application to database (/store)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span>Store in DB (/store)</span>
+              </button>
+            ` : `
+              <button class="btn btn-secondary btn-sm btn-store-job" title="Update in database (/store)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Saved (Update /store)</span>
+              </button>
+            `}
+            <button class="btn btn-secondary btn-sm btn-view-in-dash">
+              <span>View in Tracker</span>
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -701,8 +779,18 @@ class JobTrackerApp {
   bindCardEvents(msgDiv, jobData) {
     const btnView = msgDiv.querySelector('.btn-view-in-dash');
     if (btnView) {
-      btnView.addEventListener('click', () => {
+      btnView.addEventListener('click', async () => {
+        if (!this.activeApplication?.isStored) {
+          await this.handleStoreCommand();
+        }
         this.switchView('dashboard');
+      });
+    }
+
+    const btnStore = msgDiv.querySelector('.btn-store-job');
+    if (btnStore) {
+      btnStore.addEventListener('click', async () => {
+        await this.handleStoreCommand();
       });
     }
   }

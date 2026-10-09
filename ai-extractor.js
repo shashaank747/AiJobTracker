@@ -87,6 +87,26 @@ export function parseAppliedDate(text, defaultDate = undefined) {
   return defaultDate !== undefined ? defaultDate : now.toISOString().split('T')[0];
 }
 
+/**
+ * Smart Source Parser to detect application platform from conversational text
+ * Handles "applied through linkedin", "via indeed", "on glassdoor", "company website", etc.
+ */
+export function parseJobSource(text) {
+  const lower = (text || '').toLowerCase();
+  
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?linkedin\b/i.test(lower)) return 'LinkedIn';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?indeed\b/i.test(lower)) return 'Indeed';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?glassdoor\b/i.test(lower)) return 'Glassdoor';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:wellfound|angel(?:\s*list)?)\b/i.test(lower)) return 'Wellfound';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?naukri\b/i.test(lower)) return 'Naukri';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?instahyre\b/i.test(lower)) return 'Instahyre';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:company\s*(?:website|portal|careers?)|careers?\s*(?:site|page)|direct\s*portal)\b/i.test(lower)) return 'Company Career Site';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:employee\s+)?referral\b/i.test(lower)) return 'Employee Referral';
+  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:direct\s+)?email\b/i.test(lower)) return 'Direct Email';
+
+  return null;
+}
+
 
 // Curated company intelligence database for offline mode
 const COMPANY_DATABASE = {
@@ -269,17 +289,24 @@ export const AiExtractor = {
       }
     }
 
-    // Post-processing deterministic guarantee for applied date:
+    // Post-processing deterministic guarantee for follow-up edits:
     const detectedDate = parseAppliedDate(text, null);
-    if (detectedDate) {
-      if (result && result.data) {
+    const detectedSource = parseJobSource(text);
+
+    if (existingJob && (detectedDate || detectedSource)) {
+      if (!result || !result.data) {
+        result = result || {};
+        result.data = { ...existingJob };
+        result.message = result.message || `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`;
+      }
+    }
+
+    if (result && result.data) {
+      if (detectedDate) {
         result.data.appliedDate = detectedDate;
-      } else if (result && !result.data && existingJob) {
-        result.data = {
-          ...existingJob,
-          appliedDate: detectedDate
-        };
-        result.message = (result.message ? result.message + '\n\n' : '') + `Updated applied date to **${detectedDate}** for **${existingJob.companyName}**.`;
+      }
+      if (detectedSource) {
+        result.data.source = detectedSource;
       }
     }
 
@@ -587,13 +614,21 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
       notes: ''
     };
 
+    const detectedSource = parseJobSource(text);
+
     if (existingJob && detectedDate) {
       data.appliedDate = detectedDate;
+    }
+    if (detectedSource) {
+      data.source = detectedSource;
     }
 
     let summaryNotes = [];
     if (detectedDate) {
       summaryNotes.push(`Applied date set to ${detectedDate}.`);
+    }
+    if (detectedSource) {
+      summaryNotes.push(`Application source set to ${detectedSource}.`);
     }
 
     // Detect URLs
@@ -685,17 +720,14 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
       if (companyMatch) {
         data.companyName = companyMatch[1].trim();
       } else {
-        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-        if (lines.length > 0 && lines[0].length < 50 && !lines[0].toLowerCase().startsWith('http')) {
-          const atSplit = lines[0].match(/(.+?)\s+at\s+([A-Za-z0-9 &.'\-]+)/i);
-          const dashSplit = lines[0].match(/([A-Za-z0-9 &.'\-]+)\s*[-|–]\s*(.+)/);
-          if (atSplit) {
-            data.roleTitle = data.roleTitle || atSplit[1].trim();
-            data.companyName = atSplit[2].trim();
-          } else if (dashSplit) {
-            data.companyName = dashSplit[1].trim();
-            data.roleTitle = data.roleTitle || dashSplit[2].trim();
-          }
+        const atSplit = text.match(/([A-Za-z0-9 &.'\-/]{2,60})\s+at\s+([^,\n;]{2,50})/i);
+        const dashSplit = text.match(/([A-Za-z0-9 &.'\-]{2,35})\s*[-|–]\s*([A-Za-z0-9 &.'\-]{2,35})/);
+        if (atSplit) {
+          data.roleTitle = data.roleTitle || atSplit[1].trim();
+          data.companyName = atSplit[2].trim();
+        } else if (dashSplit) {
+          data.companyName = dashSplit[1].trim();
+          data.roleTitle = data.roleTitle || dashSplit[2].trim();
         }
       }
     }
