@@ -181,9 +181,8 @@ export const AiExtractor = {
    * Gemini API Extraction & Career Advisory
    */
   async extractWithGemini(text, existingJob, history, settings) {
-    const model = settings.geminiModel || 'gemini-1.5-flash';
+    const model = settings.geminiModel || 'gemini-3.8-flash';
     const apiKey = settings.geminiKey;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const systemPrompt = `You are an expert AI Job Application Tracker and Career Advisor Assistant.
 
@@ -191,40 +190,25 @@ Your capabilities:
 1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
    - Extract companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, skills, notes.
    - Return this in the "data" object.
-2. CAREER & COMPANY QUESTIONS: When user asks questions about a company (e.g. "tell about samsung company", "how is google?"), interview questions, role expectations, or career tips:
+2. CAREER & COMPANY QUESTIONS: When user asks questions about a company (e.g. "tell about samsung company", "tell me about paytm"), interview questions, role expectations, or career tips:
    - Provide a comprehensive, structured, and insightful markdown answer in "message" covering:
      * Company overview, culture, and core divisions
      * What technical roles and skills they hire for
-     * The typical interview process, technical rounds, and 4-5 sample interview questions
+     * The typical interview process, technical rounds, and sample interview questions
      * Direct link to their careers portal
-   - Set "data": null (do NOT create or modify an application unless they specifically asked to track it).
-3. ACTIVE JOB ADVICE: If an existing job is currently loaded in context and user asks about it (e.g. "what is this role expecting?", "give interview questions"):
+   - Set "data": null.
+3. ACTIVE JOB ADVICE: If an existing job is currently loaded in context and user asks about it:
    - Analyze the active job's role, company, and tech stack in detail.
    - Set "data": null.
-4. GENERAL CONVERSATION: If user says "hi", "how are you", or casual remarks:
-   - Respond warmly, conversationally, and explain how you can help them track jobs and prepare for interviews.
+4. GENERAL CONVERSATION: If user asks ANY question, chats, or inquires:
+   - Act like ChatGPT / Gemini, converse intelligently, helpfully, and thoroughly.
    - Set "data": null.
 
 Return ONLY valid JSON matching this schema:
 {
   "message": "Your rich, formatted markdown answer to the user",
-  "data": {
-    "companyName": "Company name",
-    "roleTitle": "Job title / role",
-    "jobType": "Full-time" | "Internship" | "Contract" | "Part-time",
-    "workMode": "Remote" | "Hybrid" | "On-site",
-    "location": "City, Country or Remote",
-    "salary": "Disclosed salary/range or 'Not disclosed'",
-    "source": "Platform name (e.g., LinkedIn, Indeed, Glassdoor, Company Portal, Campus, etc.)",
-    "applicationUrl": "Direct application submission URL if present",
-    "sourceUrl": "Job listing portal URL if present",
-    "status": "Applied" | "Interviewing" | "Offer" | "Rejected" | "Bookmarked",
-    "appliedDate": "YYYY-MM-DD",
-    "skills": ["Skill1", "Skill2", "Skill3"],
-    "notes": "Short bullet summary of key perks, requirements or notes"
-  } or null
-}
-If existing application data is provided and new job info is pasted, MERGE and UPDATE with the new information.`;
+  "data": { ... } or null
+}`;
 
     const requestBody = {
       contents: [
@@ -232,37 +216,28 @@ If existing application data is provided and new job info is pasted, MERGE and U
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}
-
-Current Active Job in Session (if any):
-${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}
-
-User Message:
-"${text}"`
+              text: `${systemPrompt}\n\nCurrent Active Job in Session (if any):\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}\n\nUser Message:\n"${text}"`
             }
           ]
         }
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.2
-      }
+      ]
     };
 
     const candidateModels = [
       settings.geminiModel,
-      'gemini-2.0-flash',
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-pro-latest',
-      'gemini-pro'
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.7-flash',
+      'gemini-flash-latest'
     ].filter(Boolean);
 
     let lastError = null;
     let candidateText = null;
 
-    for (const model of candidateModels) {
+    for (const m of candidateModels) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -286,17 +261,29 @@ User Message:
       throw new Error(lastError || 'No response generated by Gemini');
     }
 
-    const parsed = JSON.parse(candidateText);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(candidateText);
+    } catch {
+      const jsonMatch = candidateText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          parsed = { message: candidateText, data: null };
+        }
+      } else {
+        parsed = { message: candidateText, data: null };
+      }
+    }
+
     return {
-      message: parsed.message || 'Processed request successfully.',
-      data: parsed.data,
+      message: parsed.message || candidateText,
+      data: parsed.data || null,
       provider: 'gemini'
     };
   },
 
-  /**
-   * OpenAI API Extraction & Advisory
-   */
   async extractWithOpenAI(text, existingJob, history, settings) {
     const apiKey = settings.openaiKey;
     const url = 'https://api.openai.com/v1/chat/completions';
@@ -599,10 +586,20 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
       }
     }
 
+
+
     // If no concrete job signals found and creating new job, do NOT create a dummy record
     if (!existingJob && !data.companyName && !data.roleTitle && foundUrls.length === 0 && !salaryMatch) {
+      // If it looks like a question or conversational prompt
+      if (/[?]|^(what|how|why|can|could|tell|explain|give|describe|advice|tips|guide|suggest|prepare|interview|resume|portfolio|salary)/i.test(trimmed)) {
+        return {
+          message: `### 🤖 Career Advisor & Interview Assistant\n\nI'm here to help with your career questions and job search!\n\nHere are key recommendations regarding your query:\n- **Strategic Preparation**: Focus on high-frequency interview patterns (System Design, DSA, and behavioral STAR stories).\n- **Application Tracking**: Whenever you apply to a role or find an open vacancy, paste the **Job Description** or URL here to automatically track it on your board with interview status updates.\n- **Company Intelligence**: Ask about any company (e.g., *'Tell me about Paytm'*, *'Tell me about Samsung'*, *'Google'*) for detailed tech stacks and interview breakdowns.\n\n💡 *Tip: You can also connect your own Gemini API key or OpenAI key in **Settings (⚙️)** for unlimited live AI conversations!`,
+          data: null
+        };
+      }
+
       return {
-        message: "I didn't detect any job details in that message.\n\nTo track a job, simply paste a **Job Description**, an application email, or a job link. You can also ask me about any company (e.g. *'Tell me about Samsung'*) or ask for interview preparation tips!",
+        message: "I didn't detect any job details in that message.\n\nTo track a job, simply paste a **Job Description**, an application email, or a job link. You can also ask me about any company (e.g. *'Tell me about Paytm'*, *'Tell me about Samsung'*) or ask for interview preparation tips!",
         data: null
       };
     }

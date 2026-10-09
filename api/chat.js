@@ -139,12 +139,14 @@ Ensure output is valid JSON.`;
       });
     }
 
-    // Valid Gemini models active in the environment
+    // Modern Gemini models active in the environment
     const candidateModels = [
-      'gemini-flash-latest',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-      'gemini-pro-latest'
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.7-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-flash-latest'
     ];
 
     let lastError = null;
