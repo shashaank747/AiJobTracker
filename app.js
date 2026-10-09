@@ -71,6 +71,7 @@ class JobTrackerApp {
     // Sidebar
     this.sidebar = document.getElementById('sidebar');
     this.btnToggleSidebar = document.getElementById('btnToggleSidebar');
+    this.brandIconCollapse = document.getElementById('brandIconCollapse');
     this.btnNewChat = document.getElementById('btnNewChat');
     this.sidebarSearchInput = document.getElementById('sidebarSearchInput');
     this.historyList = document.getElementById('historyList');
@@ -172,7 +173,10 @@ class JobTrackerApp {
     this.btnNewChat.addEventListener('click', () => this.startNewChatSession());
     this.sidebarSearchInput.addEventListener('input', (e) => this.filterHistoryList(e.target.value));
     if (this.btnToggleSidebar) {
-      this.btnToggleSidebar.addEventListener('click', () => this.sidebar.classList.toggle('open'));
+      this.btnToggleSidebar.addEventListener('click', () => this.toggleSidebar());
+    }
+    if (this.brandIconCollapse) {
+      this.brandIconCollapse.addEventListener('click', () => this.closeSidebar());
     }
 
     // Chat input auto-grow and submit
@@ -955,6 +959,43 @@ class JobTrackerApp {
     if (this.activeAiModelTag) this.activeAiModelTag.textContent = text;
     if (this.chatAiEngineSelect) this.chatAiEngineSelect.value = settings.aiProvider || 'gemini';
     if (this.selectAiProvider) this.selectAiProvider.value = settings.aiProvider || 'gemini';
+  }
+
+  // ==========================================
+  // Sidebar Control
+  // ==========================================
+  closeSidebar() {
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      if (this.sidebar) this.sidebar.classList.remove('open');
+    } else {
+      if (this.sidebar) this.sidebar.classList.add('collapsed');
+      const app = document.getElementById('app');
+      if (app) app.classList.add('sidebar-collapsed');
+    }
+  }
+
+  openSidebar() {
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      if (this.sidebar) this.sidebar.classList.add('open');
+    } else {
+      if (this.sidebar) this.sidebar.classList.remove('collapsed');
+      const app = document.getElementById('app');
+      if (app) app.classList.remove('sidebar-collapsed');
+    }
+  }
+
+  toggleSidebar() {
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      if (this.sidebar) this.sidebar.classList.toggle('open');
+    } else {
+      if (!this.sidebar) return;
+      const isCollapsed = this.sidebar.classList.toggle('collapsed');
+      const app = document.getElementById('app');
+      if (app) app.classList.toggle('sidebar-collapsed', isCollapsed);
+    }
   }
 
   // ==========================================

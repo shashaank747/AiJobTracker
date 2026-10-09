@@ -119,7 +119,16 @@ body {
   flex-direction: column;
   flex-shrink: 0;
   z-index: 20;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+.sidebar.collapsed {
+  margin-left: calc(-1 * var(--sidebar-width));
+  pointer-events: none;
+}
+
+.app-layout.sidebar-collapsed #btnToggleSidebar {
+  display: inline-flex !important;
 }
 
 .sidebar-header {
@@ -146,6 +155,20 @@ body {
   justify-content: center;
   color: #ffffff;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  user-select: none;
+  transition: var(--transition);
+}
+
+.brand-icon:hover {
+  transform: scale(1.06);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 18px rgba(255, 255, 255, 0.15);
+  background: #27272a;
+}
+
+.brand-icon:active {
+  transform: scale(0.95);
 }
 
 .brand-title {
