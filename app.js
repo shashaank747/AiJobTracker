@@ -782,9 +782,12 @@ class JobTrackerApp {
       return;
     }
 
-    // Mark as stored and record chat history
+    // Mark as stored and record clean chat history
     this.activeApplication.isStored = true;
-    this.activeApplication.chatHistory = this.chatMessages;
+    this.activeApplication.chatHistory = this.chatMessages.map(m => ({
+      role: m.role,
+      text: m.text
+    }));
 
     // Save to Supabase & local storage
     const saveRes = await SupabaseService.saveApplication(this.activeApplication);
@@ -909,12 +912,12 @@ class JobTrackerApp {
         const assistantMsg = {
           role: 'assistant',
           text: result.message + promptHint,
-          data: this.activeApplication
+          data: { ...this.activeApplication, chatHistory: [] }
         };
 
         this.chatMessages.push({ role: 'user', text });
         this.chatMessages.push(assistantMsg);
-        this.activeApplication.chatHistory = this.chatMessages;
+        this.activeApplication.chatHistory = this.chatMessages.map(m => ({ role: m.role, text: m.text }));
 
         // Render assistant bubble with extraction card
         this.appendAssistantMessage(assistantMsg.text, this.activeApplication);

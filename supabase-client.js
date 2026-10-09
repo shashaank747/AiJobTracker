@@ -120,6 +120,21 @@ export const SupabaseService = {
     const now = new Date().toISOString();
     const appId = appData.id || crypto.randomUUID();
 
+    // Sanitize chat history to avoid circular structure errors
+    const safeChatHistory = (Array.isArray(appData.chatHistory) ? appData.chatHistory : []).map(msg => ({
+      role: msg.role || 'assistant',
+      text: typeof msg.text === 'string' ? msg.text : '',
+      data: msg.data ? {
+        companyName: msg.data.companyName || '',
+        roleTitle: msg.data.roleTitle || '',
+        status: msg.data.status || '',
+        salary: msg.data.salary || '',
+        location: msg.data.location || '',
+        workMode: msg.data.workMode || '',
+        appliedDate: msg.data.appliedDate || ''
+      } : null
+    }));
+
     const normalizedApp = {
       id: appId,
       createdAt: appData.createdAt || now,
@@ -137,7 +152,7 @@ export const SupabaseService = {
       appliedDate: appData.appliedDate || now.split('T')[0],
       skills: appData.skills || [],
       notes: appData.notes || '',
-      chatHistory: appData.chatHistory || []
+      chatHistory: safeChatHistory
     };
 
     // Update local storage first
@@ -172,7 +187,7 @@ export const SupabaseService = {
         company_link: appData.sourceUrl || '',
         website_link: appData.websiteLink || '',
         notes: appData.notes || (Array.isArray(appData.skills) && appData.skills.length ? 'Skills: ' + appData.skills.join(', ') : ''),
-        job_description: appData.jobDescription || (appData.chatHistory ? JSON.stringify(appData.chatHistory) : '')
+        job_description: appData.jobDescription || JSON.stringify(safeChatHistory)
       };
 
       try {
@@ -199,7 +214,7 @@ export const SupabaseService = {
             applied_date: appData.appliedDate || now.split('T')[0],
             skills: appData.skills || [],
             notes: appData.notes || '',
-            chat_history: appData.chatHistory || []
+            chat_history: safeChatHistory
           };
 
           const retryRes = await client.from(supabaseTable).upsert(fallbackPayload, { onConflict: 'id' });
