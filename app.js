@@ -128,10 +128,9 @@ class JobTrackerApp {
     this.navTabDashboard = document.getElementById('navTabDashboard');
     this.totalAppsBadge = document.getElementById('totalAppsBadge');
 
-    // Theme Switcher
-    this.btnThemeToggle = document.getElementById('btnThemeToggle');
-    this.themeIcon = document.getElementById('themeIcon');
-    this.themeLabel = document.getElementById('themeLabel');
+    // Theme Switcher (Animated Day/Night Switch)
+    this.themeToggleInput = document.getElementById('toggle');
+    this.themeToggleButton = document.getElementById('theme-toggle-button');
     this.currentTheme = Config.getTheme();
 
     // Sidebar
@@ -338,8 +337,12 @@ class JobTrackerApp {
     }
 
     // Theme Toggle
-    if (this.btnThemeToggle) {
-      this.btnThemeToggle.addEventListener('click', () => this.toggleTheme());
+    if (this.themeToggleInput) {
+      this.themeToggleInput.addEventListener('change', (e) => {
+        const nextTheme = e.target.checked ? 'dark' : 'light';
+        this.applyTheme(nextTheme);
+        this.showToast(`Switched to ${nextTheme === 'light' ? 'Dull Light' : 'Dark'} theme`, 'info');
+      });
     }
 
     // Profile Actions
@@ -631,15 +634,13 @@ class JobTrackerApp {
     if (this.currentTheme === 'light') {
       document.body.classList.remove('theme-dark');
       document.body.classList.add('theme-light');
-      if (this.themeIcon) this.themeIcon.textContent = '🌙';
-      if (this.themeLabel) this.themeLabel.textContent = 'Dark';
-      if (this.btnThemeToggle) this.btnThemeToggle.setAttribute('title', 'Switch to Dark Theme');
+      if (this.themeToggleInput) this.themeToggleInput.checked = false;
+      if (this.themeToggleButton) this.themeToggleButton.setAttribute('title', 'Switch to Dark Theme');
     } else {
       document.body.classList.remove('theme-light');
       document.body.classList.add('theme-dark');
-      if (this.themeIcon) this.themeIcon.textContent = '☀️';
-      if (this.themeLabel) this.themeLabel.textContent = 'Light';
-      if (this.btnThemeToggle) this.btnThemeToggle.setAttribute('title', 'Switch to Dull Light Theme');
+      if (this.themeToggleInput) this.themeToggleInput.checked = true;
+      if (this.themeToggleButton) this.themeToggleButton.setAttribute('title', 'Switch to Dull Light Theme');
     }
     Config.setTheme(this.currentTheme);
   }
