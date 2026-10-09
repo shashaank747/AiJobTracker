@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, existingJob, history, apiKey: clientApiKey, provider = 'auto' } = req.body || {};
+    const { text, existingJob, history, allApplications = [], apiKey: clientApiKey, provider = 'auto' } = req.body || {};
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Message text is required.' });
@@ -48,6 +48,18 @@ export default async function handler(req, res) {
     const effectiveOpenaiKey = (clientApiKey && clientApiKey.startsWith('sk-')) ? clientApiKey : openaiKey;
 
     const today = new Date().toISOString().split('T')[0];
+
+    const formatDatabaseContext = (apps) => {
+      if (!Array.isArray(apps) || apps.length === 0) {
+        return "STORED APPLICATIONS IN DATABASE: 0 applications currently stored.";
+      }
+      const summaryList = apps.map((a, i) => 
+        `[#${i + 1}] Company: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'Not disclosed'} | Work Mode: ${a.workMode || 'N/A'} | Location: ${a.location || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'} | Source: ${a.source || 'N/A'} | Skills: ${(a.skills || []).join(', ')}`
+      ).join('\n');
+      return `PERSISTENT BACKEND DATABASE (${apps.length} stored applications):\n${summaryList}`;
+    };
+
+    const databaseContext = formatDatabaseContext(allApplications);
 
     const systemPrompt = `You are Zuno, an intelligent conversational AI career assistant and job application tracker at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your name or identity.
@@ -69,7 +81,14 @@ CORE CAPABILITIES:
   * Provide deep analysis, salary negotiation tips, and tailored interview advice.
   * Set "data": null.
 
-2. JOB APPLICATION EXTRACTION & TRACKING:
+2. PERSISTENT DATABASE & SESSION QUERYING:
+- You have direct, live access to the user's persistent backend database and active session instance!
+- When the user asks about their application history, statistics, interview statuses, specific companies they applied to, salary details, or past applications (e.g. "How many applications do I have?", "Did I apply to Stripe?", "Show my interview rounds", "What is my latest application?", "Summarize my job search"):
+  * Query and analyze the provided "PERSISTENT BACKEND DATABASE" and "Active Job in Session".
+  * Provide accurate, friendly, and comprehensive answers, tables, or summaries using their real data.
+  * Set "data": null when answering questions about stored applications or career advice.
+
+3. JOB APPLICATION EXTRACTION & TRACKING:
 - Whenever the user pastes a job description (JD), job link, application confirmation email, or asks to track a job:
   Extract structured details into "data":
   {
@@ -125,7 +144,7 @@ Ensure output is valid JSON.`;
               { role: 'system', content: systemPrompt },
               {
                 role: 'user',
-                content: `Active Job in Session: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Message: "${text}"`
+                content: `${databaseContext}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message: "${text}"`
               }
             ],
             response_format: { type: "json_object" },
@@ -177,7 +196,7 @@ Ensure output is valid JSON.`;
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
+              text: `${systemPrompt}\n\n${databaseContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
             }
           ]
         }

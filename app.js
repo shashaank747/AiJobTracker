@@ -880,7 +880,8 @@ class JobTrackerApp {
       const result = await AiExtractor.processInput(
         text,
         this.activeApplication,
-        this.chatMessages
+        this.chatMessages,
+        this.applications
       );
 
       thinkingEl.remove();

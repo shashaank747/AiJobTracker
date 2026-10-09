@@ -230,7 +230,7 @@ export const AiExtractor = {
   /**
    * Main entry point to parse a raw JD or a conversational follow-up
    */
-  async processInput(text, existingJob = null, history = []) {
+  async processInput(text, existingJob = null, history = [], allApplications = []) {
     const settings = Config.getSettings();
 
     const provider = settings.aiProvider || 'gemini';
@@ -238,9 +238,9 @@ export const AiExtractor = {
 
     // 1. If user explicitly chose Offline Heuristics
     if (provider === 'heuristic') {
-      result = await this.extractWithHeuristics(text, existingJob);
+      result = await this.extractWithHeuristics(text, existingJob, allApplications);
     } else {
-      // 2. Try Vercel Serverless /api/chat with selected provider
+      // 2. Try Vercel Serverless /api/chat with selected provider & persistent DB context
       try {
         const serverRes = await fetch('/api/chat', {
           method: 'POST',
@@ -249,6 +249,7 @@ export const AiExtractor = {
             text,
             existingJob,
             history,
+            allApplications,
             provider,
             apiKey: (provider === 'openai' ? settings.openaiKey : settings.geminiKey) || undefined
           })
@@ -271,13 +272,13 @@ export const AiExtractor = {
       // 3. Direct Client Fallback:
       if (!result && provider === 'openai' && settings.openaiKey) {
         try {
-          result = await this.extractWithOpenAI(text, existingJob, history, settings);
+          result = await this.extractWithOpenAI(text, existingJob, history, settings, allApplications);
         } catch (err) {
           console.warn('Client OpenAI extraction failed:', err);
         }
       } else if (!result && provider === 'gemini' && settings.geminiKey) {
         try {
-          result = await this.extractWithGemini(text, existingJob, history, settings);
+          result = await this.extractWithGemini(text, existingJob, history, settings, allApplications);
         } catch (err) {
           console.warn('Client Gemini extraction failed:', err);
         }
@@ -285,15 +286,16 @@ export const AiExtractor = {
 
       // 4. Fallback: Offline Smart Career Advisor & Heuristic Extractor
       if (!result) {
-        result = await this.extractWithHeuristics(text, existingJob);
+        result = await this.extractWithHeuristics(text, existingJob, allApplications);
       }
     }
 
     // Post-processing deterministic guarantee for follow-up edits:
-    const detectedDate = parseAppliedDate(text, null);
-    const detectedSource = parseJobSource(text);
+    const isQueryOrQuestion = /^(what|when|where|which|how|who|did|have|list|show|any|status)\b/i.test(text.trim());
+    const detectedDate = !isQueryOrQuestion ? parseAppliedDate(text, null) : null;
+    const detectedSource = !isQueryOrQuestion ? parseJobSource(text) : null;
 
-    if (existingJob && (detectedDate || detectedSource)) {
+    if (!isQueryOrQuestion && existingJob && (detectedDate || detectedSource)) {
       if (!result || !result.data) {
         result = result || {};
         result.data = { ...existingJob };
@@ -316,11 +318,15 @@ export const AiExtractor = {
   /**
    * Gemini API Extraction & Career Advisory
    */
-  async extractWithGemini(text, existingJob, history, settings) {
+  async extractWithGemini(text, existingJob, history, settings, allApplications = []) {
     const model = settings.geminiModel || 'gemini-3.8-flash';
     const apiKey = settings.geminiKey;
 
     const today = new Date().toISOString().split('T')[0];
+    const databaseSummary = Array.isArray(allApplications) && allApplications.length > 0
+      ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'}`).join('\n')
+      : '0 applications in database.';
+
     const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your identity.
 TODAY'S REFERENCE DATE: ${today}
@@ -332,17 +338,18 @@ Your capabilities:
 1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
    - Extract companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, skills, notes.
    - Return this in the "data" object.
-2. CAREER & COMPANY QUESTIONS: When user asks questions about a company (e.g. "tell about samsung company", "tell me about paytm"), interview questions, role expectations, or career tips:
-   - Provide a comprehensive, structured, and insightful markdown answer in "message" covering:
-     * Company overview, culture, and core divisions
-     * What technical roles and skills they hire for
-     * The typical interview process, technical rounds, and sample interview questions
-     * Direct link to their careers portal
+2. PERSISTENT DATABASE & SESSION QUERYING:
+   - You have direct access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
+   - When asked about their applications, history, stats, counts, interviews, offers, or specific companies they applied to:
+     * Answer directly, accurately, and thoroughly using the database records.
+     * Set "data": null.
+3. CAREER & COMPANY QUESTIONS: When user asks questions about a company (e.g. "tell about samsung company", "tell me about paytm"), interview questions, role expectations, or career tips:
+   - Provide a comprehensive, structured, and insightful markdown answer in "message".
    - Set "data": null.
-3. ACTIVE JOB ADVICE: If an existing job is currently loaded in context and user asks about it:
+4. ACTIVE JOB ADVICE: If an existing job is currently loaded in context and user asks about it:
    - Analyze the active job's role, company, and tech stack in detail.
    - Set "data": null.
-4. GENERAL CONVERSATION: If user asks ANY question, chats, or inquires:
+5. GENERAL CONVERSATION: If user asks ANY question, chats, or inquires:
    - Act like ChatGPT / Gemini, converse intelligently, helpfully, and thoroughly.
    - Set "data": null.
 
@@ -358,7 +365,7 @@ Return ONLY valid JSON matching this schema:
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\nCurrent Active Job in Session (if any):\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}\n\nUser Message:\n"${text}"`
+              text: `${systemPrompt}\n\nPERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nCurrent Active Job in Session (if any):\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}\n\nUser Message:\n"${text}"`
             }
           ]
         }
@@ -426,13 +433,18 @@ Return ONLY valid JSON matching this schema:
     };
   },
 
-  async extractWithOpenAI(text, existingJob, history, settings) {
+  async extractWithOpenAI(text, existingJob, history, settings, allApplications = []) {
     const apiKey = settings.openaiKey;
     const url = 'https://api.openai.com/v1/chat/completions';
 
+    const databaseSummary = Array.isArray(allApplications) && allApplications.length > 0
+      ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'}`).join('\n')
+      : '0 applications in database.';
+
     const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
 Your name is Zuno.
-When user asks questions about a company, interview questions, or casual chat: provide a comprehensive markdown answer in "message" and set "data": null.
+You have direct live access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
+When user asks about past applications, statistics, interview status, specific applied companies, or advice: provide a comprehensive markdown answer using the database records in "message" and set "data": null.
 When user pastes a job description (JD) or update: extract the job details in "data".
 Return JSON with { "message": "...", "data": { ... } or null }.`;
 
@@ -449,7 +461,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Active Job: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
+            content: `PERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
           }
         ],
         temperature: 0.2
@@ -476,7 +488,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
    * Smart Offline NLP Heuristic & Career Advisor
    * Handles company research, interview prep, greetings, AND job parsing offline
    */
-  extractWithHeuristics(text, existingJob = null) {
+  extractWithHeuristics(text, existingJob = null, allApplications = []) {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
@@ -484,7 +496,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
     if (isGreeting) {
       return {
-        message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Paste a Job Description**: I will extract company, role, salary, work mode, and application link.\n- **Refine Details**: Tell me dates or platforms (*\"applied on 21 sept\"*, *\"applied through LinkedIn\"*).\n- **Save to Database**: Type **/store** whenever you want to save to your tracker board!\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
+        message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Paste a Job Description**: I will extract company, role, salary, work mode, and application link.\n- **Refine Details**: Tell me dates or platforms (*\"applied on 21 sept\"*, *\"applied through LinkedIn\"*).\n- **Save to Database**: Type **/store** whenever you want to save to your tracker board!\n- **Query Applications**: Ask *\"How many jobs have I applied to?\"*, *\"Show my applications\"*, or *\"Did I apply to Stripe?\"*\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
         data: null
       };
     }
@@ -492,7 +504,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     // 2. Check for "Who are you" / "What's your name"
     if (/^(who are you|what is your name|what's your name|your name)\b/i.test(lower)) {
       return {
-        message: "👋 I'm **Zuno**, your intelligent AI career assistant and job application tracker at **JobTrackerAI**!\n\nI can help you parse job descriptions, research companies, prepare for technical rounds, and track your applications.",
+        message: "👋 I'm **Zuno**, your intelligent AI career assistant and job application tracker at **JobTrackerAI**!\n\nI can help you parse job descriptions, query your saved database applications, research companies, prepare for technical rounds, and organize your job hunt.",
         data: null
       };
     }
@@ -500,7 +512,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     // 3. Check for "How are you"
     if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
       return {
-        message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Refine application dates or source links.\n- Type **/store** to save to your database.\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
+        message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Refine application dates or source links.\n- Type **/store** to save to your database.\n- Ask me about your **saved applications** (*\"Show my applications\"* or *\"How many jobs did I apply to?\"*).\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
         data: null
       };
     }
@@ -509,18 +521,167 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     const isHelp = /^(help|what can you do|how does this work|commands|instructions)\b/i.test(lower);
     if (isHelp) {
       return {
-        message: "💡 **How Zuno & JobTrackerAI Work:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Conversational Refinements**: Forgot something? Just say *\"applied on 21 sept\"* or *\"applied through LinkedIn\"* and I will update your card.\n3. **Store in Database**: Type **/store** to permanently save your drafted application to Supabase and your dashboard.\n4. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n5. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.",
+        message: "💡 **How Zuno & JobTrackerAI Work:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Conversational Refinements**: Forgot something? Just say *\"applied on 21 sept\"* or *\"applied through LinkedIn\"* and I will update your card.\n3. **Query Your Database**: Ask me *\"How many applications do I have?\"*, *\"Show all applications\"*, or *\"Did I apply to Stripe?\"* anytime.\n4. **Store in Database**: Type **/store** to permanently save your drafted application to Supabase and your dashboard.\n5. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n6. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.",
         data: null
       };
     }
 
-    // 4. Check for Casual affirmations
+    // 5. Check for Casual affirmations
     const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
     if (isCasual) {
       return {
-        message: "You're welcome! Whenever you have another job to track or a question about a company, feel free to ask.",
+        message: "You're welcome! Whenever you have another job to track or want to check your saved applications, feel free to ask.",
         data: null
       };
+    }
+
+    // 6. Check for Current Active Application / Session Instance
+    const isCurrentInstanceQuery = /\b(current\s+(?:instance|job|application|draft)|active\s+(?:application|job|instance)|what\s+job\s+am\s+i\s+(?:looking\s+at|working\s+on|viewing)|what\s+is\s+(?:the\s+)?(?:current|active)\s*(?:job|application)?)\b/i.test(lower);
+    if (isCurrentInstanceQuery) {
+      if (existingJob && (existingJob.companyName || existingJob.roleTitle)) {
+        return {
+          message: `### 📌 Current Active Application in Session:\n\n` +
+            `- **Company:** **${existingJob.companyName || 'Not specified'}**\n` +
+            `- **Role:** ${existingJob.roleTitle || 'Not specified'}\n` +
+            `- **Status:** \`${existingJob.status || 'Applied'}\`\n` +
+            `- **Salary / CTC:** ${existingJob.salary || 'Not specified'}\n` +
+            `- **Applied Date:** ${existingJob.appliedDate || 'Not specified'}\n` +
+            `- **Work Mode & Location:** ${existingJob.workMode || 'N/A'} • ${existingJob.location || 'N/A'}\n` +
+            `- **Source / Portal:** ${existingJob.source || 'Direct'}\n` +
+            (existingJob.jobLink ? `- **Job Link:** [Open Application Link](${existingJob.jobLink})\n` : '') +
+            (existingJob.skills && existingJob.skills.length > 0 ? `- **Skills:** ${existingJob.skills.join(', ')}\n` : '') +
+            (existingJob.notes ? `- **Notes:** ${existingJob.notes}\n` : '') +
+            `\n*You can modify any field by chatting with me, or type **/store** to persist it to your database!*`,
+          data: null
+        };
+      } else {
+        return {
+          message: "There is currently no active draft or selected application in this session. You can paste a job description or select an existing application from your tracker to activate it!",
+          data: null
+        };
+      }
+    }
+
+    // 7. Check for Database Application Statistics & Counts
+    const isStatsQuery = /\b(how\s+many\s+(?:jobs|applications)|application\s+stats|stats|summary\s+of\s+(?:my\s+)?applications|overview\s+of\s+(?:my\s+)?applications|how\s+is\s+my\s+job\s+search\s+going)\b/i.test(lower) || lower === '/stats';
+    if (isStatsQuery) {
+      if (!allApplications || allApplications.length === 0) {
+        return {
+          message: "📊 **Your Application Stats:**\n\nYou currently have **0 stored applications** in your persistent database.\nPaste a job description to track your first application!",
+          data: null
+        };
+      }
+      const total = allApplications.length;
+      const appliedCount = allApplications.filter(a => (a.status || '').toLowerCase() === 'applied').length;
+      const interviewingCount = allApplications.filter(a => (a.status || '').toLowerCase() === 'interviewing').length;
+      const offerCount = allApplications.filter(a => (a.status || '').toLowerCase() === 'offer').length;
+      const rejectedCount = allApplications.filter(a => (a.status || '').toLowerCase() === 'rejected').length;
+
+      return {
+        message: `### 📊 Your Persistent Job Tracker Stats:\n\n` +
+          `- **Total Tracked Applications:** **${total}**\n` +
+          `- 📝 **Applied / Pending:** **${appliedCount}**\n` +
+          `- 🎙️ **Interviewing:** **${interviewingCount}**\n` +
+          `- 🎉 **Offers Received:** **${offerCount}**\n` +
+          `- ❌ **Rejected:** **${rejectedCount}**\n\n` +
+          `*Type **"Show all applications"** or ask about any company (e.g. *"Did I apply to Stripe?"*) to inspect details.*`,
+        data: null
+      };
+    }
+
+    // 8. Check for "Show all applications" / "List applications"
+    const isListQuery = /\b(?:show|list|display|view|get)\s+(?:all\s+)?(?:past\s+|stored\s+|my\s+)?(?:jobs|applications)\b/i.test(lower) ||
+                        /\bwhat\s+(?:jobs|applications)\s+(?:did\s+i|have\s+i)\s+(?:apply|applied|stored|saved)\b/i.test(lower) ||
+                        lower === '/list';
+    if (isListQuery) {
+      if (!allApplications || allApplications.length === 0) {
+        return {
+          message: "You don't have any applications stored in your persistent database yet. Paste a job description to add one!",
+          data: null
+        };
+      }
+
+      let markdown = `### 📋 Stored Applications in Your Database (${allApplications.length}):\n\n`;
+      markdown += `| # | Company | Role | Status | Salary | Applied Date |\n`;
+      markdown += `|---|---|---|---|---|---|\n`;
+      allApplications.forEach((app, idx) => {
+        const co = app.companyName || 'Unknown';
+        const role = app.roleTitle || 'Role';
+        const st = app.status || 'Applied';
+        const sal = app.salary || '-';
+        const dt = app.appliedDate || '-';
+        markdown += `| ${idx + 1} | **${co}** | ${role} | \`${st}\` | ${sal} | ${dt} |\n`;
+      });
+      markdown += `\n*Ask me about any specific company or type **"Any interviews?"** to filter!*`;
+
+      return {
+        message: markdown,
+        data: null
+      };
+    }
+
+    // 9. Status-Specific Filter Queries (Interviewing / Offers / Rejected)
+    const isInterviewFilter = /\b(?:interviews?|interviewing)\b/i.test(lower) && /\b(?:which|what|show|list|any|my|do\s+i\s+have)\b/i.test(lower);
+    if (isInterviewFilter) {
+      const matches = (allApplications || []).filter(a => (a.status || '').toLowerCase() === 'interviewing');
+      if (matches.length === 0) {
+        return {
+          message: "🎙️ You currently have **0 applications** in the **Interviewing** stage. Keep pushing forward!",
+          data: null
+        };
+      }
+      let msg = `### 🎙️ Applications in Interviewing Stage (${matches.length}):\n\n`;
+      matches.forEach((m, idx) => {
+        msg += `${idx + 1}. **${m.companyName}** — *${m.roleTitle}* (Applied: ${m.appliedDate || 'N/A'})\n`;
+      });
+      return { message: msg, data: null };
+    }
+
+    const isOfferFilter = /\b(?:offers?)\b/i.test(lower) && /\b(?:which|what|show|list|any|my|do\s+i\s+have|got)\b/i.test(lower);
+    if (isOfferFilter) {
+      const matches = (allApplications || []).filter(a => (a.status || '').toLowerCase() === 'offer');
+      if (matches.length === 0) {
+        return {
+          message: "🎉 You don't have any recorded offers yet. Keep interviewing, you're getting closer!",
+          data: null
+        };
+      }
+      let msg = `### 🎉 Job Offers Recorded (${matches.length}):\n\n`;
+      matches.forEach((m, idx) => {
+        msg += `${idx + 1}. **${m.companyName}** — *${m.roleTitle}* (Salary: ${m.salary || 'N/A'})\n`;
+      });
+      return { message: msg, data: null };
+    }
+
+    // 10. Specific Company Lookup in Past Applications (e.g. "Did I apply to Stripe?", "When did I apply to Google?", "Status of Stripe")
+    const companyLookupMatch = lower.match(/\b(?:did\s+i\s+apply\s+(?:to|at)|have\s+i\s+applied\s+(?:to|at)|status\s+(?:of|for)|salary\s+(?:for|at)|when\s+did\s+i\s+apply\s+(?:to|at)|details\s+(?:of|for))\s+([a-zA-Z0-9.\- ]+?)(?:\?|$|\s+company|\s+job)/i);
+    if (companyLookupMatch) {
+      const searchTarget = companyLookupMatch[1].trim().toLowerCase();
+      const foundInDb = (allApplications || []).find(a => 
+        (a.companyName && a.companyName.toLowerCase().includes(searchTarget)) ||
+        searchTarget.includes((a.companyName || '').toLowerCase())
+      );
+
+      if (foundInDb) {
+        return {
+          message: `### 🔍 Stored Record for **${foundInDb.companyName}**:\n\n` +
+            `- **Role:** ${foundInDb.roleTitle || 'N/A'}\n` +
+            `- **Status:** \`${foundInDb.status || 'Applied'}\`\n` +
+            `- **Applied Date:** ${foundInDb.appliedDate || 'N/A'}\n` +
+            `- **Salary / CTC:** ${foundInDb.salary || 'Not specified'}\n` +
+            `- **Applied Via:** ${foundInDb.source || 'Direct'}\n` +
+            (foundInDb.location ? `- **Location:** ${foundInDb.location}\n` : '') +
+            (foundInDb.jobLink ? `- **Job Link:** [Open Link](${foundInDb.jobLink})\n` : '') +
+            (foundInDb.notes ? `- **Notes:** ${foundInDb.notes}\n` : '') +
+            `\n*This record is stored in your persistent backend database.*`,
+          data: null
+        };
+      } else if (allApplications && allApplications.length > 0) {
+        return {
+          message: `🔍 I searched your database of **${allApplications.length} saved applications**, but could not find a record for **"${companyLookupMatch[1].trim()}"**.\n\nType **"Show all applications"** to view your active tracker list!`,
+          data: null
+        };
+      }
     }
 
     // 5. Check for Company Information / Career Inquiries
