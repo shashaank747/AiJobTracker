@@ -330,7 +330,9 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
     ];
     const foundSkills = new Set(data.skills || []);
     for (const tech of techDictionary) {
-      const regex = new RegExp(`\\b${tech.replace('.', '\\.')}\\b`, 'i');
+      // Escape regex special chars: . * + ? ^ $ { } ( ) | [ ] \
+      const escaped = tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_+#])${escaped}(?=[^a-zA-Z0-9_+#]|$)`, 'i');
       if (regex.test(text)) {
         foundSkills.add(tech);
       }
