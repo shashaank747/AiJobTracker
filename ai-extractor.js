@@ -524,59 +524,70 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     }
 
     // 5. Check for Company Information / Career Inquiries
-    // Matches "tell me about paytm", "ell me about paytm", "info on paytm", "about paytm"
-    const companyQueryMatch = lower.match(/(?:t?ell\s+(?:me\s+)?about|info\s+(?:on|about)|details\s+about|what\s+about|know\s+about|overview\s+of)\s+([a-zA-Z0-9.\- ]+?)(?:\s+company|\s+careers?|\s+jobs?|[?!.]*$)/i) ||
+    // Matches "tell me about paytm", "info on paytm", "about google", "questions for samsung", or just the company name alone "samsung"
+    const companyQueryMatch = lower.match(/(?:t?ell\s+(?:me\s+)?about|info\s+(?:on|about)|details\s+about|what\s+about|know\s+about|overview\s+of|interview\s+questions?\s+for)\s+([a-zA-Z0-9.\- ]+?)(?:\s+company|\s+careers?|\s+jobs?|[?!.]*$)/i) ||
                              lower.match(/^(?:about|t?ell)\s+([a-zA-Z0-9.\- ]+)/i);
 
-    // Also check if any known company name is mentioned in the query
-    let targetedCompanyKey = null;
-    for (const key of Object.keys(COMPANY_DATABASE)) {
-      const regex = new RegExp(`\\b${key}\\b`, 'i');
-      if (regex.test(lower)) {
-        targetedCompanyKey = key;
-        break;
+    const hasStrongJobIndicators = /\b(?:salary|ctc|lpa|stipend|\$|₹|requirements|responsibilities|apply\s+url|job\s+portal|job\s+link|full-time|part-time|remote|hybrid|on-site)\b/i.test(text) ||
+                                  (/\b(?:applied|interviewing|offer|rejected)\b/i.test(lower) && /\b(?:to|at|for|as|on)\b/i.test(lower)) ||
+                                  (text.includes('\n') && text.length > 40);
+
+    // Only treat as company inquiry if not clearly a job description / application log
+    if (!hasStrongJobIndicators) {
+      let targetedCompanyKey = null;
+
+      // If user directly asked about the company or the entire input is just the company name
+      for (const key of Object.keys(COMPANY_DATABASE)) {
+        const isStandaloneCompany = new RegExp(`^${key}[.?! ]*$`, 'i').test(trimmed);
+        const matchesQuery = companyQueryMatch && new RegExp(`\\b${key}\\b`, 'i').test(lower);
+        const asksAboutCompany = new RegExp(`\\b(?:about|overview|info|interview questions for|rounds in)\\s+${key}\\b`, 'i').test(lower);
+
+        if (isStandaloneCompany || matchesQuery || asksAboutCompany) {
+          targetedCompanyKey = key;
+          break;
+        }
       }
-    }
 
-    if (targetedCompanyKey && COMPANY_DATABASE[targetedCompanyKey]) {
-      const info = COMPANY_DATABASE[targetedCompanyKey];
-      return {
-        message: `### 🏢 Company Overview: **${info.name}**\n\n` +
-          `**About the Company:**\n${info.overview}\n\n` +
-          `**Key Divisions & Product Lines:**\n` +
-          info.divisions.map(d => `- ${d}`).join('\n') + `\n\n` +
-          `**Roles They Regularly Hire For:**\n` +
-          info.roles.map(r => `- **${r}**`).join('\n') + `\n\n` +
-          `**🎯 Interview Process & Expectations:**\n` +
-          info.interviewProcess.map(s => `- ${s}`).join('\n') + `\n\n` +
-          `**Sample Interview Questions for ${info.name}:**\n` +
-          info.sampleQuestions.map((q, idx) => `${idx + 1}. *${q}*`).join('\n') + `\n\n` +
-          `🔗 **Official Career Portal:** [Explore ${info.name} Open Positions](${info.careerUrl})\n\n` +
-          `*(If you find a specific job listing you want to track, simply copy the job description and paste it here!)*`,
-        data: null
-      };
-    }
+      if (targetedCompanyKey && COMPANY_DATABASE[targetedCompanyKey]) {
+        const info = COMPANY_DATABASE[targetedCompanyKey];
+        return {
+          message: `### 🏢 Company Overview: **${info.name}**\n\n` +
+            `**About the Company:**\n${info.overview}\n\n` +
+            `**Key Divisions & Product Lines:**\n` +
+            info.divisions.map(d => `- ${d}`).join('\n') + `\n\n` +
+            `**Roles They Regularly Hire For:**\n` +
+            info.roles.map(r => `- **${r}**`).join('\n') + `\n\n` +
+            `**🎯 Interview Process & Expectations:**\n` +
+            info.interviewProcess.map(s => `- ${s}`).join('\n') + `\n\n` +
+            `**Sample Interview Questions for ${info.name}:**\n` +
+            info.sampleQuestions.map((q, idx) => `${idx + 1}. *${q}*`).join('\n') + `\n\n` +
+            `🔗 **Official Career Portal:** [Explore ${info.name} Open Positions](${info.careerUrl})\n\n` +
+            `*(If you find a specific job listing you want to track, simply copy the job description and paste it here!)*`,
+          data: null
+        };
+      }
 
-    // If company inquiry for a company not in our hardcoded dictionary
-    if (companyQueryMatch && !existingJob) {
-      const companyCandidate = companyQueryMatch[1].replace(/company|corporation|inc|ltd/gi, '').trim();
-      const capCompany = companyCandidate.charAt(0).toUpperCase() + companyCandidate.slice(1);
-      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(capCompany + ' careers jobs open roles')}`;
+      // If company inquiry for a company not in our hardcoded dictionary
+      if (companyQueryMatch && !existingJob) {
+        const companyCandidate = companyQueryMatch[1].replace(/company|corporation|inc|ltd/gi, '').trim();
+        const capCompany = companyCandidate.charAt(0).toUpperCase() + companyCandidate.slice(1);
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(capCompany + ' careers jobs open roles')}`;
 
-      return {
-        message: `### 🏢 Company Advisory: **${capCompany}**\n\n` +
-          `**Hiring & Role Expectations:**\n` +
-          `- **Core Engineering**: Companies like **${capCompany}** typically look for solid fundamentals in Data Structures & Algorithms, Clean Architecture, and hands-on system building.\n` +
-          `- **Key Competencies**: Proficiency in modern tech stacks, scalable system design, API development, and cross-functional collaboration.\n` +
-          `- **Typical Interview Rounds**:\n` +
-          `  1. Initial Recruiter Screening (Resume & background walk-through)\n` +
-          `  2. Online Coding Assessment (Algorithms & Problem Solving)\n` +
-          `  3. Technical In-depth Round (System Design & Code Craft)\n` +
-          `  4. Cultural Fit & Behavioral Leadership (STAR method)\n\n` +
-          `🔍 **Career Portal & Open Roles:** [Search ${capCompany} Career Portal & Job Openings](${searchUrl})\n\n` +
-          `💡 **Next Step:** Copy any job description for **${capCompany}** and paste it here to automatically extract the role, salary, location, and track your application!`,
-        data: null
-      };
+        return {
+          message: `### 🏢 Company Advisory: **${capCompany}**\n\n` +
+            `**Hiring & Role Expectations:**\n` +
+            `- **Core Engineering**: Companies like **${capCompany}** typically look for solid fundamentals in Data Structures & Algorithms, Clean Architecture, and hands-on system building.\n` +
+            `- **Key Competencies**: Proficiency in modern tech stacks, scalable system design, API development, and cross-functional collaboration.\n` +
+            `- **Typical Interview Rounds**:\n` +
+            `  1. Initial Recruiter Screening (Resume & background walk-through)\n` +
+            `  2. Online Coding Assessment (Algorithms & Problem Solving)\n` +
+            `  3. Technical In-depth Round (System Design & Code Craft)\n` +
+            `  4. Cultural Fit & Behavioral Leadership (STAR method)\n\n` +
+            `🔍 **Career Portal & Open Roles:** [Search ${capCompany} Career Portal & Job Openings](${searchUrl})\n\n` +
+            `💡 **Next Step:** Copy any job description for **${capCompany}** and paste it here to automatically extract the role, salary, location, and track your application!`,
+          data: null
+        };
+      }
     }
 
     // 6. Check for Interview Prep inquiries on the ACTIVE job
