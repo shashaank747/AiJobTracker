@@ -254,6 +254,236 @@ body {
   letter-spacing: 0.05em;
 }
 
+/* ==========================================================================
+   Sidebar Activity & Response Dashboard Widget (Above New Application)
+   ========================================================================== */
+.sidebar-dashboard-widget {
+  background: rgba(18, 18, 22, 0.7);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: var(--transition);
+}
+
+.sidebar-dashboard-widget:hover {
+  border-color: var(--border-hover);
+}
+
+.s-dash-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.s-dash-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-main);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.s-dash-title svg {
+  color: #a5b4fc;
+}
+
+.s-dash-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.s-dash-preset-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+
+.s-dash-preset-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.s-dash-preset-btn.active {
+  background: rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.s-dash-date-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+}
+
+.s-dash-date-icon {
+  font-size: 0.85rem;
+}
+
+.s-dash-date-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.s-dash-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+  transform: scale(0.85);
+}
+
+.s-dash-clear-date {
+  background: transparent;
+  border: none;
+  color: var(--text-subtle);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.s-dash-clear-date:hover {
+  color: var(--accent-rose);
+}
+
+.s-dash-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.s-stat-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.s-stat-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.s-stat-card.s-stat-calls:hover {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.s-stat-card.s-stat-pending:hover {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.s-stat-card.s-stat-rejected:hover {
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
+.s-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.s-stat-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.s-stat-value {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.s-stat-calls .s-stat-value {
+  color: #34d399;
+}
+
+.s-stat-pending .s-stat-value {
+  color: #fbbf24;
+}
+
+.s-stat-rejected .s-stat-value {
+  color: #fb7185;
+}
+
+.s-stat-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.s-dash-rate-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.s-rate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--text-subtle);
+  font-weight: 600;
+}
+
+.s-rate-percent {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.s-rate-track {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.s-rate-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #10b981);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
 .btn-new-chat {
   width: 100%;
   display: flex;
@@ -3694,5 +3924,85 @@ body.theme-light .thinking-status-text {
     box-shadow: 15px 0 0 var(--key), 30px 0 0 var(--key), 45px 0 0 var(--key), 60px 0 0 var(--key), 75px 0 0 var(--key), 90px 0 0 var(--key), 22px 10px 0 var(--key), 37px 12px 0 var(--key), 52px 10px 0 var(--key), 60px 10px 0 var(--key), 68px 10px 0 var(--key), 83px 10px 0 var(--key);
   }
 }
+
+body.theme-light .sidebar-dashboard-widget {
+  background: #dfe4eb;
+  border-color: rgba(15, 23, 42, 0.15);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+body.theme-light .s-dash-title {
+  color: #0f172a;
+}
+
+body.theme-light .s-dash-title svg {
+  color: #4338ca;
+}
+
+body.theme-light .s-dash-preset-btn {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #475569;
+}
+
+body.theme-light .s-dash-preset-btn:hover {
+  background: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+body.theme-light .s-dash-preset-btn.active {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #0f172a;
+}
+
+body.theme-light .s-dash-date-picker-row {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+body.theme-light .s-dash-date-input {
+  color: #0f172a;
+}
+
+body.theme-light .s-dash-date-input::-webkit-calendar-picker-indicator {
+  filter: none;
+}
+
+body.theme-light .s-stat-card {
+  background: #eef2f6;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+body.theme-light .s-stat-card:hover {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.22);
+}
+
+body.theme-light .s-stat-value {
+  color: #0f172a;
+}
+
+body.theme-light .s-stat-calls .s-stat-value {
+  color: #047857;
+}
+
+body.theme-light .s-stat-pending .s-stat-value {
+  color: #b45309;
+}
+
+body.theme-light .s-stat-rejected .s-stat-value {
+  color: #be123c;
+}
+
+body.theme-light .s-stat-label,
+body.theme-light .s-rate-header {
+  color: #475569;
+}
+
+body.theme-light .s-rate-track {
+  background: rgba(15, 23, 42, 0.1);
+}
+
 
 

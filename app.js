@@ -144,6 +144,25 @@ class JobTrackerApp {
     this.cloudStatusDot = this.cloudStatusBadge.querySelector('.status-dot');
     this.cloudStatusText = document.getElementById('cloudStatusText');
 
+    // Sidebar Activity Dashboard
+    this.sidebarDashboardWidget = document.getElementById('sidebarDashboardWidget');
+    this.sidebarDateFilter = document.getElementById('sidebarDateFilter');
+    this.btnClearDateFilter = document.getElementById('btnClearDateFilter');
+    this.btnSDashAll = document.getElementById('btnSDashAll');
+    this.btnSDashToday = document.getElementById('btnSDashToday');
+    this.sStatAppliedCount = document.getElementById('sStatAppliedCount');
+    this.sStatAppliedLabel = document.getElementById('sStatAppliedLabel');
+    this.sStatCallsCount = document.getElementById('sStatCallsCount');
+    this.sStatPendingCount = document.getElementById('sStatPendingCount');
+    this.sStatRejectedCount = document.getElementById('sStatRejectedCount');
+    this.sStatCallRate = document.getElementById('sStatCallRate');
+    this.sStatCallProgress = document.getElementById('sStatCallProgress');
+    this.sStatCardApplied = document.getElementById('sStatCardApplied');
+    this.sStatCardCalls = document.getElementById('sStatCardCalls');
+    this.sStatCardPending = document.getElementById('sStatCardPending');
+    this.sStatCardRejected = document.getElementById('sStatCardRejected');
+    this.activeSidebarDate = null;
+
     // Chat UI
     this.chatViewport = document.getElementById('chatViewport');
     this.chatMessagesEl = document.getElementById('chatMessages');
@@ -455,6 +474,80 @@ class JobTrackerApp {
       this.brandIconCollapse.addEventListener('click', () => this.closeSidebar());
     }
 
+    // Sidebar Activity Dashboard Events
+    if (this.sidebarDateFilter) {
+      this.sidebarDateFilter.addEventListener('change', (e) => {
+        this.activeSidebarDate = e.target.value || null;
+        this.updateSidebarDatePresetUi();
+        this.updateSidebarDashboard();
+      });
+    }
+
+    if (this.btnSDashAll) {
+      this.btnSDashAll.addEventListener('click', () => {
+        this.activeSidebarDate = null;
+        if (this.sidebarDateFilter) this.sidebarDateFilter.value = '';
+        this.updateSidebarDatePresetUi();
+        this.updateSidebarDashboard();
+      });
+    }
+
+    if (this.btnSDashToday) {
+      this.btnSDashToday.addEventListener('click', () => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        this.activeSidebarDate = todayStr;
+        if (this.sidebarDateFilter) this.sidebarDateFilter.value = todayStr;
+        this.updateSidebarDatePresetUi();
+        this.updateSidebarDashboard();
+      });
+    }
+
+    if (this.btnClearDateFilter) {
+      this.btnClearDateFilter.addEventListener('click', () => {
+        this.activeSidebarDate = null;
+        if (this.sidebarDateFilter) this.sidebarDateFilter.value = '';
+        this.updateSidebarDatePresetUi();
+        this.updateSidebarDashboard();
+      });
+    }
+
+    // Interactive card clicks to navigate and filter
+    if (this.sStatCardApplied) {
+      this.sStatCardApplied.addEventListener('click', () => {
+        this.switchView('dashboard');
+        this.filterStatus.value = 'all';
+        this.currentFilterStatus = 'all';
+        this.renderApplicationsGrid();
+      });
+    }
+
+    if (this.sStatCardCalls) {
+      this.sStatCardCalls.addEventListener('click', () => {
+        this.switchView('dashboard');
+        this.filterStatus.value = 'Interviewing';
+        this.currentFilterStatus = 'Interviewing';
+        this.renderApplicationsGrid();
+      });
+    }
+
+    if (this.sStatCardPending) {
+      this.sStatCardPending.addEventListener('click', () => {
+        this.switchView('dashboard');
+        this.filterStatus.value = 'Applied';
+        this.currentFilterStatus = 'Applied';
+        this.renderApplicationsGrid();
+      });
+    }
+
+    if (this.sStatCardRejected) {
+      this.sStatCardRejected.addEventListener('click', () => {
+        this.switchView('dashboard');
+        this.filterStatus.value = 'Rejected';
+        this.currentFilterStatus = 'Rejected';
+        this.renderApplicationsGrid();
+      });
+    }
+
     // Chat input auto-grow, slash commands, and submit
     this.chatInput.addEventListener('input', () => {
       this.chatInput.style.height = 'auto';
@@ -722,6 +815,71 @@ class JobTrackerApp {
     if (this.totalAppsBadge) {
       this.totalAppsBadge.textContent = total;
     }
+    this.updateSidebarDashboard();
+  }
+
+  updateSidebarDatePresetUi() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (this.btnSDashAll) {
+      this.btnSDashAll.classList.toggle('active', !this.activeSidebarDate);
+    }
+    if (this.btnSDashToday) {
+      this.btnSDashToday.classList.toggle('active', this.activeSidebarDate === todayStr);
+    }
+    if (this.btnClearDateFilter) {
+      this.btnClearDateFilter.style.display = this.activeSidebarDate ? 'inline-flex' : 'none';
+    }
+  }
+
+  updateSidebarDashboard() {
+    if (!this.sStatAppliedCount) return;
+
+    let list = this.applications || [];
+    if (this.activeSidebarDate) {
+      list = list.filter(a => {
+        const appDate = a.appliedDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
+        return appDate === this.activeSidebarDate;
+      });
+      if (this.sStatAppliedLabel) {
+        const parts = this.activeSidebarDate.split('-');
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          this.sStatAppliedLabel.textContent = `On ${formatted}`;
+        } else {
+          this.sStatAppliedLabel.textContent = 'Selected Date';
+        }
+      }
+    } else {
+      if (this.sStatAppliedLabel) {
+        this.sStatAppliedLabel.textContent = 'Total Applied';
+      }
+    }
+
+    const totalApplied = list.length;
+    const gotCalls = list.filter(a => {
+      const s = (a.status || '').toLowerCase();
+      return s === 'interviewing' || s === 'offer';
+    }).length;
+
+    const noCallYet = list.filter(a => {
+      const s = (a.status || '').toLowerCase();
+      return s === 'applied' || s === 'draft';
+    }).length;
+
+    const rejected = list.filter(a => {
+      const s = (a.status || '').toLowerCase();
+      return s === 'rejected';
+    }).length;
+
+    const rate = totalApplied > 0 ? Math.round((gotCalls / totalApplied) * 100) : 0;
+
+    if (this.sStatAppliedCount) this.sStatAppliedCount.textContent = totalApplied;
+    if (this.sStatCallsCount) this.sStatCallsCount.textContent = gotCalls;
+    if (this.sStatPendingCount) this.sStatPendingCount.textContent = noCallYet;
+    if (this.sStatRejectedCount) this.sStatRejectedCount.textContent = rejected;
+    if (this.sStatCallRate) this.sStatCallRate.textContent = `${rate}%`;
+    if (this.sStatCallProgress) this.sStatCallProgress.style.width = `${rate}%`;
   }
 
   // ==========================================
