@@ -98,6 +98,26 @@ const COMPANY_DATABASE = {
       "Refactoring legacy payment endpoints with zero downtime."
     ],
     careerUrl: "https://stripe.com/jobs"
+  },
+  paytm: {
+    name: "Paytm (One97 Communications)",
+    overview: "Paytm is India's leading digital payments, financial technology, and QR soundbox merchant ecosystem, founded by Vijay Shekhar Sharma. It powers payments, bill utilities, banking, commerce, and cloud solutions for millions of consumers and merchants across India.",
+    divisions: ["Payments & UPI Infrastructure", "Merchant Soundbox & POS Hardware Solutions", "Paytm Money (Wealth, Stocks, Mutual Funds)", "Travel, Movie & Event Ticketing Commerce"],
+    roles: ["Software Engineer (Backend: Java, Spring Boot, Microservices, Node.js)", "Frontend / Full Stack Engineer (React, Next.js, React Native)", "Data Engineer & Big Data (Kafka, Spark, Hadoop, ClickHouse)", "Cloud DevOps & Site Reliability Engineer (AWS, Kubernetes, Scale)"],
+    interviewProcess: [
+      "Online Assessment (OA): HackerEarth/Mettl test with 2-3 DSA problems (Arrays, HashMaps, Graphs, Greedy, Dynamic Programming).",
+      "Technical Round 1 (Problem Solving & DSA): In-depth algorithmic coding, multithreading, concurrency, and OOPs concepts in Java/C++/Go.",
+      "Technical Round 2 (System Design & LLD): Low-Level Design (e.g. Designing a Wallet, Rate Limiter, or Soundbox audio queue) with strict transaction idempotency and zero-loss guarantees.",
+      "Techno-Managerial Round: Past production challenges, handling traffic spikes during flash sales, distributed locks, and team culture."
+    ],
+    sampleQuestions: [
+      "Design a distributed, highly available digital wallet system with strict transaction idempotency and ACID guarantees.",
+      "How would you architect a real-time event streaming and audio notification pipeline for 10+ million Paytm Soundbox devices?",
+      "How do you handle race conditions and concurrency when two simultaneous debit requests hit the same account balance?",
+      "Implement a custom in-memory cache with TTL and LRU eviction policy from scratch.",
+      "Explain how distributed locks work in high-throughput microservices using Redis (Redlock) or ZooKeeper."
+    ],
+    careerUrl: "https://paytm.com/careers"
   }
 };
 
@@ -108,25 +128,52 @@ export const AiExtractor = {
   async processInput(text, existingJob = null, history = []) {
     const settings = Config.getSettings();
 
-    // If Gemini key is available and selected (or default)
+    // 1. Try Vercel Serverless /api/chat (utilizes server GEMINI_API_KEY)
+    try {
+      const serverRes = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          existingJob,
+          history,
+          apiKey: settings.geminiKey || undefined
+        })
+      });
+
+      if (serverRes.ok) {
+        const json = await serverRes.json();
+        if (json.message) {
+          return {
+            message: json.message,
+            data: json.data || null,
+            provider: 'gemini'
+          };
+        }
+      }
+    } catch (serverErr) {
+      console.warn('Serverless endpoint not reachable, trying direct client API:', serverErr);
+    }
+
+    // 2. If Gemini key is available in client settings
     if (settings.geminiKey && settings.aiProvider !== 'openai' && settings.aiProvider !== 'heuristic') {
       try {
         return await this.extractWithGemini(text, existingJob, history, settings);
       } catch (err) {
-        console.warn('Gemini extraction failed, falling back to career advisor:', err);
+        console.warn('Client Gemini extraction failed:', err);
       }
     }
 
-    // If OpenAI key is available and selected
+    // 3. If OpenAI key is available in client settings
     if (settings.openaiKey && settings.aiProvider === 'openai') {
       try {
         return await this.extractWithOpenAI(text, existingJob, history, settings);
       } catch (err) {
-        console.warn('OpenAI extraction failed, falling back to career advisor:', err);
+        console.warn('Client OpenAI extraction failed:', err);
       }
     }
 
-    // Fallback: Smart Career Advisor & Heuristic Extractor
+    // 4. Fallback: Offline Smart Career Advisor & Heuristic Extractor
     return this.extractWithHeuristics(text, existingJob);
   },
 
@@ -319,15 +366,15 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     }
 
     // 5. Check for Company Information / Career Inquiries
-    // e.g. "tell about samsung", "can you tell about samsung company", "about google", "info on stripe"
-    const companyQueryMatch = lower.match(/(?:tell\s+(?:me\s+)?about|info\s+on|details\s+about|what\s+about|know\s+about|overview\s+of)\s+([a-zA-Z0-9.\- ]+?)(?:\s+company|\s+careers?|\s+jobs?|[?!.]*$)/i) ||
-                             lower.match(/^(?:about|tell)\s+([a-zA-Z0-9.\- ]+)/i);
+    // Matches "tell me about paytm", "ell me about paytm", "info on paytm", "about paytm"
+    const companyQueryMatch = lower.match(/(?:t?ell\s+(?:me\s+)?about|info\s+(?:on|about)|details\s+about|what\s+about|know\s+about|overview\s+of)\s+([a-zA-Z0-9.\- ]+?)(?:\s+company|\s+careers?|\s+jobs?|[?!.]*$)/i) ||
+                             lower.match(/^(?:about|t?ell)\s+([a-zA-Z0-9.\- ]+)/i);
 
-    // Also check if any known company name is specifically mentioned in a question
+    // Also check if any known company name is mentioned in the query
     let targetedCompanyKey = null;
     for (const key of Object.keys(COMPANY_DATABASE)) {
       const regex = new RegExp(`\\b${key}\\b`, 'i');
-      if (regex.test(lower) && (companyQueryMatch || /\b(company|careers?|interview|jobs?|expect|rounds?)\b/i.test(lower))) {
+      if (regex.test(lower)) {
         targetedCompanyKey = key;
         break;
       }
