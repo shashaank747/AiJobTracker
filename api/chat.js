@@ -1,18 +1,36 @@
 // Vercel Serverless Function: /api/chat
-// Connects JobTrackerAI directly to Google Gemini API using process.env.GEMINI_API_KEY
+// Connects JobTrackerAI to Google Gemini API (or OpenAI API)
 
 export default async function handler(req, res) {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
   );
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  // Diagnostics endpoint: GET /api/chat returns available models
+  if (req.method === 'GET') {
+    const key = req.query?.key || geminiKey;
+    if (!key) {
+      return res.status(400).json({ error: 'No GEMINI_API_KEY provided or configured.' });
+    }
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
   }
 
   if (req.method !== 'POST') {
@@ -20,67 +38,117 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, existingJob, history, apiKey: clientApiKey } = req.body || {};
+    const { text, existingJob, history, apiKey: clientApiKey, provider = 'auto' } = req.body || {};
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Message text is required.' });
     }
 
-    const apiKey = clientApiKey || process.env.GEMINI_API_KEY;
+    const effectiveGeminiKey = (clientApiKey && !clientApiKey.startsWith('sk-')) ? clientApiKey : geminiKey;
+    const effectiveOpenaiKey = (clientApiKey && clientApiKey.startsWith('sk-')) ? clientApiKey : openaiKey;
 
-    if (!apiKey) {
-      return res.status(500).json({
-        error: 'GEMINI_API_KEY not configured on server or in settings.'
-      });
-    }
+    const systemPrompt = `You are JobTrackerAI, an intelligent conversational AI career assistant and job application tracker.
+You act like ChatGPT / Gemini, offering full conversational answers, career advice, and interview preparation, while also automatically extracting job application details when presented with job posts.
 
-    const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    const systemPrompt = `You are JobTrackerAI, an intelligent conversational AI career assistant and job application tracker powered by Gemini.
-
-You have two core capabilities:
-
-1. FULL CONVERSATIONAL INTELLIGENCE & CAREER ADVISORY:
-- Act like ChatGPT / Gemini. Converse warmly, intelligently, and helpfully on ANY topic.
-- Answer user questions thoroughly with rich, beautiful Markdown formatting (headings, bullet points, links, bold text).
-- When asked about ANY company (e.g. "tell me about paytm", "samsung", "google", "meta", startups):
-  * Provide a detailed overview of the company, its business model, and engineering culture.
-  * Explain key engineering & tech stacks (e.g. Java, Spring, Microservices, React, Node, Python, Cloud).
-  * Break down typical interview rounds (Coding OA, System Design, Tech Deep-Dive, HR/Behavioral).
-  * Provide 3-5 real interview questions asked by that company.
-  * Include a link to their career portal.
-  * For all advice, research, and conversational questions, set "data": null in your response.
-- If asked about an active job loaded in the session (e.g. "what is this role expecting?", "give me questions"):
-  * Analyze that specific role, company, and tech stack in detail.
+CORE CAPABILITIES:
+1. FULL CONVERSATIONAL INTELLIGENCE & ADVISORY:
+- Answer ANY question naturally, intelligently, and thoroughly using rich Markdown (headers, bullet points, code blocks, bold text).
+- When asked about ANY company (e.g., "tell me about paytm", "samsung", "google", "meta", startups):
+  * Give an overview of the company, business model, and tech engineering culture.
+  * Highlight tech stacks (Java, Spring, Node, Python, React, Go, AWS, etc.).
+  * Outline the interview process and rounds (OA, System Design, DSA, Behavioral).
+  * Provide typical interview questions asked by that company.
+  * Provide a link to their careers site.
+  * For general conversation, company research, and questions, set "data": null.
+- When asked about an existing job in the tracker:
+  * Provide deep analysis, salary negotiation tips, and tailored interview advice.
   * Set "data": null.
 
-2. AUTOMATED JOB APPLICATION EXTRACTION & TRACKING:
-- Whenever the user pastes a Job Description (JD), an application confirmation email, an application link, or asks to update status/salary of an applied job:
-  Extract all information and return the "data" object:
+2. JOB APPLICATION EXTRACTION & TRACKING:
+- Whenever the user pastes a job description (JD), job link, application confirmation email, or asks to track a job:
+  Extract structured details into "data":
   {
     "companyName": "Company name",
-    "roleTitle": "Role title",
+    "roleTitle": "Role / Position title",
     "jobType": "Full-time" | "Internship" | "Contract" | "Part-time",
     "workMode": "Remote" | "Hybrid" | "On-site",
     "location": "City, Country or Remote",
     "salary": "Disclosed salary or 'Not disclosed'",
-    "source": "Platform name (e.g., LinkedIn, Indeed, Company Careers)",
-    "applicationUrl": "Direct application URL if present",
-    "sourceUrl": "Listing portal URL if present",
+    "source": "Platform (e.g. LinkedIn, Indeed, Company Careers)",
+    "applicationUrl": "Application or portal URL if present",
+    "sourceUrl": "Listing URL if present",
     "status": "Applied" | "Interviewing" | "Offer" | "Rejected" | "Bookmarked",
     "appliedDate": "YYYY-MM-DD",
     "skills": ["Skill1", "Skill2", ...],
     "notes": "Short summary of key requirements or notes"
   }
-- If an existing job is provided, merge and update fields that changed.
+- If updating an existing job, preserve existing values and update only newly provided fields.
 
 OUTPUT FORMAT:
-Return ONLY a valid JSON object matching:
+Respond with ONLY valid JSON with keys:
 {
-  "message": "Your complete, formatted markdown response to the user",
+  "message": "Your rich, formatted markdown response to the user",
   "data": { ... } or null
 }`;
+
+    // --- TRY OPENAI IF KEY PROVIDED ---
+    if (effectiveOpenaiKey && (provider === 'openai' || !effectiveGeminiKey)) {
+      try {
+        const oaiResp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${effectiveOpenaiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              {
+                role: 'user',
+                content: `Active Job in Session: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Message: "${text}"`
+              }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.3
+          })
+        });
+
+        if (oaiResp.ok) {
+          const oaiData = await oaiResp.json();
+          const content = oaiData.choices?.[0]?.message?.content;
+          if (content) {
+            const parsed = JSON.parse(content);
+            return res.status(200).json({
+              message: parsed.message || 'Done',
+              data: parsed.data || null,
+              provider: 'openai'
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('OpenAI attempt failed, falling back to Gemini:', err.message);
+      }
+    }
+
+    // --- TRY GEMINI ---
+    if (!effectiveGeminiKey) {
+      return res.status(500).json({
+        error: 'No GEMINI_API_KEY or OPENAI_API_KEY configured. Please add one in Settings.'
+      });
+    }
+
+    const candidateModels = [
+      process.env.GEMINI_MODEL,
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-pro-latest'
+    ].filter(Boolean);
+
+    let lastError = null;
+    let candidateText = null;
 
     const requestBody = {
       contents: [
@@ -88,13 +156,7 @@ Return ONLY a valid JSON object matching:
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}
-
-Current Active Job in Session (if any):
-${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}
-
-User Message:
-"${text}"`
+              text: `${systemPrompt}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
             }
           ]
         }
@@ -105,20 +167,9 @@ User Message:
       }
     };
 
-    const candidateModels = [
-      process.env.GEMINI_MODEL,
-      'gemini-2.0-flash',
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-pro-latest',
-      'gemini-pro'
-    ].filter(Boolean);
-
-    let lastError = null;
-    let candidateText = null;
-
     for (const model of candidateModels) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveGeminiKey}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -130,8 +181,23 @@ User Message:
           candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (candidateText) break;
         } else {
-          const errData = await response.json().catch(() => ({}));
-          lastError = errData.error?.message || response.statusText;
+          // If responseMimeType failed, try without generationConfig
+          const fallbackResp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: requestBody.contents
+            })
+          });
+
+          if (fallbackResp.ok) {
+            const fbData = await fallbackResp.json();
+            candidateText = fbData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (candidateText) break;
+          } else {
+            const errData = await fallbackResp.json().catch(() => ({}));
+            lastError = errData.error?.message || response.statusText;
+          }
         }
       } catch (err) {
         lastError = err.message;
@@ -139,12 +205,30 @@ User Message:
     }
 
     if (!candidateText) {
-      return res.status(500).json({ error: lastError || 'No response generated by Gemini.' });
+      return res.status(500).json({
+        error: lastError || 'No response generated by Gemini models.'
+      });
     }
 
-    const parsed = JSON.parse(candidateText);
+    // Extract JSON safely even if wrapped in markdown ```json
+    let parsed = null;
+    try {
+      parsed = JSON.parse(candidateText);
+    } catch {
+      const jsonMatch = candidateText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          parsed = { message: candidateText, data: null };
+        }
+      } else {
+        parsed = { message: candidateText, data: null };
+      }
+    }
+
     return res.status(200).json({
-      message: parsed.message || 'Processed successfully.',
+      message: parsed.message || candidateText,
       data: parsed.data || null,
       provider: 'gemini'
     });
