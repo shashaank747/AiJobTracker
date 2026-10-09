@@ -261,5 +261,57 @@ export const SupabaseService = {
     }
 
     return { success: true };
+  },
+
+  async getUserProfile() {
+    // 1. Try local storage first for instant load
+    let profile = Config.getUserProfile();
+
+    // 2. Try remote Supabase if connected
+    const client = this.getClient();
+    if (client) {
+      try {
+        const { data, error } = await client
+          .from('user_profiles')
+          .select('profile_data')
+          .eq('id', 'primary_user')
+          .maybeSingle();
+
+        if (!error && data && data.profile_data) {
+          profile = {
+            ...profile,
+            ...data.profile_data
+          };
+          Config.saveUserProfile(profile);
+        }
+      } catch (err) {
+        // Table may not exist yet in Supabase, smoothly ignore and use local
+        console.debug('user_profiles table query notice:', err);
+      }
+    }
+
+    return profile;
+  },
+
+  async saveUserProfile(profile) {
+    // Always persist to local storage first
+    Config.saveUserProfile(profile);
+
+    const client = this.getClient();
+    if (client) {
+      try {
+        await client
+          .from('user_profiles')
+          .upsert({
+            id: 'primary_user',
+            updated_at: new Date().toISOString(),
+            profile_data: profile
+          }, { onConflict: 'id' });
+      } catch (err) {
+        console.debug('user_profiles remote sync notice:', err);
+      }
+    }
+
+    return { success: true, data: profile };
   }
 };

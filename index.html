@@ -84,6 +84,10 @@
               <span>Applications Tracker</span>
               <span class="count-badge" id="totalAppsBadge">0</span>
             </button>
+            <button id="navTabProfile" class="tab-btn">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              <span>About Me</span>
+            </button>
           </div>
         </div>
 
@@ -343,8 +347,388 @@
         </div>
       </section>
 
+      <!-- VIEW 3: ABOUT ME / CANDIDATE PROFILE VIEW -->
+      <section id="viewProfile" class="view-container">
+        <div class="profile-wrapper">
+          
+          <!-- Top Profile Action Bar -->
+          <div class="profile-top-bar">
+            <div class="profile-title-group">
+              <h2 class="profile-page-title">Candidate Profile & Dossier</h2>
+              <p class="profile-page-subtitle">Your personal background, 10th & 12th scores, semester-wise college marks, certifications, and portfolio projects. You can edit here manually or just tell Zuno in chat!</p>
+            </div>
+            <div class="profile-top-actions">
+              <button id="btnProfTalkZuno" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span>Ask Zuno</span>
+              </button>
+              <button id="btnSaveProfile" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                <span>Save Profile</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Hero Identity Card -->
+          <div class="profile-card profile-hero-card">
+            <div class="profile-avatar-column">
+              <div class="profile-avatar-container" id="profileAvatarContainer">
+                <img id="profileAvatarImg" src="" alt="Avatar" style="display: none;" />
+                <div class="profile-avatar-fallback" id="profileAvatarFallback">👤</div>
+                <label for="inputAvatarFile" class="avatar-upload-overlay" title="Upload Profile Picture">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                  <span>Upload</span>
+                </label>
+                <input type="file" id="inputAvatarFile" accept="image/*" style="display: none;" />
+              </div>
+              <input type="text" id="profAvatarUrl" class="profile-input-sm" placeholder="Or paste image URL" />
+            </div>
+
+            <div class="profile-hero-details">
+              <div class="form-row-2col">
+                <div class="prof-group">
+                  <label for="profFullName">Full Name</label>
+                  <input type="text" id="profFullName" placeholder="e.g. Shashaank Sajjanar" />
+                </div>
+                <div class="prof-group">
+                  <label for="profHeadline">Professional Title / Headline</label>
+                  <input type="text" id="profHeadline" placeholder="e.g. Software Development Engineer | Full Stack" />
+                </div>
+              </div>
+
+              <div class="prof-group">
+                <label for="profBio">Professional Summary / Bio</label>
+                <textarea id="profBio" rows="2" placeholder="Brief summary of your background, career focus, and aspirations..."></textarea>
+              </div>
+
+              <div class="form-row-3col">
+                <div class="prof-group">
+                  <label for="profEmail">Email Address</label>
+                  <input type="email" id="profEmail" placeholder="your.email@example.com" />
+                </div>
+                <div class="prof-group">
+                  <label for="profPhone">Phone Number</label>
+                  <input type="text" id="profPhone" placeholder="+91 98765 43210" />
+                </div>
+                <div class="prof-group">
+                  <label for="profLocation">Current Location</label>
+                  <input type="text" id="profLocation" placeholder="Bengaluru, India" />
+                </div>
+              </div>
+
+              <div class="form-row-3col">
+                <div class="prof-group">
+                  <label for="profPortfolio">Portfolio Link</label>
+                  <input type="url" id="profPortfolio" placeholder="https://myportfolio.dev" />
+                </div>
+                <div class="prof-group">
+                  <label for="profGithub">GitHub Profile</label>
+                  <input type="url" id="profGithub" placeholder="https://github.com/username" />
+                </div>
+                <div class="prof-group">
+                  <label for="profLinkedin">LinkedIn Profile</label>
+                  <input type="url" id="profLinkedin" placeholder="https://linkedin.com/in/username" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Academic Education & Semester Marks Section -->
+          <div class="profile-card">
+            <div class="profile-section-header">
+              <div class="sec-title-wrap">
+                <span class="sec-icon">🎓</span>
+                <div>
+                  <h3 class="sec-title">Education & Academic History</h3>
+                  <p class="sec-subtitle">10th, 12th/PUC, Degree college, and semester-by-semester marks</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 10th Standard -->
+            <div class="sub-education-card">
+              <div class="sub-edu-badge">10th Standard (Secondary School)</div>
+              <div class="form-row-4col">
+                <div class="prof-group">
+                  <label for="prof10thSchool">School Name</label>
+                  <input type="text" id="prof10thSchool" placeholder="e.g. St. Joseph's High School" />
+                </div>
+                <div class="prof-group">
+                  <label for="prof10thBoard">Board</label>
+                  <input type="text" id="prof10thBoard" placeholder="e.g. CBSE / ICSE / State" />
+                </div>
+                <div class="prof-group">
+                  <label for="prof10thMarks">Marks / Percentage / CGPA</label>
+                  <input type="text" id="prof10thMarks" placeholder="e.g. 92.4% or 9.4 CGPA" />
+                </div>
+                <div class="prof-group">
+                  <label for="prof10thYear">Passing Year</label>
+                  <input type="text" id="prof10thYear" placeholder="e.g. 2020" />
+                </div>
+              </div>
+            </div>
+
+            <!-- 12th Standard / Pre-University -->
+            <div class="sub-education-card">
+              <div class="sub-edu-badge">12th Standard / PUC (Higher Secondary)</div>
+              <div class="form-row-4col">
+                <div class="prof-group">
+                  <label for="prof12thSchool">College / School Name</label>
+                  <input type="text" id="prof12thSchool" placeholder="e.g. National Public School / Junior College" />
+                </div>
+                <div class="prof-group">
+                  <label for="prof12thBoard">Board / Stream</label>
+                  <input type="text" id="prof12thBoard" placeholder="e.g. CBSE Science (PCM)" />
+                </div>
+                <div class="prof-group">
+                  <label for="prof12thMarks">Marks / Percentage / CGPA</label>
+                  <input type="text" id="prof12thMarks" placeholder="e.g. 94.2%" />
+                </div>
+                <div class="prof-group">
+                  <label for="prof12thYear">Passing Year</label>
+                  <input type="text" id="prof12thYear" placeholder="e.g. 2022" />
+                </div>
+              </div>
+            </div>
+
+            <!-- College / University Degree -->
+            <div class="sub-education-card">
+              <div class="sub-edu-badge">Degree / Higher Education</div>
+              <div class="form-row-3col">
+                <div class="prof-group">
+                  <label for="profCollegeName">College / University Name</label>
+                  <input type="text" id="profCollegeName" placeholder="e.g. RV College of Engineering" />
+                </div>
+                <div class="prof-group">
+                  <label for="profCollegeDegree">Degree</label>
+                  <input type="text" id="profCollegeDegree" placeholder="e.g. B.Tech / B.E. / BCA / MCA" />
+                </div>
+                <div class="prof-group">
+                  <label for="profCollegeBranch">Major / Branch</label>
+                  <input type="text" id="profCollegeBranch" placeholder="e.g. Computer Science & Engineering" />
+                </div>
+              </div>
+              <div class="form-row-2col" style="margin-top: 10px;">
+                <div class="prof-group">
+                  <label for="profCollegeCgpa">Overall CGPA / Percentage</label>
+                  <input type="text" id="profCollegeCgpa" placeholder="e.g. 8.95 CGPA" />
+                </div>
+                <div class="prof-group">
+                  <label for="profCollegeGradYear">Graduation Year</label>
+                  <input type="text" id="profCollegeGradYear" placeholder="e.g. 2026" />
+                </div>
+              </div>
+
+              <!-- Marks of each semester -->
+              <div class="semester-marks-container">
+                <div class="semester-marks-header">
+                  <div>
+                    <h4 class="sem-marks-title">📊 Marks / SGPA of Each Semester</h4>
+                    <p class="sem-marks-subtitle">Track your performance across Semesters 1 to 8</p>
+                  </div>
+                  <div class="sem-avg-badge" id="profSemAvgBadge">Avg: -</div>
+                </div>
+
+                <div class="semester-grid">
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 1</span>
+                    <input type="text" id="profSem1" class="sem-input" placeholder="SGPA" />
+                  </div>
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 2</span>
+                    <input type="text" id="profSem2" class="sem-input" placeholder="SGPA" />
+                  </div>
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 3</span>
+                    <input type="text" id="profSem3" class="sem-input" placeholder="SGPA" />
+                  </div>
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 4</span>
+                    <input type="text" id="profSem4" class="sem-input" placeholder="SGPA" />
+                  </div>
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 5</span>
+                    <input type="text" id="profSem5" class="sem-input" placeholder="SGPA" />
+                  </div>
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 6</span>
+                    <input type="text" id="profSem6" class="sem-input" placeholder="SGPA" />
+                  </div>
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 7</span>
+                    <input type="text" id="profSem7" class="sem-input" placeholder="SGPA" />
+                  </div>
+                  <div class="sem-box">
+                    <span class="sem-label">Sem 8</span>
+                    <input type="text" id="profSem8" class="sem-input" placeholder="SGPA" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Projects Section -->
+          <div class="profile-card">
+            <div class="profile-section-header">
+              <div class="sec-title-wrap">
+                <span class="sec-icon">💻</span>
+                <div>
+                  <h3 class="sec-title">Projects & Portfolio</h3>
+                  <p class="sec-subtitle">Projects you have built with links and completion dates</p>
+                </div>
+              </div>
+              <button id="btnOpenAddProjectModal" class="btn btn-secondary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Add Project</span>
+              </button>
+            </div>
+
+            <div class="projects-list-grid" id="projectsList">
+              <!-- Dynamically populated project cards -->
+            </div>
+          </div>
+
+          <!-- Certifications Section -->
+          <div class="profile-card">
+            <div class="profile-section-header">
+              <div class="sec-title-wrap">
+                <span class="sec-icon">📜</span>
+                <div>
+                  <h3 class="sec-title">Certifications & Accreditations</h3>
+                  <p class="sec-subtitle">Official certificates, cloud credentials, and course awards</p>
+                </div>
+              </div>
+              <button id="btnOpenAddCertModal" class="btn btn-secondary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Add Certification</span>
+              </button>
+            </div>
+
+            <div class="certifications-list-grid" id="certificationsList">
+              <!-- Dynamically populated certificate cards -->
+            </div>
+          </div>
+
+          <!-- Skills Section -->
+          <div class="profile-card">
+            <div class="profile-section-header">
+              <div class="sec-title-wrap">
+                <span class="sec-icon">⚡</span>
+                <div>
+                  <h3 class="sec-title">Technical & Professional Skills</h3>
+                  <p class="sec-subtitle">Core technologies, frameworks, and tools in your arsenal</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="skills-manager">
+              <div class="skills-tag-cloud" id="profileSkillsContainer">
+                <!-- Dynamically rendered skill tags -->
+              </div>
+              <div class="add-skill-bar">
+                <input type="text" id="inputNewSkill" placeholder="Add skill (e.g. React, Python, AWS, Docker)..." />
+                <button id="btnAddSkill" class="btn btn-secondary btn-sm">Add Skill</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
     </main>
 
+  </div>
+
+  <!-- MODAL: ADD / EDIT PROJECT -->
+  <div class="modal-overlay" id="projectModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="projectModalTitle">Add Project</h2>
+          <p>Highlight your engineering builds, technologies, and achievements</p>
+        </div>
+        <button id="btnCloseProjectModal" class="btn-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modalProjTitle">Project Name / Title *</label>
+          <input type="text" id="modalProjTitle" placeholder="e.g. JobTrackerAI or Distributed Rate Limiter" required />
+        </div>
+
+        <div class="form-group">
+          <label for="modalProjDesc">Project Description</label>
+          <textarea id="modalProjDesc" rows="3" placeholder="Explain what the project does, key features, and architecture..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="modalProjTech">Tech Stack (comma-separated)</label>
+          <input type="text" id="modalProjTech" placeholder="e.g. React, Node.js, PostgreSQL, TailwindCSS" />
+        </div>
+
+        <div class="form-group">
+          <label for="modalProjLink">Project / GitHub / Demo Link</label>
+          <input type="url" id="modalProjLink" placeholder="https://github.com/username/project" />
+        </div>
+
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label for="modalProjStartDate">Start Date (Optional)</label>
+            <input type="date" id="modalProjStartDate" />
+          </div>
+          <div class="form-group">
+            <label for="modalProjFinishDate">Finish / Done Date</label>
+            <input type="date" id="modalProjFinishDate" />
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnCancelProjectModal" class="btn btn-secondary">Cancel</button>
+        <button id="btnSaveProjectModal" class="btn btn-primary">Save Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD / EDIT CERTIFICATION -->
+  <div class="modal-overlay" id="certModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 id="certModalTitle">Add Certification</h2>
+          <p>Add official certificates and verifiable credentials</p>
+        </div>
+        <button id="btnCloseCertModal" class="btn-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="modalCertName">Certificate Name *</label>
+          <input type="text" id="modalCertName" placeholder="e.g. AWS Certified Solutions Architect - Associate" required />
+        </div>
+
+        <div class="form-group">
+          <label for="modalCertIssuer">Issuing Organization *</label>
+          <input type="text" id="modalCertIssuer" placeholder="e.g. Amazon Web Services, Google Cloud, Coursera" />
+        </div>
+
+        <div class="form-row-2col">
+          <div class="form-group">
+            <label for="modalCertDate">Issue Date</label>
+            <input type="date" id="modalCertDate" />
+          </div>
+          <div class="form-group">
+            <label for="modalCertLink">Credential Link / Verification URL</label>
+            <input type="url" id="modalCertLink" placeholder="https://www.credly.com/badges/..." />
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnCancelCertModal" class="btn btn-secondary">Cancel</button>
+        <button id="btnSaveCertModal" class="btn btn-primary">Save Certification</button>
+      </div>
+    </div>
   </div>
 
   <!-- SETTINGS & CREDENTIALS MODAL -->

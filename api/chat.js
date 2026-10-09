@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, existingJob, history, allApplications = [], apiKey: clientApiKey, provider = 'auto' } = req.body || {};
+    const { text, existingJob, history, allApplications = [], userProfile = null, apiKey: clientApiKey, provider = 'auto' } = req.body || {};
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Message text is required.' });
@@ -59,7 +59,22 @@ export default async function handler(req, res) {
       return `PERSISTENT BACKEND DATABASE (${apps.length} stored applications):\n${summaryList}`;
     };
 
+    const formatProfileContext = (prof) => {
+      if (!prof) return "USER ABOUT ME PROFILE / DOSSIER: None recorded yet.";
+      return `USER ABOUT ME PROFILE / DOSSIER:
+- Name: ${prof.fullName || 'Not set'} | Title: ${prof.headline || 'Not set'}
+- Contact: ${prof.email || ''} | ${prof.phone || ''} | ${prof.location || ''}
+- 10th Marks: ${prof.education?.tenth?.marks || 'N/A'} (School: ${prof.education?.tenth?.schoolName || 'N/A'}, Board: ${prof.education?.tenth?.board || 'N/A'})
+- 12th Marks: ${prof.education?.twelfth?.marks || 'N/A'} (School: ${prof.education?.twelfth?.schoolName || 'N/A'}, Board/Stream: ${prof.education?.twelfth?.board || 'N/A'})
+- College / Degree: ${prof.education?.college?.collegeName || 'N/A'} (${prof.education?.college?.degree || 'N/A'} - ${prof.education?.college?.branch || 'N/A'}, CGPA: ${prof.education?.college?.overallCgpa || 'N/A'})
+- Semester Marks: Sem 1: ${prof.education?.college?.semesterMarks?.sem1 || '-'}, Sem 2: ${prof.education?.college?.semesterMarks?.sem2 || '-'}, Sem 3: ${prof.education?.college?.semesterMarks?.sem3 || '-'}, Sem 4: ${prof.education?.college?.semesterMarks?.sem4 || '-'}, Sem 5: ${prof.education?.college?.semesterMarks?.sem5 || '-'}, Sem 6: ${prof.education?.college?.semesterMarks?.sem6 || '-'}, Sem 7: ${prof.education?.college?.semesterMarks?.sem7 || '-'}, Sem 8: ${prof.education?.college?.semesterMarks?.sem8 || '-'}
+- Certifications (${(prof.certifications || []).length}): ${(prof.certifications || []).map(c => `${c.name} (${c.issuer || ''})`).join('; ') || 'None'}
+- Projects (${(prof.projects || []).length}): ${(prof.projects || []).map(p => `${p.title} [Tech: ${p.techStack || 'N/A'}, Link: ${p.projectUrl || 'N/A'}, Done: ${p.finishDate || 'N/A'}]`).join('; ') || 'None'}
+- Skills: ${(prof.skills || []).join(', ') || 'None'}`;
+    };
+
     const databaseContext = formatDatabaseContext(allApplications);
+    const profileContext = formatProfileContext(userProfile);
 
     const systemPrompt = `You are Zuno, an intelligent conversational AI career assistant and job application tracker at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your name or identity.
@@ -83,12 +98,27 @@ CORE CAPABILITIES:
 
 2. PERSISTENT DATABASE & SESSION QUERYING:
 - You have direct, live access to the user's persistent backend database and active session instance!
-- When the user asks about their application history, statistics, interview statuses, specific companies they applied to, salary details, or past applications (e.g. "How many applications do I have?", "Did I apply to Stripe?", "Show my interview rounds", "What is my latest application?", "Summarize my job search"):
+- When the user asks about their application history, statistics, interview statuses, specific companies they applied to, salary details, or past applications:
   * Query and analyze the provided "PERSISTENT BACKEND DATABASE" and "Active Job in Session".
   * Provide accurate, friendly, and comprehensive answers, tables, or summaries using their real data.
-  * Set "data": null when answering questions about stored applications or career advice.
+  * Set "data": null.
 
-3. JOB APPLICATION EXTRACTION & TRACKING:
+3. CANDIDATE PROFILE & "ABOUT ME" INTELLIGENCE:
+- You have direct, live access to the user's personal portfolio & academic profile!
+- When the user tells you to add or update their projects, certifications, 10th marks, 12th marks, semester marks (sem 1-8), college, or personal info (e.g. "Add project: JobTracker with React, finished yesterday", "My 10th marks are 95% at DPS", "Add sem 4 marks: 9.1", "Add certification: AWS Solutions Architect"):
+  * Confirm enthusiastically in "message".
+  * Set "data": null.
+  * Supply "profileUpdate" object in your JSON output with:
+    - For projects: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+    - For certifications: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+    - For semester marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
+    - For 10th marks: { "type": "update_education_10th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
+    - For 12th marks: { "type": "update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
+    - For college: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
+    - For personal details: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "..." }
+- When user asks about their profile, semester marks, or projects ("What projects have I done?", "What are my sem marks?"), answer from "USER ABOUT ME PROFILE / DOSSIER" and set "data": null.
+
+4. JOB APPLICATION EXTRACTION & TRACKING:
 - Whenever the user pastes a job description (JD), job link, application confirmation email, or asks to track a job:
   Extract structured details into "data":
   {
@@ -116,16 +146,15 @@ CRITICAL INSTRUCTION FOR APPLIED DATE:
   * "2 weeks ago" -> calculate 14 days before ${today}
   * "last month" -> calculate 30 days before ${today}
   * Explicit dates (e.g., "Oct 2", "15 September", "2026-09-25") -> convert to "YYYY-MM-DD".
-  * If the input is an email with a timestamp/date, use that timestamp's date.
 - ONLY set "appliedDate" to ${today} if the user does NOT specify any past application date or timeframe.
-- If updating an existing job, and the user specifies an applied date (e.g. "I actually applied last week" or "change applied date to 5 days ago"), update "appliedDate" accordingly.
-- If updating an existing job, preserve existing values and update only newly provided fields.
+- If updating an existing job, and the user specifies an applied date, update "appliedDate" accordingly.
 
 OUTPUT FORMAT:
 Respond with a JSON object with:
 {
   "message": "Your rich, formatted markdown response to the user",
-  "data": { ... } or null
+  "data": { ... } or null,
+  "profileUpdate": { ... } or null
 }
 Ensure output is valid JSON.`;
 
@@ -144,7 +173,7 @@ Ensure output is valid JSON.`;
               { role: 'system', content: systemPrompt },
               {
                 role: 'user',
-                content: `${databaseContext}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message: "${text}"`
+                content: `${databaseContext}\n\n${profileContext}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message: "${text}"`
               }
             ],
             response_format: { type: "json_object" },
@@ -160,6 +189,7 @@ Ensure output is valid JSON.`;
             return res.status(200).json({
               message: parsed.message || 'Done',
               data: parsed.data || null,
+              profileUpdate: parsed.profileUpdate || null,
               provider: 'openai'
             });
           }
@@ -196,7 +226,7 @@ Ensure output is valid JSON.`;
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\n${databaseContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
+              text: `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
             }
           ]
         }
@@ -252,10 +282,11 @@ Ensure output is valid JSON.`;
       }
     }
 
-    const detectedDate = parseAppliedDate(text, null);
-    const detectedSource = parseJobSource(text);
+    const isQuestionOrProfile = /^(what|when|where|which|how|who|did|have|list|show|any|status|my|add|update)\b/i.test(text.trim());
+    const detectedDate = !isQuestionOrProfile ? parseAppliedDate(text, null) : null;
+    const detectedSource = !isQuestionOrProfile ? parseJobSource(text) : null;
 
-    if (existingJob && (detectedDate || detectedSource)) {
+    if (!isQuestionOrProfile && existingJob && (detectedDate || detectedSource)) {
       if (!parsed.data) {
         parsed.data = { ...existingJob };
         parsed.message = parsed.message || `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`;
@@ -274,6 +305,7 @@ Ensure output is valid JSON.`;
     return res.status(200).json({
       message: parsed.message || candidateText,
       data: parsed.data || null,
+      profileUpdate: parsed.profileUpdate || null,
       provider: 'gemini'
     });
   } catch (err) {

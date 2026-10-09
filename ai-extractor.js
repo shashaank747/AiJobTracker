@@ -230,7 +230,7 @@ export const AiExtractor = {
   /**
    * Main entry point to parse a raw JD or a conversational follow-up
    */
-  async processInput(text, existingJob = null, history = [], allApplications = []) {
+  async processInput(text, existingJob = null, history = [], allApplications = [], userProfile = null) {
     const settings = Config.getSettings();
 
     const provider = settings.aiProvider || 'gemini';
@@ -238,7 +238,7 @@ export const AiExtractor = {
 
     // 1. If user explicitly chose Offline Heuristics
     if (provider === 'heuristic') {
-      result = await this.extractWithHeuristics(text, existingJob, allApplications);
+      result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
     } else {
       // 2. Try Vercel Serverless /api/chat with selected provider & persistent DB context
       try {
@@ -250,6 +250,7 @@ export const AiExtractor = {
             existingJob,
             history,
             allApplications,
+            userProfile,
             provider,
             apiKey: (provider === 'openai' ? settings.openaiKey : settings.geminiKey) || undefined
           })
@@ -261,6 +262,7 @@ export const AiExtractor = {
             result = {
               message: json.message,
               data: json.data || null,
+              profileUpdate: json.profileUpdate || null,
               provider: json.provider || provider
             };
           }
@@ -272,13 +274,13 @@ export const AiExtractor = {
       // 3. Direct Client Fallback:
       if (!result && provider === 'openai' && settings.openaiKey) {
         try {
-          result = await this.extractWithOpenAI(text, existingJob, history, settings, allApplications);
+          result = await this.extractWithOpenAI(text, existingJob, history, settings, allApplications, userProfile);
         } catch (err) {
           console.warn('Client OpenAI extraction failed:', err);
         }
       } else if (!result && provider === 'gemini' && settings.geminiKey) {
         try {
-          result = await this.extractWithGemini(text, existingJob, history, settings, allApplications);
+          result = await this.extractWithGemini(text, existingJob, history, settings, allApplications, userProfile);
         } catch (err) {
           console.warn('Client Gemini extraction failed:', err);
         }
@@ -286,12 +288,12 @@ export const AiExtractor = {
 
       // 4. Fallback: Offline Smart Career Advisor & Heuristic Extractor
       if (!result) {
-        result = await this.extractWithHeuristics(text, existingJob, allApplications);
+        result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
       }
     }
 
     // Post-processing deterministic guarantee for follow-up edits:
-    const isQueryOrQuestion = /^(what|when|where|which|how|who|did|have|list|show|any|status)\b/i.test(text.trim());
+    const isQueryOrQuestion = /^(what|when|where|which|how|who|did|have|list|show|any|status|my|add|update)\b/i.test(text.trim());
     const detectedDate = !isQueryOrQuestion ? parseAppliedDate(text, null) : null;
     const detectedSource = !isQueryOrQuestion ? parseJobSource(text) : null;
 
@@ -318,7 +320,7 @@ export const AiExtractor = {
   /**
    * Gemini API Extraction & Career Advisory
    */
-  async extractWithGemini(text, existingJob, history, settings, allApplications = []) {
+  async extractWithGemini(text, existingJob, history, settings, allApplications = [], userProfile = null) {
     const model = settings.geminiModel || 'gemini-3.8-flash';
     const apiKey = settings.geminiKey;
 
@@ -326,6 +328,10 @@ export const AiExtractor = {
     const databaseSummary = Array.isArray(allApplications) && allApplications.length > 0
       ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'}`).join('\n')
       : '0 applications in database.';
+
+    const profileSummary = userProfile
+      ? `Name: ${userProfile.fullName || 'N/A'} | 10th: ${userProfile.education?.tenth?.marks || 'N/A'} | 12th: ${userProfile.education?.twelfth?.marks || 'N/A'} | College: ${userProfile.education?.college?.collegeName || 'N/A'} | Projects: ${(userProfile.projects || []).length} | Certifications: ${(userProfile.certifications || []).length}`
+      : 'No profile recorded yet.';
 
     const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your identity.
@@ -343,20 +349,19 @@ Your capabilities:
    - When asked about their applications, history, stats, counts, interviews, offers, or specific companies they applied to:
      * Answer directly, accurately, and thoroughly using the database records.
      * Set "data": null.
-3. CAREER & COMPANY QUESTIONS: When user asks questions about a company (e.g. "tell about samsung company", "tell me about paytm"), interview questions, role expectations, or career tips:
+3. PROFILE / ABOUT ME INTELLIGENCE & UPDATES:
+   - When user tells you to add/update projects, semester marks, certifications, 10th/12th marks, or personal details:
+     * Confirm in "message", set "data": null, and provide "profileUpdate" in JSON output!
+   - When user asks about their profile, answer using their data.
+4. CAREER & COMPANY QUESTIONS: When user asks questions about a company, interview questions, role expectations, or career tips:
    - Provide a comprehensive, structured, and insightful markdown answer in "message".
-   - Set "data": null.
-4. ACTIVE JOB ADVICE: If an existing job is currently loaded in context and user asks about it:
-   - Analyze the active job's role, company, and tech stack in detail.
-   - Set "data": null.
-5. GENERAL CONVERSATION: If user asks ANY question, chats, or inquires:
-   - Act like ChatGPT / Gemini, converse intelligently, helpfully, and thoroughly.
    - Set "data": null.
 
 Return ONLY valid JSON matching this schema:
 {
   "message": "Your rich, formatted markdown answer to the user",
-  "data": { ... } or null
+  "data": { ... } or null,
+  "profileUpdate": { ... } or null
 }`;
 
     const requestBody = {
@@ -365,7 +370,7 @@ Return ONLY valid JSON matching this schema:
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\nPERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nCurrent Active Job in Session (if any):\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}\n\nUser Message:\n"${text}"`
+              text: `${systemPrompt}\n\nPERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nUSER PROFILE:\n${profileSummary}\n\nCurrent Active Job in Session (if any):\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}\n\nUser Message:\n"${text}"`
             }
           ]
         }
@@ -429,11 +434,12 @@ Return ONLY valid JSON matching this schema:
     return {
       message: parsed.message || candidateText,
       data: parsed.data || null,
+      profileUpdate: parsed.profileUpdate || null,
       provider: 'gemini'
     };
   },
 
-  async extractWithOpenAI(text, existingJob, history, settings, allApplications = []) {
+  async extractWithOpenAI(text, existingJob, history, settings, allApplications = [], userProfile = null) {
     const apiKey = settings.openaiKey;
     const url = 'https://api.openai.com/v1/chat/completions';
 
@@ -445,8 +451,9 @@ Return ONLY valid JSON matching this schema:
 Your name is Zuno.
 You have direct live access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
 When user asks about past applications, statistics, interview status, specific applied companies, or advice: provide a comprehensive markdown answer using the database records in "message" and set "data": null.
+When user asks you to add projects, certifications, semester marks, or update profile: return structured "profileUpdate" in JSON and set "data": null.
 When user pastes a job description (JD) or update: extract the job details in "data".
-Return JSON with { "message": "...", "data": { ... } or null }.`;
+Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -461,7 +468,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `PERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
+            content: `PERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nUSER PROFILE:\n${userProfile ? JSON.stringify(userProfile) : 'None'}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
           }
         ],
         temperature: 0.2
@@ -479,7 +486,8 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
 
     return {
       message: parsed.message || 'Processed request successfully.',
-      data: parsed.data,
+      data: parsed.data || null,
+      profileUpdate: parsed.profileUpdate || null,
       provider: 'openai'
     };
   },
@@ -488,7 +496,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
    * Smart Offline NLP Heuristic & Career Advisor
    * Handles company research, interview prep, greetings, AND job parsing offline
    */
-  extractWithHeuristics(text, existingJob = null, allApplications = []) {
+  extractWithHeuristics(text, existingJob = null, allApplications = [], userProfile = null) {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
@@ -496,7 +504,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
     if (isGreeting) {
       return {
-        message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Paste a Job Description**: I will extract company, role, salary, work mode, and application link.\n- **Refine Details**: Tell me dates or platforms (*\"applied on 21 sept\"*, *\"applied through LinkedIn\"*).\n- **Save to Database**: Type **/store** whenever you want to save to your tracker board!\n- **Query Applications**: Ask *\"How many jobs have I applied to?\"*, *\"Show my applications\"*, or *\"Did I apply to Stripe?\"*\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
+        message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Track Applications**: Paste any Job Description to extract and track.\n- **About Me Profile**: Tell me your projects (*\"Add project: JobTracker with React, link github.com...\"*), semester marks (*\"Add sem 5 marks: 8.9\"*), or certifications!\n- **Query Applications**: Ask *\"How many jobs have I applied to?\"*, *\"Show my applications\"*, or *\"Did I apply to Stripe?\"*\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
         data: null
       };
     }
@@ -504,7 +512,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     // 2. Check for "Who are you" / "What's your name"
     if (/^(who are you|what is your name|what's your name|your name)\b/i.test(lower)) {
       return {
-        message: "👋 I'm **Zuno**, your intelligent AI career assistant and job application tracker at **JobTrackerAI**!\n\nI can help you parse job descriptions, query your saved database applications, research companies, prepare for technical rounds, and organize your job hunt.",
+        message: "👋 I'm **Zuno**, your intelligent AI career assistant and job application tracker at **JobTrackerAI**!\n\nI can help you parse job descriptions, organize your applications, manage your personal profile & project portfolio, and prepare for interviews.",
         data: null
       };
     }
@@ -512,7 +520,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     // 3. Check for "How are you"
     if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
       return {
-        message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Refine application dates or source links.\n- Type **/store** to save to your database.\n- Ask me about your **saved applications** (*\"Show my applications\"* or *\"How many jobs did I apply to?\"*).\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
+        message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Tell me about your **projects, certifications, or semester marks** to update your profile.\n- Ask me about your **saved applications** (*\"Show my applications\"* or *\"How many jobs did I apply to?\"*).\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
         data: null
       };
     }
@@ -521,7 +529,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     const isHelp = /^(help|what can you do|how does this work|commands|instructions)\b/i.test(lower);
     if (isHelp) {
       return {
-        message: "💡 **How Zuno & JobTrackerAI Work:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Conversational Refinements**: Forgot something? Just say *\"applied on 21 sept\"* or *\"applied through LinkedIn\"* and I will update your card.\n3. **Query Your Database**: Ask me *\"How many applications do I have?\"*, *\"Show all applications\"*, or *\"Did I apply to Stripe?\"* anytime.\n4. **Store in Database**: Type **/store** to permanently save your drafted application to Supabase and your dashboard.\n5. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n6. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.",
+        message: "💡 **How Zuno & JobTrackerAI Work:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Candidate Profile (About Me)**: You can tell me *\"Add project: JobTrackerAI with React & Node, finished yesterday, link https://...\"* or *\"Add sem 4 marks: 8.9\"* and I will automatically update your profile!\n3. **Query Your Database**: Ask me *\"How many applications do I have?\"*, *\"Show all applications\"*, or *\"Did I apply to Stripe?\"* anytime.\n4. **Store in Database**: Type **/store** to permanently save your drafted application to Supabase and your dashboard.\n5. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n6. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.",
         data: null
       };
     }
@@ -530,9 +538,233 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
     if (isCasual) {
       return {
-        message: "You're welcome! Whenever you have another job to track or want to check your saved applications, feel free to ask.",
+        message: "You're welcome! Whenever you have another job to track or want to update your projects and profile, feel free to ask.",
         data: null
       };
+    }
+
+    // ==========================================
+    // Profile & "About Me" Conversational Actions
+    // ==========================================
+
+    // A. Add Project
+    const addProjectMatch = trimmed.match(/^(?:add\s+project|new\s+project|i\s+built\s+a\s+project|i\s+have\s+done\s+a\s+project|project)\s*[:\-]?\s*(.+)$/i);
+    if (addProjectMatch) {
+      const projRaw = addProjectMatch[1].trim();
+      let projectUrl = '';
+      const urlMatch = projRaw.match(/https?:\/\/[^\s]+/i);
+      if (urlMatch) projectUrl = urlMatch[0];
+
+      let finishDate = '';
+      const dateMatch = projRaw.match(/(?:done|finish(?:ed)?|completed?)\s+(?:on\s+)?(\d{4}[-/]\d{1,2}[-/]\d{1,2}|(?:\d{1,2}(?:st|nd|rd|th)?\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*(?:\s+\d{1,4})?|yesterday|last\s+week)/i);
+      if (dateMatch) finishDate = parseAppliedDate(dateMatch[0], '') || dateMatch[1];
+
+      let techStack = '';
+      const techMatch = projRaw.match(/(?:tech\s*stack|built\s+with|using|in|tech|technologies)\s*[:\-]?\s*([a-zA-Z0-9,\.\+\#\s]+?)(?:,\s*link|,\s*done|,\s*finish|\.|$)/i);
+      if (techMatch) techStack = techMatch[1].trim();
+
+      let title = projRaw.split(/,|\swith\s|\susing\s|\sbuilt\s|\slink\s/i)[0].replace(/^project\s*[:\-]?\s*/i, '').trim();
+      if (!title) title = 'My Project';
+
+      return {
+        message: `### 💻 Project Added to Your Profile!\n\n` +
+          `- **Project Name:** **${title}**\n` +
+          (techStack ? `- **Tech Stack:** ${techStack}\n` : '') +
+          (projectUrl ? `- **Project Link:** [Open Link](${projectUrl})\n` : '') +
+          (finishDate ? `- **Finished / Done Date:** ${finishDate}\n` : '') +
+          `\n*This project has been added to your **About Me** section and saved to persistent storage.*`,
+        profileUpdate: {
+          type: 'add_project',
+          project: {
+            id: 'proj_' + Date.now(),
+            title,
+            description: projRaw,
+            techStack: techStack || 'Full Stack',
+            projectUrl: projectUrl,
+            startDate: '',
+            finishDate: finishDate || new Date().toISOString().split('T')[0]
+          }
+        },
+        data: null
+      };
+    }
+
+    // B. Add Certification
+    const addCertMatch = trimmed.match(/^(?:add\s+cert(?:ification)?|new\s+cert(?:ification)?|certified\s+in|cetrifications?)\s*[:\-]?\s*(.+)$/i);
+    if (addCertMatch) {
+      const certRaw = addCertMatch[1].trim();
+      let link = '';
+      const urlMatch = certRaw.match(/https?:\/\/[^\s]+/i);
+      if (urlMatch) link = urlMatch[0];
+
+      let issuer = '';
+      const issuerMatch = certRaw.match(/(?:from|by|issued\s+by|organization|platform)\s+([a-zA-Z0-9\s]+?)(?:,\s*on|\s+on|\.|$)/i);
+      if (issuerMatch) issuer = issuerMatch[1].trim();
+
+      let issueDate = '';
+      const dateMatch = certRaw.match(/(?:on|in|date)\s+([a-zA-Z0-9\s,]+?)(?:\.|$)/i);
+      if (dateMatch) issueDate = dateMatch[1].trim();
+
+      let name = certRaw.split(/,|\sfrom\s|\sby\s|\sissued\s/i)[0].trim();
+      if (!name) name = certRaw;
+
+      return {
+        message: `### 📜 Certification Added to Your Profile!\n\n` +
+          `- **Certificate:** **${name}**\n` +
+          (issuer ? `- **Issuing Organization:** ${issuer}\n` : '') +
+          (issueDate ? `- **Date:** ${issueDate}\n` : '') +
+          (link ? `- **Credential Link:** [Verify Badge](${link})\n` : '') +
+          `\n*Saved to your **About Me** credentials list.*`,
+        profileUpdate: {
+          type: 'add_certification',
+          certification: {
+            id: 'cert_' + Date.now(),
+            name,
+            issuer: issuer || 'Verified Org',
+            issueDate: issueDate || new Date().toISOString().split('T')[0],
+            credentialUrl: link
+          }
+        },
+        data: null
+      };
+    }
+
+    // C. Add / Update Semester Marks (Sem 1 to Sem 8)
+    const semMarksMatch = lower.match(/\bsem(?:ester)?\s*([1-8])\s*(?:marks?|sgpa|score|cgpa)?\s*(?:is|to|:|=|\s+was|\s+i\s+got|\s+scored)?\s*(\d+(?:\.\d+)?%?)/i);
+    if (semMarksMatch) {
+      const semNum = semMarksMatch[1];
+      const score = semMarksMatch[2];
+      return {
+        message: `### 📊 Semester Marks Recorded!\n\nUpdated your **Semester ${semNum}** score to **${score}** in your academic dossier.`,
+        profileUpdate: {
+          type: 'update_sem_marks',
+          sem: `sem${semNum}`,
+          score: score
+        },
+        data: null
+      };
+    }
+
+    // D. 10th Standard Marks & School
+    const tenthMarksMatch = lower.match(/\b10th\s*(?:marks?|score|percentage|grade|board)?\s*(?:is|are|was|:|=|\s+i\s+scored)?\s*(\d+(?:\.\d+)?%?)/i);
+    if (tenthMarksMatch) {
+      const score = tenthMarksMatch[1];
+      const schoolMatch = text.match(/(?:from|at|school)\s+([A-Z][a-zA-Z0-9\s\.\,\'\-]+?)(?:,|\.|$)/);
+      const school = schoolMatch ? schoolMatch[1].trim() : '';
+      return {
+        message: `### 🎓 10th Standard Academic Record Updated!\n\n` +
+          `- **Score / Percentage:** **${score}**\n` +
+          (school ? `- **School:** ${school}\n` : '') +
+          `\n*Saved to your **About Me** profile!*`,
+        profileUpdate: {
+          type: 'update_education_10th',
+          marks: score,
+          schoolName: school
+        },
+        data: null
+      };
+    }
+
+    // E. 12th Standard Marks & College/School
+    const twelfthMarksMatch = lower.match(/\b12th\s*(?:marks?|score|percentage|grade|board|puc)?\s*(?:is|are|was|:|=|\s+i\s+scored)?\s*(\d+(?:\.\d+)?%?)/i);
+    if (twelfthMarksMatch) {
+      const score = twelfthMarksMatch[1];
+      const schoolMatch = text.match(/(?:from|at|college|school)\s+([A-Z][a-zA-Z0-9\s\.\,\'\-]+?)(?:,|\.|$)/);
+      const school = schoolMatch ? schoolMatch[1].trim() : '';
+      return {
+        message: `### 🎓 12th Standard Academic Record Updated!\n\n` +
+          `- **Score / Percentage:** **${score}**\n` +
+          (school ? `- **College / School:** ${school}\n` : '') +
+          `\n*Saved to your **About Me** profile!*`,
+        profileUpdate: {
+          type: 'update_education_12th',
+          marks: score,
+          schoolName: school
+        },
+        data: null
+      };
+    }
+
+    // F. College Name & Degree
+    const collegeMatch = lower.match(/(?:my\s+)?college\s+(?:is|name\s+is)\s+([a-zA-Z0-9\s\.\,\'\-]+?)(?:,|\.|$)/i);
+    if (collegeMatch) {
+      const colName = collegeMatch[1].trim();
+      return {
+        message: `### 🏛️ College Updated!\n\nRecorded **${colName}** as your college in your academic profile.`,
+        profileUpdate: {
+          type: 'update_college',
+          collegeName: colName
+        },
+        data: null
+      };
+    }
+
+    // G. Name Update via Zuno
+    const nameMatch = trimmed.match(/^my\s+name\s+is\s+([a-zA-Z\s\.\'\-]+?)(?:[!\.]|$)/i);
+    if (nameMatch) {
+      const newName = nameMatch[1].trim();
+      return {
+        message: `Nice to meet you, **${newName}**! I have updated your name on your **About Me** profile card.`,
+        profileUpdate: {
+          type: 'update_personal',
+          fullName: newName
+        },
+        data: null
+      };
+    }
+
+    // H. Querying Profile Information (Semester Marks, Projects, Summary)
+    const isProfileQuery = /\b(what\s+are\s+my\s+sem\s+marks|show\s+my\s+sem\s+marks|my\s+semester\s+marks|what\s+projects\s+(?:have\s+i|did\s+i)\s+(?:done|built|make)|show\s+my\s+projects|list\s+my\s+projects|show\s+(?:my\s+)?profile|what\s+is\s+my\s+profile|tell\s+me\s+about\s+my\s+profile|my\s+education|my\s+certifications?)\b/i.test(lower);
+    if (isProfileQuery) {
+      const prof = userProfile || Config.getUserProfile();
+      if (/\b(?:sem|semester)\b/i.test(lower)) {
+        const s = prof.education?.college?.semesterMarks || {};
+        return {
+          message: `### 📊 Your Semester Marks (Sem 1 to 8):\n\n` +
+            `| Semester | SGPA / Marks |\n` +
+            `|---|---|\n` +
+            `| **Sem 1** | ${s.sem1 || 'Not set'} |\n` +
+            `| **Sem 2** | ${s.sem2 || 'Not set'} |\n` +
+            `| **Sem 3** | ${s.sem3 || 'Not set'} |\n` +
+            `| **Sem 4** | ${s.sem4 || 'Not set'} |\n` +
+            `| **Sem 5** | ${s.sem5 || 'Not set'} |\n` +
+            `| **Sem 6** | ${s.sem6 || 'Not set'} |\n` +
+            `| **Sem 7** | ${s.sem7 || 'Not set'} |\n` +
+            `| **Sem 8** | ${s.sem8 || 'Not set'} |\n\n` +
+            `*College: **${prof.education?.college?.collegeName || 'N/A'}** (${prof.education?.college?.degree || 'N/A'})*`,
+          data: null
+        };
+      } else if (/\bprojects?\b/i.test(lower)) {
+        const projs = prof.projects || [];
+        if (projs.length === 0) {
+          return {
+            message: "You don't have any projects saved in your **About Me** profile yet. You can say *\"Add project: [title] [tech] [link]\"* or add them on your About Me page!",
+            data: null
+          };
+        }
+        let msg = `### 💻 Your Portfolio Projects (${projs.length}):\n\n`;
+        projs.forEach((p, idx) => {
+          msg += `${idx + 1}. **${p.title}**\n` +
+            `   - **Tech Stack:** ${p.techStack || 'N/A'}\n` +
+            (p.projectUrl ? `   - **Link:** [Open Project](${p.projectUrl})\n` : '') +
+            (p.finishDate ? `   - **Completed:** ${p.finishDate}\n` : '') + '\n';
+        });
+        return { message: msg, data: null };
+      } else {
+        // Overall profile summary
+        return {
+          message: `### 👤 Candidate Dossier Summary:\n\n` +
+            `- **Name:** **${prof.fullName || 'Not specified'}**\n` +
+            `- **Headline:** ${prof.headline || 'Not specified'}\n` +
+            `- **10th Standard:** ${prof.education?.tenth?.marks || 'N/A'} (${prof.education?.tenth?.schoolName || 'N/A'})\n` +
+            `- **12th Standard:** ${prof.education?.twelfth?.marks || 'N/A'} (${prof.education?.twelfth?.schoolName || 'N/A'})\n` +
+            `- **Degree College:** ${prof.education?.college?.collegeName || 'N/A'} (${prof.education?.college?.degree || 'N/A'} - ${prof.education?.college?.branch || 'N/A'})\n` +
+            `- **Projects Tracked:** **${(prof.projects || []).length}** projects\n` +
+            `- **Certifications:** **${(prof.certifications || []).length}** credentials\n\n` +
+            `*You can view and edit everything on the **About Me** tab in the top bar!*`,
+          data: null
+        };
+      }
     }
 
     // 6. Check for Current Active Application / Session Instance
@@ -653,7 +885,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
       return { message: msg, data: null };
     }
 
-    // 10. Specific Company Lookup in Past Applications (e.g. "Did I apply to Stripe?", "When did I apply to Google?", "Status of Stripe")
+    // 10. Specific Company Lookup in Past Applications
     const companyLookupMatch = lower.match(/\b(?:did\s+i\s+apply\s+(?:to|at)|have\s+i\s+applied\s+(?:to|at)|status\s+(?:of|for)|salary\s+(?:for|at)|when\s+did\s+i\s+apply\s+(?:to|at)|details\s+(?:of|for))\s+([a-zA-Z0-9.\- ]+?)(?:\?|$|\s+company|\s+job)/i);
     if (companyLookupMatch) {
       const searchTarget = companyLookupMatch[1].trim().toLowerCase();

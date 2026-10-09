@@ -19,3 +19,8 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Scratch and internal tools
+scratch/
+.playwright-mcp/
+skills-lock.json

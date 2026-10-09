@@ -206,11 +206,96 @@ class JobTrackerApp {
 
     // Toast Container
     this.toastContainer = document.getElementById('toastContainer');
+
+    // Profile State & Elements
+    this.navTabProfile = document.getElementById('navTabProfile');
+    this.viewProfile = document.getElementById('viewProfile');
+    this.userProfile = null;
+    this.editingProjectId = null;
+    this.editingCertId = null;
+
+    this.profFullName = document.getElementById('profFullName');
+    this.profHeadline = document.getElementById('profHeadline');
+    this.profBio = document.getElementById('profBio');
+    this.profEmail = document.getElementById('profEmail');
+    this.profPhone = document.getElementById('profPhone');
+    this.profLocation = document.getElementById('profLocation');
+    this.profPortfolio = document.getElementById('profPortfolio');
+    this.profGithub = document.getElementById('profGithub');
+    this.profLinkedin = document.getElementById('profLinkedin');
+    this.profAvatarUrl = document.getElementById('profAvatarUrl');
+    this.profileAvatarImg = document.getElementById('profileAvatarImg');
+    this.profileAvatarFallback = document.getElementById('profileAvatarFallback');
+    this.inputAvatarFile = document.getElementById('inputAvatarFile');
+    this.btnSaveProfile = document.getElementById('btnSaveProfile');
+    this.btnProfTalkZuno = document.getElementById('btnProfTalkZuno');
+
+    // Education inputs
+    this.prof10thSchool = document.getElementById('prof10thSchool');
+    this.prof10thBoard = document.getElementById('prof10thBoard');
+    this.prof10thMarks = document.getElementById('prof10thMarks');
+    this.prof10thYear = document.getElementById('prof10thYear');
+
+    this.prof12thSchool = document.getElementById('prof12thSchool');
+    this.prof12thBoard = document.getElementById('prof12thBoard');
+    this.prof12thMarks = document.getElementById('prof12thMarks');
+    this.prof12thYear = document.getElementById('prof12thYear');
+
+    this.profCollegeName = document.getElementById('profCollegeName');
+    this.profCollegeDegree = document.getElementById('profCollegeDegree');
+    this.profCollegeBranch = document.getElementById('profCollegeBranch');
+    this.profCollegeCgpa = document.getElementById('profCollegeCgpa');
+    this.profCollegeGradYear = document.getElementById('profCollegeGradYear');
+
+    this.profSemInputs = [
+      document.getElementById('profSem1'),
+      document.getElementById('profSem2'),
+      document.getElementById('profSem3'),
+      document.getElementById('profSem4'),
+      document.getElementById('profSem5'),
+      document.getElementById('profSem6'),
+      document.getElementById('profSem7'),
+      document.getElementById('profSem8')
+    ];
+    this.profSemAvgBadge = document.getElementById('profSemAvgBadge');
+
+    // Projects & Certs Elements
+    this.projectsList = document.getElementById('projectsList');
+    this.btnOpenAddProjectModal = document.getElementById('btnOpenAddProjectModal');
+    this.projectModal = document.getElementById('projectModal');
+    this.btnCloseProjectModal = document.getElementById('btnCloseProjectModal');
+    this.btnCancelProjectModal = document.getElementById('btnCancelProjectModal');
+    this.btnSaveProjectModal = document.getElementById('btnSaveProjectModal');
+    this.projectModalTitle = document.getElementById('projectModalTitle');
+    this.modalProjTitle = document.getElementById('modalProjTitle');
+    this.modalProjDesc = document.getElementById('modalProjDesc');
+    this.modalProjTech = document.getElementById('modalProjTech');
+    this.modalProjLink = document.getElementById('modalProjLink');
+    this.modalProjStartDate = document.getElementById('modalProjStartDate');
+    this.modalProjFinishDate = document.getElementById('modalProjFinishDate');
+
+    this.certificationsList = document.getElementById('certificationsList');
+    this.btnOpenAddCertModal = document.getElementById('btnOpenAddCertModal');
+    this.certModal = document.getElementById('certModal');
+    this.btnCloseCertModal = document.getElementById('btnCloseCertModal');
+    this.btnCancelCertModal = document.getElementById('btnCancelCertModal');
+    this.btnSaveCertModal = document.getElementById('btnSaveCertModal');
+    this.certModalTitle = document.getElementById('certModalTitle');
+    this.modalCertName = document.getElementById('modalCertName');
+    this.modalCertIssuer = document.getElementById('modalCertIssuer');
+    this.modalCertDate = document.getElementById('modalCertDate');
+    this.modalCertLink = document.getElementById('modalCertLink');
+
+    // Skills Elements
+    this.profileSkillsContainer = document.getElementById('profileSkillsContainer');
+    this.inputNewSkill = document.getElementById('inputNewSkill');
+    this.btnAddSkill = document.getElementById('btnAddSkill');
   }
 
   async init() {
     this.updateAiModelTag();
     await this.loadApplications();
+    await this.loadUserProfile();
     await this.checkSupabaseConnectionStatus();
 
     const savedSessionId = Config.getActiveSessionId();
@@ -222,14 +307,109 @@ class JobTrackerApp {
     }
   }
 
-
-
   bindEvents() {
     // Tab switching
     this.navTabChat.addEventListener('click', () => this.switchView('chat'));
     this.navTabDashboard.addEventListener('click', () => this.switchView('dashboard'));
+    if (this.navTabProfile) {
+      this.navTabProfile.addEventListener('click', () => this.switchView('profile'));
+    }
     if (this.btnEmptyGoChat) {
       this.btnEmptyGoChat.addEventListener('click', () => this.switchView('chat'));
+    }
+
+    // Profile Actions
+    if (this.btnSaveProfile) {
+      this.btnSaveProfile.addEventListener('click', () => this.saveProfileManually());
+    }
+    if (this.btnProfTalkZuno) {
+      this.btnProfTalkZuno.addEventListener('click', () => {
+        this.switchView('chat');
+        this.chatInput.value = 'Can you review my profile and projects and give me suggestions?';
+        this.chatInput.focus();
+      });
+    }
+
+    // Avatar Upload (Local image file reader)
+    if (this.inputAvatarFile) {
+      this.inputAvatarFile.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+            const dataUrl = loadEvent.target.result;
+            if (this.userProfile) this.userProfile.avatarUrl = dataUrl;
+            if (this.profAvatarUrl) this.profAvatarUrl.value = dataUrl;
+            this.updateAvatarDisplay(dataUrl);
+            this.showToast('Profile photo updated! Click Save Profile to persist.', 'info');
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+
+    if (this.profAvatarUrl) {
+      this.profAvatarUrl.addEventListener('input', (e) => {
+        const url = e.target.value.trim();
+        if (this.userProfile) this.userProfile.avatarUrl = url;
+        this.updateAvatarDisplay(url);
+      });
+    }
+
+    // Semester input change -> dynamic average SGPA computation
+    this.profSemInputs.forEach(input => {
+      if (input) {
+        input.addEventListener('input', () => this.updateSemAvgDisplay());
+      }
+    });
+
+    // Project Modal bindings
+    if (this.btnOpenAddProjectModal) {
+      this.btnOpenAddProjectModal.addEventListener('click', () => this.openProjectModal());
+    }
+    if (this.btnCloseProjectModal) {
+      this.btnCloseProjectModal.addEventListener('click', () => this.closeProjectModal());
+    }
+    if (this.btnCancelProjectModal) {
+      this.btnCancelProjectModal.addEventListener('click', () => this.closeProjectModal());
+    }
+    if (this.btnSaveProjectModal) {
+      this.btnSaveProjectModal.addEventListener('click', () => this.saveProjectFromModal());
+    }
+
+    // Cert Modal bindings
+    if (this.btnOpenAddCertModal) {
+      this.btnOpenAddCertModal.addEventListener('click', () => this.openCertModal());
+    }
+    if (this.btnCloseCertModal) {
+      this.btnCloseCertModal.addEventListener('click', () => this.closeCertModal());
+    }
+    if (this.btnCancelCertModal) {
+      this.btnCancelCertModal.addEventListener('click', () => this.closeCertModal());
+    }
+    if (this.btnSaveCertModal) {
+      this.btnSaveCertModal.addEventListener('click', () => this.saveCertFromModal());
+    }
+
+    // Skills input binding
+    if (this.btnAddSkill && this.inputNewSkill) {
+      this.btnAddSkill.addEventListener('click', () => {
+        const val = this.inputNewSkill.value.trim();
+        if (val) {
+          this.addSkill(val);
+          this.inputNewSkill.value = '';
+        }
+      });
+      this.inputNewSkill.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = this.inputNewSkill.value.trim();
+          if (val) {
+            this.addSkill(val);
+            this.inputNewSkill.value = '';
+          }
+        }
+      });
     }
 
     // Sidebar
@@ -418,13 +598,25 @@ class JobTrackerApp {
     if (viewName === 'chat') {
       this.viewChat.classList.add('active');
       this.viewDashboard.classList.remove('active');
+      if (this.viewProfile) this.viewProfile.classList.remove('active');
       this.navTabChat.classList.add('active');
       this.navTabDashboard.classList.remove('active');
+      if (this.navTabProfile) this.navTabProfile.classList.remove('active');
+    } else if (viewName === 'profile') {
+      this.viewChat.classList.remove('active');
+      this.viewDashboard.classList.remove('active');
+      if (this.viewProfile) this.viewProfile.classList.add('active');
+      this.navTabChat.classList.remove('active');
+      this.navTabDashboard.classList.remove('active');
+      if (this.navTabProfile) this.navTabProfile.classList.add('active');
+      this.renderProfileView();
     } else {
       this.viewChat.classList.remove('active');
       this.viewDashboard.classList.add('active');
+      if (this.viewProfile) this.viewProfile.classList.remove('active');
       this.navTabChat.classList.remove('active');
       this.navTabDashboard.classList.add('active');
+      if (this.navTabProfile) this.navTabProfile.classList.remove('active');
       this.renderApplicationsGrid();
     }
   }
@@ -881,10 +1073,15 @@ class JobTrackerApp {
         text,
         this.activeApplication,
         this.chatMessages,
-        this.applications
+        this.applications,
+        this.userProfile
       );
 
       thinkingEl.remove();
+
+      if (result.profileUpdate) {
+        await this.applyAiProfileUpdate(result.profileUpdate);
+      }
 
       if (result.data) {
         // A job was created or updated in chat!
@@ -1864,6 +2061,447 @@ class JobTrackerApp {
       toast.style.transform = 'translateY(10px)';
       setTimeout(() => toast.remove(), 300);
     }, 3500);
+  }
+  // ==========================================
+  // VIEW 3: Candidate Profile & "About Me"
+  // ==========================================
+  async loadUserProfile() {
+    this.userProfile = await SupabaseService.getUserProfile();
+    this.renderProfileView();
+  }
+
+  updateAvatarDisplay(url) {
+    if (url && url.trim()) {
+      this.profileAvatarImg.src = url.trim();
+      this.profileAvatarImg.style.display = 'block';
+      this.profileAvatarFallback.style.display = 'none';
+    } else {
+      this.profileAvatarImg.style.display = 'none';
+      this.profileAvatarFallback.style.display = 'block';
+    }
+  }
+
+  updateSemAvgDisplay() {
+    if (!this.profSemAvgBadge) return;
+    const scores = [];
+    this.profSemInputs.forEach(input => {
+      if (input && input.value) {
+        const val = parseFloat(input.value.replace(/[^0-9.]/g, ''));
+        if (!isNaN(val) && val > 0) scores.push(val);
+      }
+    });
+
+    if (scores.length > 0) {
+      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+      this.profSemAvgBadge.textContent = `Avg SGPA: ${avg.toFixed(2)}`;
+      this.profSemAvgBadge.style.display = 'inline-block';
+    } else {
+      this.profSemAvgBadge.textContent = 'Avg: -';
+    }
+  }
+
+  renderProfileView() {
+    if (!this.userProfile) return;
+    const p = this.userProfile;
+
+    // Personal Details
+    if (this.profFullName) this.profFullName.value = p.fullName || '';
+    if (this.profHeadline) this.profHeadline.value = p.headline || '';
+    if (this.profBio) this.profBio.value = p.bio || '';
+    if (this.profEmail) this.profEmail.value = p.email || '';
+    if (this.profPhone) this.profPhone.value = p.phone || '';
+    if (this.profLocation) this.profLocation.value = p.location || '';
+    if (this.profPortfolio) this.profPortfolio.value = p.portfolioUrl || '';
+    if (this.profGithub) this.profGithub.value = p.githubUrl || '';
+    if (this.profLinkedin) this.profLinkedin.value = p.linkedinUrl || '';
+    if (this.profAvatarUrl) this.profAvatarUrl.value = p.avatarUrl || '';
+
+    this.updateAvatarDisplay(p.avatarUrl);
+
+    // 10th Standard
+    const tenth = p.education?.tenth || {};
+    if (this.prof10thSchool) this.prof10thSchool.value = tenth.schoolName || '';
+    if (this.prof10thBoard) this.prof10thBoard.value = tenth.board || '';
+    if (this.prof10thMarks) this.prof10thMarks.value = tenth.marks || '';
+    if (this.prof10thYear) this.prof10thYear.value = tenth.year || '';
+
+    // 12th Standard
+    const twelfth = p.education?.twelfth || {};
+    if (this.prof12thSchool) this.prof12thSchool.value = twelfth.schoolName || '';
+    if (this.prof12thBoard) this.prof12thBoard.value = twelfth.board || '';
+    if (this.prof12thMarks) this.prof12thMarks.value = twelfth.marks || '';
+    if (this.prof12thYear) this.prof12thYear.value = twelfth.year || '';
+
+    // Degree / College
+    const college = p.education?.college || {};
+    if (this.profCollegeName) this.profCollegeName.value = college.collegeName || '';
+    if (this.profCollegeDegree) this.profCollegeDegree.value = college.degree || '';
+    if (this.profCollegeBranch) this.profCollegeBranch.value = college.branch || '';
+    if (this.profCollegeCgpa) this.profCollegeCgpa.value = college.overallCgpa || '';
+    if (this.profCollegeGradYear) this.profCollegeGradYear.value = college.graduationYear || '';
+
+    // Semester Marks
+    const sMarks = college.semesterMarks || {};
+    for (let i = 1; i <= 8; i++) {
+      const input = document.getElementById(`profSem${i}`);
+      if (input) input.value = sMarks[`sem${i}`] || '';
+    }
+    this.updateSemAvgDisplay();
+
+    // Render Projects
+    this.renderProjectsList();
+
+    // Render Certifications
+    this.renderCertificationsList();
+
+    // Render Skills
+    this.renderSkillsList();
+  }
+
+  renderProjectsList() {
+    if (!this.projectsList) return;
+    this.projectsList.innerHTML = '';
+    const projects = this.userProfile?.projects || [];
+
+    if (projects.length === 0) {
+      this.projectsList.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: var(--text-muted); background: rgba(255,255,255,0.02); border-radius: var(--radius-md); border: 1px dashed rgba(255,255,255,0.1);">
+          <div style="font-size: 1.5rem; margin-bottom: 6px;">💻</div>
+          <p style="font-weight: 600; color: var(--text-main);">No projects logged yet</p>
+          <p style="font-size: 0.8rem; margin-top: 4px;">Click <strong>+ Add Project</strong> above or tell Zuno in chat: <em>"Add project: JobTracker with React, link https://..."</em></p>
+        </div>
+      `;
+      return;
+    }
+
+    projects.forEach(proj => {
+      const card = document.createElement('div');
+      card.className = 'profile-project-card';
+
+      const techTags = (proj.techStack || '').split(',').map(t => t.trim()).filter(Boolean);
+      const tagsHtml = techTags.map(t => `<span class="proj-tech-tag">${this.escapeHtml(t)}</span>`).join('');
+
+      card.innerHTML = `
+        <div class="proj-top">
+          <div>
+            <h4 class="proj-title">${this.escapeHtml(proj.title)}</h4>
+            <p class="proj-desc">${this.escapeHtml(proj.description || 'No description provided')}</p>
+          </div>
+          <button class="btn-icon btn-del-proj" title="Delete project" style="color: var(--text-subtle);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        </div>
+
+        <div class="proj-tech-tags">
+          ${tagsHtml}
+        </div>
+
+        <div class="proj-bottom">
+          <div class="proj-dates">
+            ${proj.finishDate ? `<span>✓ Done: <strong>${this.escapeHtml(proj.finishDate)}</strong></span>` : ''}
+          </div>
+          <div class="proj-actions">
+            ${proj.projectUrl ? `
+              <a href="${this.escapeHtml(proj.projectUrl)}" target="_blank" rel="noopener noreferrer" class="proj-link-btn">
+                <span>View Project ↗</span>
+              </a>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      const delBtn = card.querySelector('.btn-del-proj');
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteProject(proj.id);
+      });
+
+      this.projectsList.appendChild(card);
+    });
+  }
+
+  renderCertificationsList() {
+    if (!this.certificationsList) return;
+    this.certificationsList.innerHTML = '';
+    const certs = this.userProfile?.certifications || [];
+
+    if (certs.length === 0) {
+      this.certificationsList.innerHTML = `
+        <div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: var(--text-muted); background: rgba(255,255,255,0.02); border-radius: var(--radius-md); border: 1px dashed rgba(255,255,255,0.1);">
+          <div style="font-size: 1.5rem; margin-bottom: 6px;">📜</div>
+          <p style="font-weight: 600; color: var(--text-main);">No certifications added yet</p>
+          <p style="font-size: 0.8rem; margin-top: 4px;">Click <strong>+ Add Certification</strong> or tell Zuno: <em>"Add certification: AWS Solutions Architect from Amazon"</em></p>
+        </div>
+      `;
+      return;
+    }
+
+    certs.forEach(cert => {
+      const card = document.createElement('div');
+      card.className = 'profile-cert-card';
+
+      card.innerHTML = `
+        <div class="cert-info">
+          <span class="cert-name">${this.escapeHtml(cert.name)}</span>
+          <span class="cert-issuer">🏛️ ${this.escapeHtml(cert.issuer || 'Verified')}</span>
+          ${cert.issueDate ? `<span class="cert-date">📅 Issued: ${this.escapeHtml(cert.issueDate)}</span>` : ''}
+          ${cert.credentialUrl ? `
+            <a href="${this.escapeHtml(cert.credentialUrl)}" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; font-size: 0.76rem; text-decoration: underline; margin-top: 4px;">
+              Verify Credential ↗
+            </a>
+          ` : ''}
+        </div>
+        <button class="btn-icon btn-del-cert" title="Delete certification" style="color: var(--text-subtle);">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        </button>
+      `;
+
+      const delBtn = card.querySelector('.btn-del-cert');
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteCert(cert.id);
+      });
+
+      this.certificationsList.appendChild(card);
+    });
+  }
+
+  renderSkillsList() {
+    if (!this.profileSkillsContainer) return;
+    this.profileSkillsContainer.innerHTML = '';
+    const skills = this.userProfile?.skills || [];
+
+    skills.forEach(skill => {
+      const pill = document.createElement('span');
+      pill.className = 'profile-skill-pill';
+      pill.innerHTML = `
+        <span>${this.escapeHtml(skill)}</span>
+        <button class="skill-remove-btn" title="Remove skill">&times;</button>
+      `;
+
+      const removeBtn = pill.querySelector('.skill-remove-btn');
+      removeBtn.addEventListener('click', () => {
+        this.removeSkill(skill);
+      });
+
+      this.profileSkillsContainer.appendChild(pill);
+    });
+  }
+
+  async saveProfileManually() {
+    if (!this.userProfile) {
+      this.userProfile = Config.getUserProfile();
+    }
+
+    // Read form values
+    this.userProfile.fullName = this.profFullName?.value?.trim() || '';
+    this.userProfile.headline = this.profHeadline?.value?.trim() || '';
+    this.userProfile.bio = this.profBio?.value?.trim() || '';
+    this.userProfile.email = this.profEmail?.value?.trim() || '';
+    this.userProfile.phone = this.profPhone?.value?.trim() || '';
+    this.userProfile.location = this.profLocation?.value?.trim() || '';
+    this.userProfile.portfolioUrl = this.profPortfolio?.value?.trim() || '';
+    this.userProfile.githubUrl = this.profGithub?.value?.trim() || '';
+    this.userProfile.linkedinUrl = this.profLinkedin?.value?.trim() || '';
+    this.userProfile.avatarUrl = this.profAvatarUrl?.value?.trim() || this.userProfile.avatarUrl || '';
+
+    // 10th
+    this.userProfile.education = this.userProfile.education || {};
+    this.userProfile.education.tenth = {
+      schoolName: this.prof10thSchool?.value?.trim() || '',
+      board: this.prof10thBoard?.value?.trim() || '',
+      marks: this.prof10thMarks?.value?.trim() || '',
+      year: this.prof10thYear?.value?.trim() || ''
+    };
+
+    // 12th
+    this.userProfile.education.twelfth = {
+      schoolName: this.prof12thSchool?.value?.trim() || '',
+      board: this.prof12thBoard?.value?.trim() || '',
+      marks: this.prof12thMarks?.value?.trim() || '',
+      year: this.prof12thYear?.value?.trim() || ''
+    };
+
+    // College
+    const sMarks = {};
+    for (let i = 1; i <= 8; i++) {
+      const val = document.getElementById(`profSem${i}`)?.value?.trim();
+      if (val) sMarks[`sem${i}`] = val;
+    }
+
+    this.userProfile.education.college = {
+      collegeName: this.profCollegeName?.value?.trim() || '',
+      degree: this.profCollegeDegree?.value?.trim() || '',
+      branch: this.profCollegeBranch?.value?.trim() || '',
+      overallCgpa: this.profCollegeCgpa?.value?.trim() || '',
+      graduationYear: this.profCollegeGradYear?.value?.trim() || '',
+      semesterMarks: sMarks
+    };
+
+    const res = await SupabaseService.saveUserProfile(this.userProfile);
+    this.showToast('Candidate profile and dossier saved successfully!', 'success');
+  }
+
+  async applyAiProfileUpdate(update) {
+    if (!this.userProfile) {
+      this.userProfile = Config.getUserProfile();
+    }
+
+    if (update.type === 'add_project' && update.project) {
+      this.userProfile.projects = this.userProfile.projects || [];
+      this.userProfile.projects.unshift(update.project);
+    } else if (update.type === 'add_certification' && update.certification) {
+      this.userProfile.certifications = this.userProfile.certifications || [];
+      this.userProfile.certifications.unshift(update.certification);
+    } else if (update.type === 'update_sem_marks' && update.sem) {
+      if (!this.userProfile.education.college.semesterMarks) {
+        this.userProfile.education.college.semesterMarks = {};
+      }
+      this.userProfile.education.college.semesterMarks[update.sem] = update.score;
+    } else if (update.type === 'update_education_10th') {
+      if (update.marks) this.userProfile.education.tenth.marks = update.marks;
+      if (update.schoolName) this.userProfile.education.tenth.schoolName = update.schoolName;
+      if (update.board) this.userProfile.education.tenth.board = update.board;
+      if (update.year) this.userProfile.education.tenth.year = update.year;
+    } else if (update.type === 'update_education_12th') {
+      if (update.marks) this.userProfile.education.twelfth.marks = update.marks;
+      if (update.schoolName) this.userProfile.education.twelfth.schoolName = update.schoolName;
+      if (update.board) this.userProfile.education.twelfth.board = update.board;
+      if (update.year) this.userProfile.education.twelfth.year = update.year;
+    } else if (update.type === 'update_college') {
+      if (update.collegeName) this.userProfile.education.college.collegeName = update.collegeName;
+      if (update.degree) this.userProfile.education.college.degree = update.degree;
+      if (update.branch) this.userProfile.education.college.branch = update.branch;
+      if (update.overallCgpa) this.userProfile.education.college.overallCgpa = update.overallCgpa;
+      if (update.graduationYear) this.userProfile.education.college.graduationYear = update.graduationYear;
+    } else if (update.type === 'update_personal') {
+      if (update.fullName) this.userProfile.fullName = update.fullName;
+      if (update.headline) this.userProfile.headline = update.headline;
+      if (update.bio) this.userProfile.bio = update.bio;
+      if (update.email) this.userProfile.email = update.email;
+      if (update.phone) this.userProfile.phone = update.phone;
+      if (update.location) this.userProfile.location = update.location;
+    } else if (update.type === 'add_skill' && update.skill) {
+      this.userProfile.skills = this.userProfile.skills || [];
+      if (!this.userProfile.skills.includes(update.skill)) {
+        this.userProfile.skills.push(update.skill);
+      }
+    }
+
+    await SupabaseService.saveUserProfile(this.userProfile);
+    this.renderProfileView();
+    this.showToast('Updated your About Me profile!', 'success');
+  }
+
+  // Project Modal Actions
+  openProjectModal() {
+    this.modalProjTitle.value = '';
+    this.modalProjDesc.value = '';
+    this.modalProjTech.value = '';
+    this.modalProjLink.value = '';
+    this.modalProjStartDate.value = '';
+    this.modalProjFinishDate.value = new Date().toISOString().split('T')[0];
+    this.projectModal.classList.add('open');
+  }
+
+  closeProjectModal() {
+    this.projectModal.classList.remove('open');
+  }
+
+  async saveProjectFromModal() {
+    const title = this.modalProjTitle.value.trim();
+    if (!title) {
+      alert('Please enter a Project Title');
+      return;
+    }
+
+    const newProj = {
+      id: 'proj_' + Date.now(),
+      title,
+      description: this.modalProjDesc.value.trim(),
+      techStack: this.modalProjTech.value.trim(),
+      projectUrl: this.modalProjLink.value.trim(),
+      startDate: this.modalProjStartDate.value || '',
+      finishDate: this.modalProjFinishDate.value || ''
+    };
+
+    this.userProfile.projects = this.userProfile.projects || [];
+    this.userProfile.projects.unshift(newProj);
+    await SupabaseService.saveUserProfile(this.userProfile);
+
+    this.renderProjectsList();
+    this.closeProjectModal();
+    this.showToast(`Added project "${title}"!`, 'success');
+  }
+
+  async deleteProject(id) {
+    if (confirm('Are you sure you want to delete this project?')) {
+      this.userProfile.projects = (this.userProfile.projects || []).filter(p => p.id !== id);
+      await SupabaseService.saveUserProfile(this.userProfile);
+      this.renderProjectsList();
+      this.showToast('Project removed', 'info');
+    }
+  }
+
+  // Cert Modal Actions
+  openCertModal() {
+    this.modalCertName.value = '';
+    this.modalCertIssuer.value = '';
+    this.modalCertDate.value = new Date().toISOString().split('T')[0];
+    this.modalCertLink.value = '';
+    this.certModal.classList.add('open');
+  }
+
+  closeCertModal() {
+    this.certModal.classList.remove('open');
+  }
+
+  async saveCertFromModal() {
+    const name = this.modalCertName.value.trim();
+    if (!name) {
+      alert('Please enter Certificate Name');
+      return;
+    }
+
+    const newCert = {
+      id: 'cert_' + Date.now(),
+      name,
+      issuer: this.modalCertIssuer.value.trim() || 'Verified Org',
+      issueDate: this.modalCertDate.value || '',
+      credentialUrl: this.modalCertLink.value.trim()
+    };
+
+    this.userProfile.certifications = this.userProfile.certifications || [];
+    this.userProfile.certifications.unshift(newCert);
+    await SupabaseService.saveUserProfile(this.userProfile);
+
+    this.renderCertificationsList();
+    this.closeCertModal();
+    this.showToast(`Added certification "${name}"!`, 'success');
+  }
+
+  async deleteCert(id) {
+    if (confirm('Are you sure you want to delete this certification?')) {
+      this.userProfile.certifications = (this.userProfile.certifications || []).filter(c => c.id !== id);
+      await SupabaseService.saveUserProfile(this.userProfile);
+      this.renderCertificationsList();
+      this.showToast('Certification removed', 'info');
+    }
+  }
+
+  async addSkill(skill) {
+    this.userProfile.skills = this.userProfile.skills || [];
+    if (!this.userProfile.skills.includes(skill)) {
+      this.userProfile.skills.push(skill);
+      await SupabaseService.saveUserProfile(this.userProfile);
+      this.renderSkillsList();
+    }
+  }
+
+  async removeSkill(skill) {
+    this.userProfile.skills = (this.userProfile.skills || []).filter(s => s !== skill);
+    await SupabaseService.saveUserProfile(this.userProfile);
+    this.renderSkillsList();
   }
 }
 

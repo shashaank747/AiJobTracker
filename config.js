@@ -9,7 +9,55 @@ const STORAGE_KEYS = {
   OPENAI_KEY: 'jobtracker_openai_key',
   APPLICATIONS: 'jobtracker_local_applications',
   ACTIVE_SESSION_ID: 'jobtracker_active_session_id',
-  THEME: 'jobtracker_theme'
+  THEME: 'jobtracker_theme',
+  PROFILE: 'jobtracker_user_profile'
+};
+
+export const DEFAULT_PROFILE = {
+  fullName: '',
+  headline: '',
+  email: '',
+  phone: '',
+  location: '',
+  bio: '',
+  avatarUrl: '',
+  portfolioUrl: '',
+  githubUrl: '',
+  linkedinUrl: '',
+  education: {
+    tenth: {
+      schoolName: '',
+      board: '',
+      marks: '',
+      year: ''
+    },
+    twelfth: {
+      schoolName: '',
+      board: '',
+      marks: '',
+      year: ''
+    },
+    college: {
+      collegeName: '',
+      degree: '',
+      branch: '',
+      overallCgpa: '',
+      graduationYear: '',
+      semesterMarks: {
+        sem1: '',
+        sem2: '',
+        sem3: '',
+        sem4: '',
+        sem5: '',
+        sem6: '',
+        sem7: '',
+        sem8: ''
+      }
+    }
+  },
+  certifications: [],
+  projects: [],
+  skills: []
 };
 
 export const Config = {
@@ -67,6 +115,45 @@ export const Config = {
     }
   },
 
+  getUserProfile() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
+      if (!raw) return JSON.parse(JSON.stringify(DEFAULT_PROFILE));
+      const parsed = JSON.parse(raw);
+      // Deep merge to ensure nested keys always exist
+      return {
+        ...DEFAULT_PROFILE,
+        ...parsed,
+        education: {
+          tenth: { ...DEFAULT_PROFILE.education.tenth, ...(parsed.education?.tenth || {}) },
+          twelfth: { ...DEFAULT_PROFILE.education.twelfth, ...(parsed.education?.twelfth || {}) },
+          college: {
+            ...DEFAULT_PROFILE.education.college,
+            ...(parsed.education?.college || {}),
+            semesterMarks: {
+              ...DEFAULT_PROFILE.education.college.semesterMarks,
+              ...(parsed.education?.college?.semesterMarks || {})
+            }
+          }
+        },
+        certifications: Array.isArray(parsed.certifications) ? parsed.certifications : [],
+        projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+        skills: Array.isArray(parsed.skills) ? parsed.skills : []
+      };
+    } catch (e) {
+      console.error('Failed to load user profile:', e);
+      return JSON.parse(JSON.stringify(DEFAULT_PROFILE));
+    }
+  },
+
+  saveUserProfile(profile) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
+    } catch (e) {
+      console.error('Failed to save user profile:', e);
+    }
+  },
+
   getSqlSchemaSnippet() {
     const table = this.getSettings().supabaseTable || 'job_applications';
     return `-- Run this in your Supabase SQL Editor:
@@ -90,14 +177,20 @@ CREATE TABLE IF NOT EXISTS public.${table} (
     chat_history JSONB DEFAULT '[]'::jsonb
 );
 
+-- Optional: User Profile Table for About Me sync
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+    id TEXT PRIMARY KEY DEFAULT 'primary_user',
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    profile_data JSONB NOT NULL
+);
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read/write access (for anon API key)
-CREATE POLICY "Allow public full access" ON public.${table}
-    FOR ALL
-    USING (true)
-    WITH CHECK (true);
+CREATE POLICY "Allow public full access" ON public.${table} FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public full access on user_profiles" ON public.user_profiles FOR ALL USING (true) WITH CHECK (true);
 `;
   }
 };
