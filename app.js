@@ -6,6 +6,13 @@ import { AiExtractor } from './ai-extractor.js';
 // Interactive Slash Commands for Zuno
 const SLASH_COMMANDS = [
   {
+    cmd: '/new',
+    label: 'Start New Chat',
+    desc: 'Start a fresh application chat session & reset active conversation',
+    icon: '✨',
+    action: 'new'
+  },
+  {
     cmd: '/store',
     label: 'Store in Database',
     desc: 'Permanently save the current drafted job to your database & tracker',
@@ -1043,7 +1050,9 @@ class JobTrackerApp {
     this.hideSlashCommandMenu();
     if (!selected) return;
 
-    if (selected.action === 'store') {
+    if (selected.action === 'new') {
+      this.startNewChatSession();
+    } else if (selected.action === 'store') {
       await this.handleStoreCommand();
     } else if (selected.action === 'compare') {
       await this.handleCompareCommand('/compare');
@@ -1070,6 +1079,7 @@ class JobTrackerApp {
 
     const helpMsg = `💡 **Zuno Command Center & Shortcuts**\n\n` +
       `You can use slash commands anytime in the input box to rapidly manage your jobs:\n\n` +
+      `• **/new** — Start a fresh new chat session & clear active drafted job\n` +
       `• **/store** — Save the current drafted application to your Supabase Cloud database & Tracker\n` +
       `• **/compare [company]** — Compare your About Me profile (skills, projects, marks, certs) against company requirements\n` +
       `• **/interview** — Set status to **Interviewing** and get tailored interview prep checklists\n` +
@@ -1302,8 +1312,14 @@ class JobTrackerApp {
     const text = this.chatInput.value.trim();
     if (!text) return;
 
-    // Slash command to clear chat
+    // Slash command to start new chat
     const lower = text.toLowerCase();
+    if (lower === '/new' || lower.startsWith('/new ')) {
+      this.startNewChatSession();
+      return;
+    }
+
+    // Slash command to clear chat
     if (lower === '/clear' || lower === '/cls' || lower === '/reset' || lower.startsWith('/clear ')) {
       this.clearCurrentChat();
       return;
