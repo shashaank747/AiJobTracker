@@ -2742,10 +2742,36 @@ body {
 /* ==========================================================================
    VIEW 3: About Me / Candidate Profile Styling
    ========================================================================== */
+#viewProfile {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+}
+
+#viewProfile::-webkit-scrollbar {
+  width: 6px;
+}
+#viewProfile::-webkit-scrollbar-track {
+  background: transparent;
+}
+#viewProfile::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+#viewProfile::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+body.theme-light #viewProfile::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
 .profile-wrapper {
   max-width: 1080px;
+  width: 100%;
   margin: 0 auto;
-  padding: 24px 20px 60px 20px;
+  padding: 24px 20px 80px 20px;
   display: flex;
   flex-direction: column;
   gap: 20px;
