@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobTrackerAI — Smart AI Job Application Tracker</title>
+  <meta name="description" content="AI-Powered Job Application Tracker with automated JD extraction, ChatGPT-style chat, and Supabase cloud sync.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="theme-dark">
+  <div id="app" class="app-layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="20" height="14" x="2" y="7" rx="2" ry="2"/>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">JobTracker<span class="brand-ai">AI</span></span>
+            <span class="brand-tagline">AI Application Vault</span>
+          </div>
+        </div>
+
+        <button id="btnNewChat" class="btn btn-primary btn-new-chat" title="Start new job tracking session">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>New Application</span>
+        </button>
+      </div>
+
+      <div class="sidebar-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="sidebarSearchInput" placeholder="Search saved jobs..." />
+      </div>
+
+      <div class="sidebar-history-container">
+        <div class="history-label">Past Applications</div>
+        <div class="history-list" id="historyList">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="cloud-status-indicator" id="cloudStatusBadge" title="Click to configure Supabase">
+          <span class="status-dot status-local"></span>
+          <span class="status-label" id="cloudStatusText">Local Storage</span>
+        </div>
+        <button id="btnOpenSettings" class="btn-icon" title="Settings & Supabase Config">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN WRAPPER -->
+    <main class="main-content">
+      
+      <!-- TOP NAVIGATION BAR -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="btnToggleSidebar" class="btn-icon mobile-only" title="Toggle Sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+          
+          <div class="view-switcher">
+            <button id="navTabChat" class="tab-btn active">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              <span>AI Chat Assistant</span>
+            </button>
+            <button id="navTabDashboard" class="tab-btn">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              <span>Applications Tracker</span>
+              <span class="count-badge" id="totalAppsBadge">0</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="active-session-meta" id="topbarSessionMeta" style="display: none;">
+            <span class="session-company" id="topbarCompany">Target Company</span>
+            <span class="session-divider">•</span>
+            <span class="session-role" id="topbarRole">Software Engineer</span>
+          </div>
+          <button id="btnHeaderSettings" class="btn btn-secondary btn-sm">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Supabase & AI Keys</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- VIEW 1: CHAT EXTRACTION VIEW -->
+      <section id="viewChat" class="view-container active">
+        <div class="chat-viewport" id="chatViewport">
+          <div class="chat-messages" id="chatMessages">
+            
+            <!-- Welcome Hero (shown when no messages yet) -->
+            <div class="welcome-hero" id="welcomeHero">
+              <div class="hero-badge">AI Job Tracking Agent</div>
+              <h1 class="hero-title">Paste Any Job Description</h1>
+              <p class="hero-desc">Drop raw JD text, an application email, or a link. AI will instantly extract the company, role, salary, work mode, and application links, then sync everything to Supabase.</p>
+              
+              <div class="quick-samples">
+                <span class="samples-title">Try an example:</span>
+                <div class="sample-chips">
+                  <button class="sample-chip" data-sample="stripe">
+                    <strong>Stripe</strong> • Full Stack Engineer (Remote, $145k-$190k)
+                  </button>
+                  <button class="sample-chip" data-sample="google">
+                    <strong>Google</strong> • AI Software Intern (Hybrid, Mountain View)
+                  </button>
+                  <button class="sample-chip" data-sample="amazon">
+                    <strong>Amazon</strong> • SDE II (Seattle, LinkedIn posting)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Chat Input Footer -->
+        <div class="chat-input-area">
+          <div class="quick-prompts-bar">
+            <button class="quick-pill" data-action="link">🔗 Add Application Link</button>
+            <button class="quick-pill" data-action="salary">💵 Update Salary</button>
+            <button class="quick-pill" data-action="interview">🎯 Mark as Interviewing</button>
+            <button class="quick-pill" data-action="offer">🎉 Mark as Offered</button>
+          </div>
+
+          <div class="chat-input-box">
+            <textarea id="chatInput" rows="1" placeholder="Paste Job Description, application URL, or follow-up note (e.g. 'Added portal link: https://...')"></textarea>
+            <button id="btnSend" class="btn btn-send" title="Send (Enter)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+          </div>
+          <div class="chat-input-hints">
+            <span>Press <kbd>Enter</kbd> to send, <kbd>Shift + Enter</kbd> for new line</span>
+            <span id="activeAiModelTag" class="model-tag">Model: Smart Heuristics</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: APPLICATIONS TRACKER DASHBOARD -->
+      <section id="viewDashboard" class="view-container">
+        <div class="dashboard-wrapper">
+          
+          <!-- Stats Summary Cards -->
+          <div class="stats-grid">
+            <div class="stat-card" data-filter="all">
+              <div class="stat-icon stat-icon-total">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="statTotalCount">0</div>
+                <div class="stat-title">Total Applications</div>
+              </div>
+            </div>
+
+            <div class="stat-card" data-filter="Applied">
+              <div class="stat-icon stat-icon-applied">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="statAppliedCount">0</div>
+                <div class="stat-title">Submitted</div>
+              </div>
+            </div>
+
+            <div class="stat-card" data-filter="Interviewing">
+              <div class="stat-icon stat-icon-interview">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="statInterviewCount">0</div>
+                <div class="stat-title">In Interviews</div>
+              </div>
+            </div>
+
+            <div class="stat-card" data-filter="Offer">
+              <div class="stat-icon stat-icon-offer">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value" id="statOfferCount">0</div>
+                <div class="stat-title">Job Offers</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controls, Search & Filter Bar -->
+          <div class="dashboard-controls">
+            <div class="search-box">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="dashSearchInput" placeholder="Filter by company, role, or skill..." />
+            </div>
+
+            <div class="filter-actions">
+              <select id="filterStatus" class="select-dropdown">
+                <option value="all">All Statuses</option>
+                <option value="Applied">Applied</option>
+                <option value="Interviewing">Interviewing</option>
+                <option value="Offer">Offer</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Bookmarked">Bookmarked</option>
+              </select>
+
+              <select id="filterWorkMode" class="select-dropdown">
+                <option value="all">All Work Modes</option>
+                <option value="Remote">Remote</option>
+                <option value="Hybrid">Hybrid</option>
+                <option value="On-site">On-site</option>
+              </select>
+
+              <button id="btnExportCsv" class="btn btn-secondary btn-sm" title="Export as CSV">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- RECTANGULAR CARDS GRID -->
+          <div class="cards-grid" id="applicationsGrid">
+            <!-- Populated dynamically with rectangular cards -->
+          </div>
+
+          <!-- Empty State -->
+          <div class="empty-state" id="dashEmptyState" style="display: none;">
+            <div class="empty-icon">📁</div>
+            <h3>No job applications found</h3>
+            <p>Paste a job description in the AI Chat Assistant to automatically track your first application!</p>
+            <button id="btnEmptyGoChat" class="btn btn-primary">Go to AI Chat Assistant</button>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- SETTINGS & CREDENTIALS MODAL -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2>Application Settings & Cloud Sync</h2>
+          <p>Configure Supabase cloud database & AI extraction keys</p>
+        </div>
+        <button id="btnCloseSettings" class="btn-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Supabase Section -->
+        <div class="settings-section">
+          <div class="section-badge">Database Sync</div>
+          <h3 class="section-title">Supabase Database</h3>
+          <p class="section-desc">Connect your Supabase project to automatically persist your tracked applications in the cloud.</p>
+          
+          <div class="form-group">
+            <label for="inputSupabaseUrl">Supabase Project URL</label>
+            <input type="text" id="inputSupabaseUrl" placeholder="https://your-project.supabase.co" />
+          </div>
+
+          <div class="form-group">
+            <label for="inputSupabaseKey">Supabase Anon Key</label>
+            <input type="password" id="inputSupabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+          </div>
+
+          <div class="form-group">
+            <label for="inputSupabaseTable">Table Name</label>
+            <input type="text" id="inputSupabaseTable" value="job_applications" placeholder="job_applications" />
+          </div>
+
+          <div class="form-row">
+            <button id="btnTestSupabase" class="btn btn-secondary btn-sm">
+              <span>Test Connection</span>
+            </button>
+            <button id="btnCopySql" class="btn btn-secondary btn-sm">
+              <span>Copy SQL Table Schema</span>
+            </button>
+            <span id="supabaseTestResult" class="test-result-text"></span>
+          </div>
+        </div>
+
+        <!-- AI Provider Section -->
+        <div class="settings-section">
+          <div class="section-badge">AI Engine</div>
+          <h3 class="section-title">AI Extraction Provider</h3>
+          <p class="section-desc">Choose between Gemini, OpenAI, or the built-in Smart NLP extractor.</p>
+
+          <div class="form-group">
+            <label for="selectAiProvider">Extraction Engine</label>
+            <select id="selectAiProvider" class="select-dropdown full-width">
+              <option value="gemini">Google Gemini API (Recommended)</option>
+              <option value="openai">OpenAI ChatGPT API</option>
+              <option value="heuristic">Smart NLP Heuristics (Offline / Free)</option>
+            </select>
+          </div>
+
+          <div id="geminiConfigGroup" class="form-group">
+            <label for="inputGeminiKey">Google Gemini API Key</label>
+            <input type="password" id="inputGeminiKey" placeholder="AIzaSy..." />
+            <span class="field-hint">Used to extract and parse job details from raw text. Get one at Google AI Studio.</span>
+          </div>
+
+          <div id="openaiConfigGroup" class="form-group" style="display: none;">
+            <label for="inputOpenAiKey">OpenAI API Key</label>
+            <input type="password" id="inputOpenAiKey" placeholder="sk-..." />
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnCancelSettings" class="btn btn-secondary">Cancel</button>
+        <button id="btnSaveSettings" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
