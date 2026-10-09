@@ -265,7 +265,7 @@ class JobTrackerApp {
     // Settings Modal
     const openSettings = () => this.openSettingsModal();
     this.btnOpenSettings.addEventListener('click', openSettings);
-    this.btnHeaderSettings.addEventListener('click', openSettings);
+    if (this.btnHeaderSettings) this.btnHeaderSettings.addEventListener('click', openSettings);
     this.cloudStatusBadge.addEventListener('click', openSettings);
 
     this.btnCloseSettings.addEventListener('click', () => this.closeSettingsModal());
