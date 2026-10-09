@@ -618,7 +618,7 @@ class JobTrackerApp {
           <span class="meta-chip chip-mode">🏢 <strong>${this.escapeHtml(data.workMode || 'On-site')}</strong></span>
           <span class="meta-chip">📍 ${this.escapeHtml(data.location || 'Not specified')}</span>
           <span class="meta-chip">💼 ${this.escapeHtml(data.jobType || 'Full-time')}</span>
-          <span class="meta-chip">📅 Applied: ${this.escapeHtml(data.appliedDate || 'Today')}</span>
+          <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
         </div>
 
         ${skillsHtml}

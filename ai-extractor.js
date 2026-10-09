@@ -3,6 +3,82 @@
 
 import { Config } from './config.js';
 
+/**
+ * Smart Date Parser for relative & explicit application dates
+ * Handles "yesterday", "X days ago", "last week", "2 weeks ago", "Oct 2nd", "2026-10-02"
+ */
+export function parseAppliedDate(text, defaultDate = null) {
+  const now = new Date();
+  const lower = (text || '').toLowerCase();
+
+  // "yesterday"
+  if (/\b(?:applied\s+)?yesterday\b/i.test(lower)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  }
+
+  // "X days ago" or "X days back"
+  const daysAgoMatch = lower.match(/\b(?:applied\s+)?(\d+)\s*days?\s*(?:ago|back)\b/i);
+  if (daysAgoMatch) {
+    const days = parseInt(daysAgoMatch[1], 10);
+    const d = new Date(now);
+    d.setDate(d.getDate() - days);
+    return d.toISOString().split('T')[0];
+  }
+
+  // "last week" / "a week ago" / "X weeks ago"
+  const weeksAgoMatch = lower.match(/\b(?:applied\s+)?(?:(\d+)\s*weeks?\s*(?:ago|back)|last\s*week|a\s*week\s*ago)\b/i);
+  if (weeksAgoMatch) {
+    const weeks = weeksAgoMatch[1] ? parseInt(weeksAgoMatch[1], 10) : 1;
+    const d = new Date(now);
+    d.setDate(d.getDate() - (weeks * 7));
+    return d.toISOString().split('T')[0];
+  }
+
+  // "last month" / "X months ago"
+  const monthsAgoMatch = lower.match(/\b(?:applied\s+)?(?:(\d+)\s*months?\s*(?:ago|back)|last\s*month|a\s*month\s*ago)\b/i);
+  if (monthsAgoMatch) {
+    const months = monthsAgoMatch[1] ? parseInt(monthsAgoMatch[1], 10) : 1;
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - months);
+    return d.toISOString().split('T')[0];
+  }
+
+  // Explicit ISO date: "2026-10-02" or "2026/10/02"
+  const isoMatch = text.match(/\b(202\d[-/](?:0?[1-9]|1[0-2])[-/](?:0?[1-9]|[12]\d|3[01]))\b/);
+  if (isoMatch) {
+    return isoMatch[1].replace(/\//g, '-');
+  }
+
+  // Explicit month names (e.g. "applied on 2nd Oct", "applied Sep 28", "applied on 15 September 2026")
+  const monthRegex = /\b(?:applied\s+(?:on\s+)?)?(?:(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?)?(?:,?\s+(202\d))?\b/i;
+  const monthMatch = lower.match(monthRegex);
+  if (monthMatch && (monthMatch[1] || monthMatch[3])) {
+    const monthMap = {
+      jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+      may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+      sep: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
+    };
+    const mStr = monthMatch[2].toLowerCase();
+    const month = monthMap[mStr];
+    if (month !== undefined) {
+      const day = parseInt(monthMatch[1] || monthMatch[3] || '1', 10);
+      const year = monthMatch[4] ? parseInt(monthMatch[4], 10) : now.getFullYear();
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dt = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dt}`;
+      }
+    }
+  }
+
+  return defaultDate || now.toISOString().split('T')[0];
+}
+
+
 // Curated company intelligence database for offline mode
 const COMPANY_DATABASE = {
   samsung: {
@@ -184,7 +260,12 @@ export const AiExtractor = {
     const model = settings.geminiModel || 'gemini-3.8-flash';
     const apiKey = settings.geminiKey;
 
+    const today = new Date().toISOString().split('T')[0];
     const systemPrompt = `You are an expert AI Job Application Tracker and Career Advisor Assistant.
+TODAY'S REFERENCE DATE: ${today}
+
+CRITICAL APPLIED DATE RULE:
+If the user specifies when they applied (e.g. "applied last week", "applied 3 days ago", "applied yesterday", "applied on 2nd Oct", "confirmation email date"), CALCULATE and return the exact YYYY-MM-DD appliedDate relative to Today (${today})! Only default to ${today} if no past application timeframe was mentioned.
 
 Your capabilities:
 1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
@@ -466,7 +547,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
       applicationUrl: '',
       sourceUrl: '',
       status: 'Applied',
-      appliedDate: today,
+      appliedDate: parseAppliedDate(text, existingJob?.appliedDate || today),
       skills: [],
       notes: ''
     };
@@ -519,6 +600,7 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     if (/(?:offer|offered)/i.test(text) && !text.includes('offer letter requirements')) {
       data.status = 'Offer';
       summaryNotes.push('Updated status to Offer.');
+    if (data.appliedDate && data.appliedDate !== today) { summaryNotes.push(`Applied date set to ${data.appliedDate}.`); }
     } else if (/(?:interview|interviewing|round \d|screening)/i.test(text) && text.length < 100) {
       data.status = 'Interviewing';
       summaryNotes.push('Updated status to Interviewing.');
