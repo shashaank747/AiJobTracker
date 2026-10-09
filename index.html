@@ -11,6 +11,10 @@
   <link rel="stylesheet" href="style.css">
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- PDF.js for PDF text extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Tesseract.js for Image OCR text extraction -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body class="theme-dark">
   <div id="app" class="app-layout">
@@ -135,14 +139,49 @@
             <button class="quick-pill" data-action="offer">🎉 Mark as Offered</button>
           </div>
 
-          <div class="chat-input-box">
-            <textarea id="chatInput" rows="1" placeholder="Paste Job Description, application URL, or follow-up note (e.g. 'Added portal link: https://...')"></textarea>
+          <!-- Attachment Preview Box (Images/PDFs) -->
+          <div id="attachmentPreview" class="attachment-preview" style="display: none;">
+            <div class="attachment-info">
+              <span class="attachment-icon" id="attachmentIcon">📄</span>
+              <div class="attachment-details">
+                <span class="attachment-name" id="attachmentName">file.pdf</span>
+                <span class="attachment-status" id="attachmentStatus">Processing OCR...</span>
+              </div>
+            </div>
+            <button id="btnRemoveAttachment" class="btn-remove-attachment" title="Remove attachment">&times;</button>
+          </div>
+
+          <!-- Listening Pulse Banner -->
+          <div id="voiceStatusBanner" class="voice-status-banner" style="display: none;">
+            <span class="voice-pulse-dot"></span>
+            <span>Listening to your voice... Speak the job details now (Click mic to stop)</span>
+          </div>
+
+          <div class="chat-input-box" id="dropZoneContainer">
+            <!-- Hidden File Input for PDF & Images -->
+            <input type="file" id="fileUploadInput" accept="image/png,image/jpeg,image/webp,image/jpg,application/pdf,.pdf" style="display: none;" />
+            
+            <!-- Attachment Button -->
+            <button id="btnAttachFile" class="btn-input-action" title="Upload JD Image or PDF (OCR Extraction)">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+
+            <!-- Textarea -->
+            <textarea id="chatInput" rows="1" placeholder="Paste JD text, ask about a company, or drop/upload an Image or PDF..."></textarea>
+
+            <!-- Voice Dictation Button -->
+            <button id="btnVoiceDictate" class="btn-input-action" title="Voice Dictation (Speak your JD)">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+            </button>
+
+            <!-- Send Button -->
             <button id="btnSend" class="btn btn-send" title="Send (Enter)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
             </button>
           </div>
+
           <div class="chat-input-hints">
-            <span>Press <kbd>Enter</kbd> to send, <kbd>Shift + Enter</kbd> for new line</span>
+            <span>Press <kbd>Enter</kbd> to send • Drag & drop images/PDFs supported</span>
             <span id="activeAiModelTag" class="model-tag">Model: Smart Heuristics</span>
           </div>
         </div>

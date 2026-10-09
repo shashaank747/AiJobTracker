@@ -123,6 +123,22 @@ class JobTrackerApp {
     this.geminiConfigGroup = document.getElementById('geminiConfigGroup');
     this.openaiConfigGroup = document.getElementById('openaiConfigGroup');
 
+    // OCR & Voice Controls
+    this.fileUploadInput = document.getElementById('fileUploadInput');
+    this.btnAttachFile = document.getElementById('btnAttachFile');
+    this.btnVoiceDictate = document.getElementById('btnVoiceDictate');
+    this.attachmentPreview = document.getElementById('attachmentPreview');
+    this.attachmentIcon = document.getElementById('attachmentIcon');
+    this.attachmentName = document.getElementById('attachmentName');
+    this.attachmentStatus = document.getElementById('attachmentStatus');
+    this.btnRemoveAttachment = document.getElementById('btnRemoveAttachment');
+    this.voiceStatusBanner = document.getElementById('voiceStatusBanner');
+    this.dropZoneContainer = document.getElementById('dropZoneContainer');
+
+    this.isRecording = false;
+    this.speechRecognition = null;
+    this.currentAttachment = null;
+
     // Toast Container
     this.toastContainer = document.getElementById('toastContainer');
   }
@@ -246,6 +262,21 @@ class JobTrackerApp {
       this.geminiConfigGroup.style.display = val === 'gemini' ? 'flex' : 'none';
       this.openaiConfigGroup.style.display = val === 'openai' ? 'flex' : 'none';
     });
+
+    // File Upload & OCR
+    this.btnAttachFile.addEventListener('click', () => this.fileUploadInput.click());
+    this.fileUploadInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        this.handleFileUpload(e.target.files[0]);
+      }
+    });
+    this.btnRemoveAttachment.addEventListener('click', () => this.clearAttachment());
+
+    // Voice Dictation
+    this.btnVoiceDictate.addEventListener('click', () => this.toggleVoiceDictation());
+
+    // Drag & Drop
+    this.setupDragAndDrop();
   }
 
   // ==========================================
@@ -968,6 +999,224 @@ class JobTrackerApp {
     } catch (e) {
       return 'Applied recently';
     }
+  }
+
+  // ==========================================
+  // Voice Dictation (Web Speech API)
+  // ==========================================
+  initSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      return null;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      this.isRecording = true;
+      this.btnVoiceDictate.classList.add('recording');
+      this.voiceStatusBanner.style.display = 'flex';
+      this.showToast('Microphone active. Speak your job details now...', 'info');
+    };
+
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        }
+      }
+      if (finalTranscript) {
+        this.chatInput.value = (this.chatInput.value ? this.chatInput.value.trim() + ' ' : '') + finalTranscript.trim();
+        this.chatInput.style.height = 'auto';
+        this.chatInput.style.height = Math.min(this.chatInput.scrollHeight, 180) + 'px';
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.warn('Speech recognition event:', event.error);
+      this.stopVoiceDictation();
+      if (event.error !== 'no-speech') {
+        this.showToast(`Microphone: ${event.error}`, 'error');
+      }
+    };
+
+    recognition.onend = () => {
+      this.stopVoiceDictation();
+    };
+
+    return recognition;
+  }
+
+  toggleVoiceDictation() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      this.showToast('Voice dictation is supported in Google Chrome, Edge, and modern browsers.', 'error');
+      return;
+    }
+
+    if (this.isRecording) {
+      if (this.speechRecognition) {
+        try { this.speechRecognition.stop(); } catch (e) {}
+      }
+      this.stopVoiceDictation();
+    } else {
+      if (!this.speechRecognition) {
+        this.speechRecognition = this.initSpeechRecognition();
+      }
+      if (this.speechRecognition) {
+        try {
+          this.speechRecognition.start();
+        } catch (e) {
+          console.warn('Speech recognition start error:', e);
+          this.stopVoiceDictation();
+        }
+      }
+    }
+  }
+
+  stopVoiceDictation() {
+    this.isRecording = false;
+    this.btnVoiceDictate.classList.remove('recording');
+    this.voiceStatusBanner.style.display = 'none';
+  }
+
+  // ==========================================
+  // OCR & File Text Extraction (PDF.js & Tesseract.js)
+  // ==========================================
+  async handleFileUpload(file) {
+    if (!file) return;
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name);
+
+    if (!isPdf && !isImage) {
+      this.showToast('Please upload a PDF document or image file (PNG/JPG/WebP).', 'error');
+      return;
+    }
+
+    // Display attachment preview box
+    this.attachmentPreview.style.display = 'flex';
+    this.attachmentName.textContent = file.name;
+    this.attachmentIcon.textContent = isPdf ? '📑' : '🖼️';
+    this.attachmentStatus.textContent = isPdf ? 'Extracting PDF pages...' : 'Initializing Tesseract OCR...';
+
+    try {
+      let extractedText = '';
+      if (isPdf) {
+        extractedText = await this.extractTextFromPdf(file);
+      } else {
+        extractedText = await this.extractTextFromImage(file);
+      }
+
+      if (!extractedText || !extractedText.trim()) {
+        this.attachmentStatus.textContent = 'No readable text found in document.';
+        this.showToast('No readable text found in file. Ensure the scan is clear.', 'error');
+        return;
+      }
+
+      this.currentAttachment = { file, text: extractedText };
+      this.attachmentStatus.textContent = `✓ Extracted ${extractedText.length} characters`;
+
+      // Fill extracted text into prompt bar
+      this.chatInput.value = extractedText.trim();
+      this.chatInput.style.height = 'auto';
+      this.chatInput.style.height = Math.min(this.chatInput.scrollHeight, 180) + 'px';
+      this.chatInput.focus();
+
+      this.showToast(`OCR Extracted text from ${file.name}! Press Enter to analyze.`, 'success');
+    } catch (err) {
+      console.error('File extraction error:', err);
+      this.attachmentStatus.textContent = 'Extraction error: ' + (err.message || 'Failed');
+      this.showToast('Failed to extract text from file: ' + err.message, 'error');
+    }
+  }
+
+  async extractTextFromPdf(file) {
+    if (!window.pdfjsLib) {
+      throw new Error('PDF library not ready. Please try again.');
+    }
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      this.attachmentStatus.textContent = `Extracting page ${i} of ${pdf.numPages}...`;
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map(item => item.str).join(' ');
+      fullText += pageText + '\n\n';
+    }
+
+    return fullText;
+  }
+
+  async extractTextFromImage(file) {
+    if (!window.Tesseract) {
+      throw new Error('OCR library not loaded.');
+    }
+
+    this.attachmentStatus.textContent = 'OCR: Scanning image...';
+
+    const result = await window.Tesseract.recognize(
+      file,
+      'eng',
+      {
+        logger: m => {
+          if (m.status === 'recognizing text' && m.progress) {
+            const pct = Math.round(m.progress * 100);
+            this.attachmentStatus.textContent = `OCR: Extracting text (${pct}%)...`;
+          }
+        }
+      }
+    );
+
+    return result.data.text;
+  }
+
+  clearAttachment() {
+    this.currentAttachment = null;
+    this.fileUploadInput.value = '';
+    this.attachmentPreview.style.display = 'none';
+  }
+
+  setupDragAndDrop() {
+    const handleDrag = (e, isOver) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isOver) {
+        this.dropZoneContainer.classList.add('drag-over');
+      } else {
+        this.dropZoneContainer.classList.remove('drag-over');
+      }
+    };
+
+    ['dragenter', 'dragover'].forEach(name => {
+      this.dropZoneContainer.addEventListener(name, (e) => handleDrag(e, true));
+      this.chatViewport.addEventListener(name, (e) => handleDrag(e, true));
+    });
+
+    ['dragleave', 'dragend'].forEach(name => {
+      this.dropZoneContainer.addEventListener(name, (e) => handleDrag(e, false));
+      this.chatViewport.addEventListener(name, (e) => handleDrag(e, false));
+    });
+
+    const handleDrop = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.dropZoneContainer.classList.remove('drag-over');
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        this.handleFileUpload(files[0]);
+      }
+    };
+
+    this.dropZoneContainer.addEventListener('drop', handleDrop);
+    this.chatViewport.addEventListener('drop', handleDrop);
   }
 
   scrollToBottom() {
