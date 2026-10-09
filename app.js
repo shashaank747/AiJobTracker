@@ -1008,7 +1008,7 @@ class JobTrackerApp {
 
     const displayText = rawText || `/compare ${targetApp.companyName || ''}`;
     this.appendUserMessage(displayText);
-    this.showAssistantTyping();
+    const thinkingEl = this.appendThinkingIndicator();
 
     try {
       const result = await AiExtractor.processInput(
@@ -1019,12 +1019,12 @@ class JobTrackerApp {
         this.userProfile
       );
 
-      this.removeAssistantTyping();
+      thinkingEl.remove();
       this.appendAssistantMessage(result.message, targetApp);
       this.scrollToBottom();
       this.showToast(`Analyzed fit for ${targetApp.companyName || 'role'}!`, 'info');
     } catch (err) {
-      this.removeAssistantTyping();
+      thinkingEl.remove();
       this.appendAssistantMessage(`❌ **Comparison Error:** ${err.message}`, targetApp);
       this.scrollToBottom();
     }
@@ -1266,7 +1266,7 @@ class JobTrackerApp {
     const div = document.createElement('div');
     div.className = 'chat-msg assistant thinking-wrapper';
     div.innerHTML = `
-      <div class="msg-avatar">Zuno</div>
+      <div class="msg-avatar msg-avatar-zuno" title="Zuno AI"><img src="logo.png" alt="Zuno" class="zuno-avatar-img" /></div>
       <div class="msg-body">
         <div class="ai-thinking">
           <span>Zuno is analyzing Job Description & extracting data</span>
@@ -1322,7 +1322,7 @@ class JobTrackerApp {
     const formattedText = this.renderMarkdown(text);
 
     msgDiv.innerHTML = `
-      <div class="msg-avatar">Zuno</div>
+      <div class="msg-avatar msg-avatar-zuno" title="Zuno AI"><img src="logo.png" alt="Zuno" class="zuno-avatar-img" /></div>
       <div class="msg-body">
         <div class="msg-assistant-text">${formattedText}</div>
         ${cardHtml}
