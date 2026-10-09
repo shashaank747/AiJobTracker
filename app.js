@@ -3,6 +3,59 @@ import { Config } from './config.js';
 import { SupabaseService } from './supabase-client.js';
 import { AiExtractor } from './ai-extractor.js';
 
+// Interactive Slash Commands for Zuno
+const SLASH_COMMANDS = [
+  {
+    cmd: '/store',
+    label: 'Store in Database',
+    desc: 'Permanently save the current drafted job to your database & tracker',
+    icon: '💾',
+    action: 'store'
+  },
+  {
+    cmd: '/interview',
+    label: 'Status: Interviewing',
+    desc: 'Mark job as Interviewing and ask Zuno for targeted interview questions',
+    icon: '🎯',
+    action: 'interview'
+  },
+  {
+    cmd: '/offer',
+    label: 'Status: Offer Received',
+    desc: 'Mark job as Offer and get salary negotiation advice from Zuno',
+    icon: '🎉',
+    action: 'offer'
+  },
+  {
+    cmd: '/rejected',
+    label: 'Status: Rejected',
+    desc: 'Update application status to Rejected and log outcome',
+    icon: '🛑',
+    action: 'rejected'
+  },
+  {
+    cmd: '/salary',
+    label: 'Update Salary',
+    desc: 'Set compensation for the active application (e.g. /salary 12 LPA)',
+    icon: '💵',
+    action: 'salary'
+  },
+  {
+    cmd: '/clear',
+    label: 'Clear Chat',
+    desc: 'Clear the current conversation history and start fresh',
+    icon: '🧹',
+    action: 'clear'
+  },
+  {
+    cmd: '/help',
+    label: 'Zuno Help & Commands',
+    desc: 'Show all shortcut commands, tips, and tracking instructions',
+    icon: '💡',
+    action: 'help'
+  }
+];
+
 // Pre-packaged realistic sample job descriptions
 const SAMPLE_JDS = {
   stripe: `Stripe - Full Stack Software Engineer
@@ -89,6 +142,12 @@ class JobTrackerApp {
     this.topbarCompany = document.getElementById('topbarCompany');
     this.topbarRole = document.getElementById('topbarRole');
     this.activeAiModelTag = document.getElementById('activeAiModelTag');
+
+    // Slash Commands Menu
+    this.slashCommandMenu = document.getElementById('slashCommandMenu');
+    this.slashMenuList = document.getElementById('slashMenuList');
+    this.activeSlashCommandIndex = 0;
+    this.currentFilteredCommands = [];
 
     // Dashboard UI
     this.dashSearchInput = document.getElementById('dashSearchInput');
@@ -181,22 +240,64 @@ class JobTrackerApp {
       this.brandIconCollapse.addEventListener('click', () => this.closeSidebar());
     }
 
-    // Chat input auto-grow and submit
+    // Chat input auto-grow, slash commands, and submit
     this.chatInput.addEventListener('input', () => {
       this.chatInput.style.height = 'auto';
       const scrollH = this.chatInput.scrollHeight;
       this.chatInput.style.height = Math.min(scrollH, 180) + 'px';
       this.chatInput.style.overflowY = scrollH > 180 ? 'auto' : 'hidden';
+
+      // Slash command auto-suggestions
+      const val = this.chatInput.value;
+      if (val.startsWith('/')) {
+        this.showSlashCommandMenu(val);
+      } else {
+        this.hideSlashCommandMenu();
+      }
     });
 
     this.chatInput.addEventListener('keydown', (e) => {
+      // Intercept navigation if slash command suggestions menu is open
+      if (this.slashCommandMenu && this.slashCommandMenu.style.display !== 'none') {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          this.moveSlashCommandSelection(1);
+          return;
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          this.moveSlashCommandSelection(-1);
+          return;
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          this.executeActiveSlashCommand();
+          return;
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.hideSlashCommandMenu();
+          return;
+        }
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        this.hideSlashCommandMenu();
         this.handleSendMessage();
       }
     });
 
-    this.btnSend.addEventListener('click', () => this.handleSendMessage());
+    // Close slash command menu on click outside
+    document.addEventListener('click', (e) => {
+      if (this.slashCommandMenu && this.slashCommandMenu.style.display !== 'none') {
+        if (!this.slashCommandMenu.contains(e.target) && e.target !== this.chatInput) {
+          this.hideSlashCommandMenu();
+        }
+      }
+    });
+
+    this.btnSend.addEventListener('click', () => {
+      this.hideSlashCommandMenu();
+      this.handleSendMessage();
+    });
 
     // Extraction Engine selector near input box
     if (this.chatAiEngineSelect) {
@@ -432,6 +533,220 @@ class JobTrackerApp {
   // ==========================================
   // Chat Messaging & Extraction Flow
   // ==========================================
+  // ==========================================
+  // Slash Commands & Autocomplete Popup
+  // ==========================================
+  showSlashCommandMenu(inputText) {
+    if (!this.slashCommandMenu) return;
+
+    // Filter query without the leading slash
+    const query = inputText.slice(1).trim().toLowerCase();
+
+    if (!query) {
+      this.currentFilteredCommands = [...SLASH_COMMANDS];
+    } else {
+      this.currentFilteredCommands = SLASH_COMMANDS.filter(cmd =>
+        cmd.cmd.toLowerCase().includes(query) ||
+        cmd.label.toLowerCase().includes(query) ||
+        cmd.desc.toLowerCase().includes(query)
+      );
+    }
+
+    if (this.currentFilteredCommands.length === 0) {
+      this.hideSlashCommandMenu();
+      return;
+    }
+
+    this.activeSlashCommandIndex = 0;
+    this.renderSlashCommandMenu();
+    this.slashCommandMenu.style.display = 'block';
+  }
+
+  hideSlashCommandMenu() {
+    if (this.slashCommandMenu) {
+      this.slashCommandMenu.style.display = 'none';
+    }
+  }
+
+  renderSlashCommandMenu() {
+    if (!this.slashMenuList) return;
+
+    this.slashMenuList.innerHTML = this.currentFilteredCommands.map((cmd, idx) => `
+      <div class="slash-item ${idx === this.activeSlashCommandIndex ? 'active' : ''}" data-index="${idx}">
+        <span class="slash-item-icon">${cmd.icon}</span>
+        <div class="slash-item-info">
+          <div class="slash-item-top">
+            <span class="slash-item-cmd">${cmd.cmd}</span>
+            <span class="slash-item-label">${cmd.label}</span>
+          </div>
+          <div class="slash-item-desc">${cmd.desc}</div>
+        </div>
+        <span class="slash-item-enter">↵ Select</span>
+      </div>
+    `).join('');
+
+    const items = this.slashMenuList.querySelectorAll('.slash-item');
+    items.forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // prevent losing textarea focus
+        const idx = parseInt(el.dataset.index, 10);
+        this.activeSlashCommandIndex = idx;
+        this.executeActiveSlashCommand();
+      });
+      el.addEventListener('mouseenter', () => {
+        const idx = parseInt(el.dataset.index, 10);
+        this.activeSlashCommandIndex = idx;
+        this.updateSlashCommandHighlight();
+      });
+    });
+  }
+
+  moveSlashCommandSelection(delta) {
+    if (!this.currentFilteredCommands.length) return;
+    const len = this.currentFilteredCommands.length;
+    this.activeSlashCommandIndex = (this.activeSlashCommandIndex + delta + len) % len;
+    this.updateSlashCommandHighlight();
+  }
+
+  updateSlashCommandHighlight() {
+    if (!this.slashMenuList) return;
+    const items = this.slashMenuList.querySelectorAll('.slash-item');
+    items.forEach((item, idx) => {
+      if (idx === this.activeSlashCommandIndex) {
+        item.classList.add('active');
+        item.scrollIntoView({ block: 'nearest' });
+      } else {
+        item.classList.remove('active');
+      }
+    });
+  }
+
+  async executeActiveSlashCommand() {
+    const selected = this.currentFilteredCommands[this.activeSlashCommandIndex];
+    this.hideSlashCommandMenu();
+    if (!selected) return;
+
+    if (selected.action === 'store') {
+      await this.handleStoreCommand();
+    } else if (selected.action === 'clear') {
+      this.clearCurrentChat();
+    } else if (selected.action === 'interview') {
+      await this.handleStatusCommand('Interviewing');
+    } else if (selected.action === 'offer') {
+      await this.handleStatusCommand('Offer');
+    } else if (selected.action === 'rejected') {
+      await this.handleStatusCommand('Rejected');
+    } else if (selected.action === 'salary') {
+      this.chatInput.value = '/salary ';
+      this.chatInput.focus();
+    } else if (selected.action === 'help') {
+      this.handleHelpCommand();
+    }
+  }
+
+  handleHelpCommand() {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+    this.welcomeHero.style.display = 'none';
+
+    const helpMsg = `💡 **Zuno Command Center & Shortcuts**\n\n` +
+      `You can use slash commands anytime in the input box to rapidly manage your jobs:\n\n` +
+      `• **/store** — Save the current drafted application to your Supabase Cloud database & Tracker\n` +
+      `• **/interview** — Set status to **Interviewing** and get tailored interview prep checklists\n` +
+      `• **/offer** — Set status to **Offer** and receive offer negotiation guidance\n` +
+      `• **/rejected** — Set status to **Rejected** and update application records\n` +
+      `• **/salary [amount]** — Set compensation (e.g. \`/salary $160,000\` or \`/salary 15 LPA\`)\n` +
+      `• **/clear** — Clear current chat session\n` +
+      `• **/help** — Show this command manual\n\n` +
+      `*Pro tip: Just press \`/\` in the chat input to see all options with live search and arrow-key navigation!*`;
+
+    this.appendAssistantMessage(helpMsg, this.activeApplication);
+    this.scrollToBottom();
+  }
+
+  async handleStatusCommand(newStatus) {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+
+    if (!this.activeApplication || (!this.activeApplication.companyName && !this.activeApplication.roleTitle)) {
+      this.appendAssistantMessage(
+        `⚠️ **No active application selected.**\n\nPlease paste a Job Description (JD) or select an application from history before setting status to **${newStatus}**.`,
+        null
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    this.activeApplication.status = newStatus;
+    if (this.activeApplication.isStored) {
+      await SupabaseService.saveApplication(this.activeApplication);
+      await this.loadApplications();
+    }
+
+    let statusMsg = '';
+    if (newStatus === 'Interviewing') {
+      statusMsg = `🎯 **Status Updated to Interviewing!**\n\n` +
+        `Application for **${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** is now marked as **Interviewing**.\n\n` +
+        `**Zuno Interview Prep Checklist:**\n` +
+        `1. **Core Skills to Review:** ${this.activeApplication.skills && this.activeApplication.skills.length ? this.activeApplication.skills.join(', ') : 'Primary tech stack & system design'}\n` +
+        `2. **Behavioral Prep:** Practice 2-3 stories using the STAR method (Situation, Task, Action, Result).\n` +
+        `3. **Company Intel:** Research **${this.activeApplication.companyName}**'s latest products and engineering culture.\n\n` +
+        `Ask Zuno anytime if you'd like practice interview questions for this role!`;
+    } else if (newStatus === 'Offer') {
+      statusMsg = `🎉 **Congratulations on the Offer!**\n\n` +
+        `Application for **${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** is now marked as **Offer**.\n\n` +
+        `**Zuno Offer Review Tips:**\n` +
+        `• Current logged salary: **${this.activeApplication.salary || 'Not specified (type /salary [amount] to update)'}**\n` +
+        `• Ensure you consider the full total rewards package: Base, Bonus, Equity/Stock Grants, and Benefits.\n` +
+        `• Type **/salary [amount]** anytime if you want to record your finalized offer package.`;
+    } else if (newStatus === 'Rejected') {
+      statusMsg = `🛑 **Status Updated to Rejected**\n\n` +
+        `Application for **${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** is now logged as **Rejected**.\n\n` +
+        `Stay resilient! Every application provides insights for the next one. Keep applying and tracking!`;
+    }
+
+    this.appendAssistantMessage(statusMsg, this.activeApplication);
+    this.scrollToBottom();
+    this.showToast(`Status updated to ${newStatus}`, 'success');
+  }
+
+  async handleSalaryCommand(text) {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+
+    if (!this.activeApplication || (!this.activeApplication.companyName && !this.activeApplication.roleTitle)) {
+      this.appendAssistantMessage(
+        `⚠️ **No active application selected.**\n\nPlease paste a Job Description (JD) or select an application from history before setting salary.`,
+        null
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    const cleanAmount = (text || '').replace(/^\/salary\s*/i, '').trim();
+    if (!cleanAmount) {
+      this.appendAssistantMessage(
+        `💡 **Salary Command Usage:**\nType \`/salary [amount]\` (for example: \`/salary $145,000/yr\` or \`/salary 18 LPA\`).`,
+        this.activeApplication
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    this.activeApplication.salary = cleanAmount;
+    if (this.activeApplication.isStored) {
+      await SupabaseService.saveApplication(this.activeApplication);
+      await this.loadApplications();
+    }
+
+    const salaryMsg = `💵 **Salary Updated!**\n\n` +
+      `Updated compensation for **${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** to **${cleanAmount}**.`;
+
+    this.appendAssistantMessage(salaryMsg, this.activeApplication);
+    this.scrollToBottom();
+    this.showToast(`Salary updated to ${cleanAmount}`, 'success');
+  }
+
   clearCurrentChat() {
     this.chatMessages = [];
     if (this.activeApplication) {
@@ -509,6 +824,36 @@ class JobTrackerApp {
     // Slash command to store currently drafted job in database
     if (lower === '/store' || lower === '/save' || lower.startsWith('/store ')) {
       await this.handleStoreCommand();
+      return;
+    }
+
+    // Slash command for help & shortcuts
+    if (lower === '/help' || lower.startsWith('/help ')) {
+      this.handleHelpCommand();
+      return;
+    }
+
+    // Slash command to mark as interviewing
+    if (lower === '/interview' || lower.startsWith('/interview ')) {
+      await this.handleStatusCommand('Interviewing');
+      return;
+    }
+
+    // Slash command to mark as offer received
+    if (lower === '/offer' || lower.startsWith('/offer ')) {
+      await this.handleStatusCommand('Offer');
+      return;
+    }
+
+    // Slash command to mark as rejected
+    if (lower === '/rejected' || lower === '/reject' || lower.startsWith('/rejected ')) {
+      await this.handleStatusCommand('Rejected');
+      return;
+    }
+
+    // Slash command to update salary
+    if (lower.startsWith('/salary')) {
+      await this.handleSalaryCommand(text);
       return;
     }
 
