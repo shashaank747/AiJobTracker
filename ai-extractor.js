@@ -45,7 +45,8 @@ export const AiExtractor = {
 
     const systemPrompt = `You are an expert AI Job Application Tracker Assistant.
 Your task is to analyze user input (job descriptions, links, follow-up messages, status updates) and extract structured job application information.
-Return ONLY valid JSON matching this schema:
+CRITICAL INSTRUCTION: If the user input is just a greeting (e.g., "hi", "hello", "hey"), casual conversation, or does not contain any job details or updates, respond politely in "message" and set "data" to null.
+Otherwise, extract the job info and return JSON matching this schema:
 {
   "message": "Friendly, concise response summarizing what was extracted or updated",
   "data": {
@@ -166,6 +167,35 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
    * Provides immediate, robust extraction with zero API keys required
    */
   extractWithHeuristics(text, existingJob = null) {
+    const trimmed = text.trim();
+    const lower = trimmed.toLowerCase();
+
+    // 1. Detect greetings & casual conversational messages
+    const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
+    const isHelp = /^(help|what can you do|how does this work|who are you|commands|instructions)\b/i.test(lower);
+    const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
+
+    if (isGreeting) {
+      return {
+        message: "👋 **Hello!** I'm your **JobTrackerAI** assistant.\n\nTo track an application, simply paste a **Job Description**, an application email, or a job link here. I'll automatically extract the company, role, salary, work mode, and application link for you!",
+        data: null
+      };
+    }
+
+    if (isHelp) {
+      return {
+        message: "💡 **How JobTrackerAI Works:**\n- **Paste a Job Description**: Drop raw text from LinkedIn, Indeed, Glassdoor, or company careers sites.\n- **Add Links**: Paste direct application links or portal URLs to add them to your tracking card.\n- **Status Updates**: Type *'Mark as interviewing'* or *'Received offer'*.\n- Everything syncs automatically to your **Applications Tracker** dashboard!",
+        data: null
+      };
+    }
+
+    if (isCasual) {
+      return {
+        message: "Glad to help! Paste a new job description or link whenever you're ready.",
+        data: null
+      };
+    }
+
     const today = new Date().toISOString().split('T')[0];
     const data = existingJob ? { ...existingJob } : {
       companyName: '',
@@ -301,6 +331,14 @@ Return JSON with { "message": "...", "data": { "companyName", "roleTitle", "jobT
       if (roleMatch) {
         data.roleTitle = roleMatch[1].trim();
       }
+    }
+
+    // If this is a new application and no concrete job signals were found, do NOT create a fake job
+    if (!existingJob && !data.companyName && !data.roleTitle && foundUrls.length === 0 && !salaryMatch) {
+      return {
+        message: "I didn't detect any job details in that message. Please paste a **Job Description**, an application email, or a job posting link to track a new job!",
+        data: null
+      };
     }
 
     // Default company and role fallbacks if not detected

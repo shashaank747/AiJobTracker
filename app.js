@@ -395,44 +395,64 @@ class JobTrackerApp {
 
       thinkingEl.remove();
 
-      // Ensure data has an ID and creation date
-      const appData = {
-        ...(this.activeApplication || {}),
-        ...result.data,
-        id: this.activeApplication?.id || crypto.randomUUID(),
-        createdAt: this.activeApplication?.createdAt || new Date().toISOString()
-      };
+      if (result.data) {
+        // A job was created or updated!
+        const appData = {
+          ...(this.activeApplication || {}),
+          ...result.data,
+          id: this.activeApplication?.id || crypto.randomUUID(),
+          createdAt: this.activeApplication?.createdAt || new Date().toISOString()
+        };
 
-      // Append assistant response to state
-      const assistantMsg = {
-        role: 'assistant',
-        text: result.message,
-        data: appData
-      };
+        const assistantMsg = {
+          role: 'assistant',
+          text: result.message,
+          data: appData
+        };
 
-      this.chatMessages.push({ role: 'user', text });
-      this.chatMessages.push(assistantMsg);
-      appData.chatHistory = this.chatMessages;
+        this.chatMessages.push({ role: 'user', text });
+        this.chatMessages.push(assistantMsg);
+        appData.chatHistory = this.chatMessages;
 
-      // Save to Supabase & local storage
-      const saveRes = await SupabaseService.saveApplication(appData);
-      this.activeApplication = saveRes.data;
-      Config.setActiveSessionId(this.activeApplication.id);
+        // Save to Supabase & local storage
+        const saveRes = await SupabaseService.saveApplication(appData);
+        this.activeApplication = saveRes.data;
+        Config.setActiveSessionId(this.activeApplication.id);
 
-      // Render assistant bubble with extraction card
-      this.appendAssistantMessage(result.message, this.activeApplication);
+        // Render assistant bubble with extraction card
+        this.appendAssistantMessage(result.message, this.activeApplication);
 
-      // Update UI
-      this.topbarSessionMeta.style.display = 'flex';
-      this.topbarCompany.textContent = this.activeApplication.companyName;
-      this.topbarRole.textContent = this.activeApplication.roleTitle;
+        // Update UI
+        this.topbarSessionMeta.style.display = 'flex';
+        this.topbarCompany.textContent = this.activeApplication.companyName;
+        this.topbarRole.textContent = this.activeApplication.roleTitle;
 
-      await this.loadApplications();
-      this.highlightActiveHistoryItem();
-      this.scrollToBottom();
+        await this.loadApplications();
+        this.highlightActiveHistoryItem();
+        this.scrollToBottom();
 
-      const syncNote = saveRes.isRemote ? 'Saved to Supabase!' : 'Saved locally!';
-      this.showToast(syncNote, 'success');
+        const syncNote = saveRes.isRemote ? 'Saved to Supabase!' : 'Saved locally!';
+        this.showToast(syncNote, 'success');
+      } else {
+        // Pure conversational message (e.g., greeting, help, inquiry) - DO NOT create a dummy card!
+        const assistantMsg = {
+          role: 'assistant',
+          text: result.message,
+          data: null
+        };
+
+        this.chatMessages.push({ role: 'user', text });
+        this.chatMessages.push(assistantMsg);
+
+        if (this.activeApplication) {
+          this.activeApplication.chatHistory = this.chatMessages;
+          await SupabaseService.saveApplication(this.activeApplication);
+        }
+
+        // Render assistant bubble without an extraction card
+        this.appendAssistantMessage(result.message, null);
+        this.scrollToBottom();
+      }
 
     } catch (err) {
       thinkingEl.remove();
