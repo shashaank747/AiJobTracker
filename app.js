@@ -118,6 +118,7 @@ class JobTrackerApp {
     this.inputSupabaseKey = document.getElementById('inputSupabaseKey');
     this.inputSupabaseTable = document.getElementById('inputSupabaseTable');
     this.selectAiProvider = document.getElementById('selectAiProvider');
+    this.chatAiEngineSelect = document.getElementById('chatAiEngineSelect');
     this.inputGeminiKey = document.getElementById('inputGeminiKey');
     this.inputOpenAiKey = document.getElementById('inputOpenAiKey');
     this.geminiConfigGroup = document.getElementById('geminiConfigGroup');
@@ -188,6 +189,32 @@ class JobTrackerApp {
     });
 
     this.btnSend.addEventListener('click', () => this.handleSendMessage());
+
+    // Extraction Engine selector near input box
+    if (this.chatAiEngineSelect) {
+      this.chatAiEngineSelect.addEventListener('change', (e) => {
+        const newProvider = e.target.value;
+        const currentSettings = Config.getSettings();
+        currentSettings.aiProvider = newProvider;
+        Config.saveSettings(currentSettings);
+
+        if (this.selectAiProvider) {
+          this.selectAiProvider.value = newProvider;
+        }
+        this.updateAiModelTag();
+
+        const providerNames = {
+          gemini: 'Google Gemini API (Recommended)',
+          openai: 'OpenAI ChatGPT API',
+          heuristic: 'Smart NLP Heuristics (Offline / Free)'
+        };
+        this.showToast(`Switched engine to ${providerNames[newProvider] || newProvider}`, 'info');
+
+        if (newProvider === 'openai' && !currentSettings.openaiKey) {
+          this.showToast('Note: If calling client directly, set your OpenAI key in Settings (⚙️)', 'info');
+        }
+      });
+    }
 
     // Quick prompt pills
     document.querySelectorAll('.quick-pill').forEach(pill => {
@@ -919,13 +946,15 @@ class JobTrackerApp {
 
   updateAiModelTag() {
     const settings = Config.getSettings();
-    let text = 'Model: Smart Heuristics';
-    if (settings.aiProvider === 'gemini' && settings.geminiKey) {
-      text = 'Model: Google Gemini';
-    } else if (settings.aiProvider === 'openai' && settings.openaiKey) {
-      text = 'Model: OpenAI ChatGPT';
+    let text = 'Model: Smart Heuristics (Offline)';
+    if (settings.aiProvider === 'gemini') {
+      text = 'Model: Google Gemini API';
+    } else if (settings.aiProvider === 'openai') {
+      text = 'Model: OpenAI ChatGPT API';
     }
-    this.activeAiModelTag.textContent = text;
+    if (this.activeAiModelTag) this.activeAiModelTag.textContent = text;
+    if (this.chatAiEngineSelect) this.chatAiEngineSelect.value = settings.aiProvider || 'gemini';
+    if (this.selectAiProvider) this.selectAiProvider.value = settings.aiProvider || 'gemini';
   }
 
   // ==========================================

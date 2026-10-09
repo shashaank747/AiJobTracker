@@ -204,7 +204,14 @@ export const AiExtractor = {
   async processInput(text, existingJob = null, history = []) {
     const settings = Config.getSettings();
 
-    // 1. Try Vercel Serverless /api/chat (utilizes server GEMINI_API_KEY)
+    const provider = settings.aiProvider || 'gemini';
+
+    // 1. If user explicitly chose Offline Heuristics
+    if (provider === 'heuristic') {
+      return this.extractWithHeuristics(text, existingJob);
+    }
+
+    // 2. Try Vercel Serverless /api/chat with selected provider
     try {
       const serverRes = await fetch('/api/chat', {
         method: 'POST',
@@ -213,7 +220,8 @@ export const AiExtractor = {
           text,
           existingJob,
           history,
-          apiKey: settings.geminiKey || undefined
+          provider,
+          apiKey: (provider === 'openai' ? settings.openaiKey : settings.geminiKey) || undefined
         })
       });
 
@@ -223,7 +231,7 @@ export const AiExtractor = {
           return {
             message: json.message,
             data: json.data || null,
-            provider: 'gemini'
+            provider: json.provider || provider
           };
         }
       }
@@ -231,21 +239,18 @@ export const AiExtractor = {
       console.warn('Serverless endpoint not reachable, trying direct client API:', serverErr);
     }
 
-    // 2. If Gemini key is available in client settings
-    if (settings.geminiKey && settings.aiProvider !== 'openai' && settings.aiProvider !== 'heuristic') {
-      try {
-        return await this.extractWithGemini(text, existingJob, history, settings);
-      } catch (err) {
-        console.warn('Client Gemini extraction failed:', err);
-      }
-    }
-
-    // 3. If OpenAI key is available in client settings
-    if (settings.openaiKey && settings.aiProvider === 'openai') {
+    // 3. Direct Client Fallback:
+    if (provider === 'openai' && settings.openaiKey) {
       try {
         return await this.extractWithOpenAI(text, existingJob, history, settings);
       } catch (err) {
         console.warn('Client OpenAI extraction failed:', err);
+      }
+    } else if (provider === 'gemini' && settings.geminiKey) {
+      try {
+        return await this.extractWithGemini(text, existingJob, history, settings);
+      } catch (err) {
+        console.warn('Client Gemini extraction failed:', err);
       }
     }
 

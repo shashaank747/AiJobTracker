@@ -172,13 +172,30 @@
         </div>
 
 
-        <!-- Chat Input Footer -->
+
+
+                  <!-- Chat Input Footer -->
         <div class="chat-input-area">
-          <div class="quick-prompts-bar">
-            <button class="quick-pill" data-action="link">🔗 Add Application Link</button>
-            <button class="quick-pill" data-action="salary">💵 Update Salary</button>
-            <button class="quick-pill" data-action="interview">🎯 Mark as Interviewing</button>
-            <button class="quick-pill" data-action="offer">🎉 Mark as Offered</button>
+          <div class="input-toolbar-top">
+            <!-- Extraction Engine Dropdown (Near Input Box) -->
+            <div class="engine-picker-wrapper">
+              <label for="chatAiEngineSelect" class="engine-picker-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span>Extraction Engine</span>
+              </label>
+              <select id="chatAiEngineSelect" class="engine-picker-dropdown" title="Switch Extraction Engine">
+                <option value="gemini">Google Gemini API (Recommended)</option>
+                <option value="openai">OpenAI ChatGPT API</option>
+                <option value="heuristic">Smart NLP Heuristics (Offline / Free)</option>
+              </select>
+            </div>
+
+            <div class="quick-prompts-bar">
+              <button class="quick-pill" data-action="link">🔗 Add Link</button>
+              <button class="quick-pill" data-action="salary">💵 Update Salary</button>
+              <button class="quick-pill" data-action="interview">🎯 Interviewing</button>
+              <button class="quick-pill" data-action="offer">🎉 Offer</button>
+            </div>
           </div>
 
           <!-- Attachment Preview Box (Images/PDFs) -->
