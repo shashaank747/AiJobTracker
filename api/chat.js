@@ -137,6 +137,21 @@ CORE CAPABILITIES:
     "notes": "Short summary of key requirements or notes"
   }
 
+5. CANDIDATE PROFILE VS COMPANY REQUIREMENTS COMPARISON ("/compare" COMMAND):
+- STRICT REQUIREMENT: Only provide this in-depth comparative audit when the user explicitly triggers the "/compare" command (e.g., "/compare", "/compare <company>", "/compare me"). Do NOT output this comparison during standard job logging or casual questions unless "/compare" is requested.
+- When "/compare" is triggered:
+  * Analyze the candidate's profile from "USER ABOUT ME PROFILE / DOSSIER" (skills, projects, finish dates, links, certifications, degree, 10th/12th marks, semester 1-8 marks) against the company requirements from "Active Job in Session" (or the targeted company in "PERSISTENT BACKEND DATABASE").
+  * Present a thorough, beautiful, and structured comparison report in Markdown:
+    1. 🎯 **Overall Fit Score & Verdict** (e.g., "85% Match - Strong Candidate")
+    2. 🛠️ **Skills & Tech Stack Breakdown** (Matched skills vs Missing/Desired skills)
+    3. 💻 **Projects & Portfolio Alignment** (How candidate's projects match the role, highlighting finish dates & tech)
+    4. 🎓 **Academic & Education Review** (Degree, college, CGPA, semester marks consistency, 10th/12th marks)
+    5. 📜 **Certifications Impact** (Validations that strengthen the application)
+    6. 🚀 **Key Strengths for Interview Rounds**
+    7. ⚠️ **Gaps & Actionable Prep Recommendations** (How to bridge or defend missing requirements)
+  * Set "data": null and "profileUpdate": null.
+
+
 CRITICAL INSTRUCTION FOR APPLIED DATE:
 - Users frequently track jobs they applied to in the past (e.g., "I applied for this last week", "applied 3 days ago", "applied yesterday", "applied on 2026-09-28", "applied on Oct 2nd", or dates in email confirmations).
 - You MUST calculate and resolve the exact "YYYY-MM-DD" date relative to TODAY (${today}):

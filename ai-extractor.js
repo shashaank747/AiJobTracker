@@ -356,6 +356,11 @@ Your capabilities:
 4. CAREER & COMPANY QUESTIONS: When user asks questions about a company, interview questions, role expectations, or career tips:
    - Provide a comprehensive, structured, and insightful markdown answer in "message".
    - Set "data": null.
+5. CANDIDATE PROFILE VS COMPANY REQUIREMENTS COMPARISON ("/compare" COMMAND):
+   - ONLY when user explicitly uses "/compare" (or asks to compare their profile against company requirements):
+     * Compare candidate's About Me data (education, sem 1-8 marks, projects with tech and finish dates, certs, skills) against company requirements.
+     * Format a rich Markdown report with Match Score %, Skills alignment table (matched vs missing), Projects fit, Academic review, Strengths, and Gap preparation.
+     * Set "data": null and "profileUpdate": null.
 
 Return ONLY valid JSON matching this schema:
 {
@@ -452,6 +457,7 @@ Your name is Zuno.
 You have direct live access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
 When user asks about past applications, statistics, interview status, specific applied companies, or advice: provide a comprehensive markdown answer using the database records in "message" and set "data": null.
 When user asks you to add projects, certifications, semester marks, or update profile: return structured "profileUpdate" in JSON and set "data": null.
+When user asks to compare profile vs company requirements using "/compare": provide a comprehensive comparative analysis (Match score %, skills match vs missing, projects alignment, sem marks & education review, strengths, gap plan) and set "data": null.
 When user pastes a job description (JD) or update: extract the job details in "data".
 Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
 
@@ -499,6 +505,13 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
   extractWithHeuristics(text, existingJob = null, allApplications = [], userProfile = null) {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
+
+    // 0. Check for /compare command
+    const isCompareCommand = /^\/(?:compare|cmp)\b/i.test(trimmed) || /^(?:compare\s+(?:me|my\s+profile|profile)\b)/i.test(lower);
+    if (isCompareCommand) {
+      const queryTarget = trimmed.replace(/^\/(?:compare|cmp)\s*/i, '').replace(/^(?:compare\s+(?:me|my\s+profile|profile)(?:\s+(?:with|to|against))?\s*)/i, '').trim();
+      return this.generateProfileJobComparison(userProfile, existingJob, queryTarget, allApplications);
+    }
 
     // 1. Check for greetings
     const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
@@ -1221,6 +1234,244 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       message,
       data,
       provider: 'heuristic'
+    };
+  },
+
+  /**
+   * Generates a comprehensive, deep comparison between candidate's About Me dossier
+   * and the company's job requirements.
+   */
+  generateProfileJobComparison(prof, targetJob = null, targetQuery = '', allApplications = []) {
+    if (!targetJob && (!allApplications || allApplications.length === 0)) {
+      return {
+        message: `⚠️ **No Job Application Found to Compare**\n\n` +
+          `To compare your **About Me** profile against company requirements:\n` +
+          `1. Paste a **Job Description (JD)** in the chat or select an application from your **Applications Tracker**.\n` +
+          `2. Type **/compare** to generate your full candidacy match audit!`,
+        data: null
+      };
+    }
+
+    // Resolve target job
+    let job = targetJob;
+    if ((!job || (!job.companyName && !job.roleTitle)) && allApplications && allApplications.length > 0) {
+      if (targetQuery) {
+        const q = targetQuery.toLowerCase();
+        job = allApplications.find(a => 
+          (a.companyName && a.companyName.toLowerCase().includes(q)) ||
+          (a.roleTitle && a.roleTitle.toLowerCase().includes(q))
+        ) || allApplications[0];
+      } else {
+        job = allApplications[0];
+      }
+    }
+
+    if (!job || (!job.companyName && !job.roleTitle)) {
+      return {
+        message: `⚠️ **No Job Application Found to Compare**\n\nPlease select an application or paste a JD first, then type **/compare**.`,
+        data: null
+      };
+    }
+
+    const p = prof || Config.getUserProfile() || {};
+    const education = p.education || {};
+    const college = education.college || {};
+    const semMarks = college.semesterMarks || {};
+    const projects = p.projects || [];
+    const certs = p.certifications || [];
+    const candidateSkills = Array.isArray(p.skills) ? [...p.skills] : [];
+
+    // Extract job skills
+    let jobSkills = Array.isArray(job.skills) && job.skills.length > 0 ? [...job.skills] : [];
+    if (jobSkills.length === 0 && (job.notes || job.jobDescription)) {
+      const textSource = `${job.notes || ''} ${job.jobDescription || ''}`.toLowerCase();
+      const rawTokens = [
+        'JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Golang', 'C++', 'C#',
+        'React', 'Next.js', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'FastAPI', 'Spring Boot',
+        'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Supabase', 'Redis',
+        'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'System Design', 'REST API', 'GraphQL', 'Microservices'
+      ];
+      jobSkills = rawTokens.filter(t => textSource.includes(t.toLowerCase()));
+    }
+    if (jobSkills.length === 0) {
+      jobSkills = ['Core Engineering', 'Problem Solving', 'System Design', 'Communication'];
+    }
+
+    // Aggregate candidate skill tokens from skills, project tech stacks, certs
+    const candidateSkillPool = new Set(candidateSkills.map(s => s.toLowerCase().trim()));
+    projects.forEach(pr => {
+      if (pr.techStack) {
+        pr.techStack.split(/[,/|]/).forEach(t => candidateSkillPool.add(t.toLowerCase().trim()));
+      }
+    });
+    certs.forEach(c => {
+      if (c.name) {
+        c.name.split(/[\s,]/).forEach(t => {
+          if (t.length > 2) candidateSkillPool.add(t.toLowerCase().trim());
+        });
+      }
+    });
+
+    // Calculate matched vs missing skills
+    const matchedSkills = [];
+    const missingSkills = [];
+
+    jobSkills.forEach(reqSkill => {
+      const reqLower = reqSkill.toLowerCase().trim();
+      let isMatched = false;
+      for (const candSkill of candidateSkillPool) {
+        if (candSkill.includes(reqLower) || reqLower.includes(candSkill)) {
+          isMatched = true;
+          break;
+        }
+      }
+      if (isMatched) {
+        matchedSkills.push(reqSkill);
+      } else {
+        missingSkills.push(reqSkill);
+      }
+    });
+
+    // Calculate match scores
+    const skillRatio = jobSkills.length > 0 ? (matchedSkills.length / jobSkills.length) : 0.8;
+    const projectBonus = Math.min(projects.length * 8, 25);
+    const certBonus = Math.min(certs.length * 5, 15);
+    
+    // Semester marks analysis
+    const semValues = Object.values(semMarks).map(v => parseFloat(v)).filter(v => !isNaN(v) && v > 0);
+    const avgSemGpa = semValues.length > 0 
+      ? (semValues.reduce((a, b) => a + b, 0) / semValues.length).toFixed(2)
+      : (college.overallCgpa || null);
+    const academicBonus = avgSemGpa ? (parseFloat(avgSemGpa) >= 8.0 ? 20 : 15) : 10;
+
+    let overallScore = Math.round((skillRatio * 40) + projectBonus + certBonus + academicBonus);
+    if (overallScore > 96) overallScore = 96;
+    if (overallScore < 45) overallScore = 45;
+
+    let verdict = 'Strong Candidate Match';
+    let badgeColor = '🟢';
+    if (overallScore >= 85) {
+      verdict = 'High Priority Match — Ready for Immediate Interviewing';
+      badgeColor = '🌟';
+    } else if (overallScore >= 70) {
+      verdict = 'Competitive Match — Good Foundation with Quick Prep Needed';
+      badgeColor = '🟢';
+    } else {
+      verdict = 'Developing Match — Requires Addressing Core Skill Gaps';
+      badgeColor = '🟡';
+    }
+
+    // Identify relevant projects
+    const relevantProjects = projects.filter(pr => {
+      const text = `${pr.title} ${pr.techStack || ''} ${pr.description || ''}`.toLowerCase();
+      return jobSkills.some(js => text.includes(js.toLowerCase())) || 
+             (job.roleTitle && text.includes(job.roleTitle.toLowerCase().split(' ')[0]));
+    });
+
+    // Compose report
+    let report = `## ⚖️ Candidate vs Requirements Comparison\n\n`;
+    report += `### **${job.companyName || 'Target Company'}** — *${job.roleTitle || 'Open Position'}*\n\n`;
+    report += `> ${badgeColor} **Match Score: ${overallScore}%** — **${verdict}**\n\n`;
+
+    // Section 1: Candidate & Role Snapshot
+    report += `### 1. 📌 Overview & Candidate Dossier\n`;
+    report += `- **Candidate:** **${p.fullName || 'You'}** ${p.headline ? `(*${p.headline}*)` : ''}\n`;
+    report += `- **Target Role:** **${job.roleTitle || 'N/A'}** at **${job.companyName || 'N/A'}**\n`;
+    report += `- **Work Mode & Location:** ${job.workMode || 'N/A'} (${job.location || 'N/A'})\n`;
+    if (job.salary) report += `- **Target Compensation:** ${job.salary}\n`;
+    report += `\n`;
+
+    // Section 2: Skills Alignment
+    report += `### 2. 🛠️ Skills & Tech Stack Alignment\n\n`;
+    report += `| Metric | Details |\n`;
+    report += `|---|---|\n`;
+    report += `| **Direct Matches (${matchedSkills.length})** | ${matchedSkills.length > 0 ? matchedSkills.map(s => `\`${s}\``).join(', ') : '*None identified yet*'} |\n`;
+    report += `| **Missing / Unlisted (${missingSkills.length})** | ${missingSkills.length > 0 ? missingSkills.map(s => `\`${s}\``).join(', ') : '*(None — full coverage!)*'} |\n`;
+    report += `| **Skills Coverage** | **${Math.round(skillRatio * 100)}%** of mandatory requirements met |\n\n`;
+
+    // Section 3: Projects Alignment
+    report += `### 3. 💻 Projects & Hands-On Portfolio Fit\n`;
+    if (projects.length === 0) {
+      report += `- ⚠️ *No projects recorded in your **About Me** profile.* Add projects with tech stacks and finish dates to boost your match score!\n`;
+    } else {
+      report += `You have **${projects.length}** project(s) in your portfolio. `;
+      if (relevantProjects.length > 0) {
+        report += `**${relevantProjects.length}** project(s) directly demonstrate key requirements for **${job.companyName}**:\n\n`;
+        relevantProjects.forEach((pr, i) => {
+          report += `${i + 1}. **${pr.title}**\n`;
+          if (pr.techStack) report += `   - **Tech Stack:** ${pr.techStack}\n`;
+          if (pr.finishDate) report += `   - **Completed Date:** ${pr.finishDate}\n`;
+          if (pr.projectUrl) report += `   - **Repository / Demo:** [${pr.projectUrl}](${pr.projectUrl})\n`;
+        });
+      } else {
+        report += `Here are your recent projects:\n\n`;
+        projects.slice(0, 3).forEach((pr, i) => {
+          report += `${i + 1}. **${pr.title}** (${pr.techStack || 'Full Stack'})${pr.finishDate ? ` — Done: ${pr.finishDate}` : ''}\n`;
+        });
+      }
+    }
+    report += `\n`;
+
+    // Section 4: Education & Academic Track Record
+    report += `### 4. 🎓 Academic & Semester Marks Audit\n`;
+    report += `- **Degree & Institution:** ${college.degree || 'Degree'} in ${college.branch || 'Engineering'}, **${college.collegeName || 'University'}** (Class of ${college.graduationYear || '2026'})\n`;
+    if (avgSemGpa) {
+      report += `- **Semester SGPA Performance:** Average **${avgSemGpa} / 10** across ${semValues.length > 0 ? `${semValues.length} recorded semesters` : 'college coursework'}\n`;
+      if (semValues.length > 0) {
+        const semRows = Object.entries(semMarks)
+          .filter(([k, v]) => v)
+          .map(([k, v]) => `${k.toUpperCase().replace('SEM', 'Sem ')}: **${v}**`)
+          .join(' | ');
+        report += `  *Detailed: ${semRows}*\n`;
+      }
+    }
+    if (education.tenth?.marks || education.twelfth?.marks) {
+      report += `- **Schooling Foundation:** 10th Standard: **${education.tenth?.marks || 'N/A'}** (${education.tenth?.schoolName || 'N/A'}) | 12th Standard: **${education.twelfth?.marks || 'N/A'}** (${education.twelfth?.schoolName || 'N/A'})\n`;
+    }
+    report += `\n`;
+
+    // Section 5: Certifications
+    if (certs.length > 0) {
+      report += `### 5. 📜 Verified Certifications & Credentials\n`;
+      certs.forEach((c, idx) => {
+        report += `- **${c.name}** — *${c.issuer || 'Verified Platform'}* (${c.issueDate || 'Completed'})\n`;
+      });
+      report += `\n`;
+    }
+
+    // Section 6: Strengths & Talking Points
+    report += `### 6. 🚀 Top 3 High-Impact Interview Talking Points\n`;
+    if (relevantProjects.length > 0) {
+      report += `1. **Anchor on Hands-On Delivery:** Pitch your work on **${relevantProjects[0].title}** to prove real-world proficiency with \`${matchedSkills[0] || 'core technologies'}\`.\n`;
+    } else if (projects.length > 0) {
+      report += `1. **Anchor on System Building:** Discuss how you architected **${projects[0].title}** from inception to completion.\n`;
+    } else {
+      report += `1. **Technical Breadth:** Highlight your fundamental strengths in computer science and software principles.\n`;
+    }
+    if (avgSemGpa && parseFloat(avgSemGpa) >= 8.5) {
+      report += `2. **Academic Rigor:** Highlight your top-tier academic consistency (**${avgSemGpa} CGPA**) at **${college.collegeName || 'your university'}** as proof of fast learning speed.\n`;
+    } else {
+      report += `2. **Adaptability & Speed:** Share examples of how quickly you master new technologies.\n`;
+    }
+    if (certs.length > 0) {
+      report += `3. **Industry-Recognized Verification:** Mention your **${certs[0].name}** certification as proof of proactive industry readiness.\n`;
+    } else {
+      report += `3. **Targeted Motivation:** Articulate why you are specifically passionate about engineering at **${job.companyName || 'this company'}**.\n`;
+    }
+    report += `\n`;
+
+    // Section 7: Gaps & Actionable Advice
+    report += `### 7. ⚠️ Gaps to Defend & Action Plan\n`;
+    if (missingSkills.length > 0) {
+      report += `- **Unlisted Requirements (${missingSkills.join(', ')}):** If you already know these, add them to your **About Me** skills section. If not, spend 2-3 hours reviewing key design patterns and terminology before technical rounds.\n`;
+    } else {
+      report += `- **Full Skill Coverage:** You cover all primary technical requirements! Focus your prep on behavioral STAR stories and mock system design.\n`;
+    }
+    report += `- **Next Action:** Type **/interview** to get custom mock interview questions for **${job.companyName}**, or update any new projects in your profile!\n`;
+
+    return {
+      message: report,
+      data: null
     };
   }
 };

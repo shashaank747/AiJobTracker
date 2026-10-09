@@ -13,6 +13,13 @@ const SLASH_COMMANDS = [
     action: 'store'
   },
   {
+    cmd: '/compare',
+    label: 'Compare Profile vs Company Requirements',
+    desc: 'Compare your About Me profile (education, sem marks, projects, certs) against company requirements',
+    icon: '⚖️',
+    action: 'compare'
+  },
+  {
     cmd: '/interview',
     label: 'Status: Interviewing',
     desc: 'Mark job as Interviewing and ask Zuno for targeted interview questions',
@@ -290,6 +297,11 @@ class JobTrackerApp {
     this.profileSkillsContainer = document.getElementById('profileSkillsContainer');
     this.inputNewSkill = document.getElementById('inputNewSkill');
     this.btnAddSkill = document.getElementById('btnAddSkill');
+
+    // Profile Top Action Buttons
+    this.btnSaveProfile = document.getElementById('btnSaveProfile');
+    this.btnProfTalkZuno = document.getElementById('btnProfTalkZuno');
+    this.btnProfileCompare = document.getElementById('btnProfileCompare');
   }
 
   async init() {
@@ -327,6 +339,12 @@ class JobTrackerApp {
         this.switchView('chat');
         this.chatInput.value = 'Can you review my profile and projects and give me suggestions?';
         this.chatInput.focus();
+      });
+    }
+    if (this.btnProfileCompare) {
+      this.btnProfileCompare.addEventListener('click', () => {
+        this.switchView('chat');
+        this.handleCompareCommand('/compare');
       });
     }
 
@@ -513,6 +531,9 @@ class JobTrackerApp {
         const action = pill.getAttribute('data-action');
         if (action === 'store') {
           this.handleStoreCommand();
+          return;
+        } else if (action === 'compare') {
+          this.handleCompareCommand('/compare');
           return;
         } else if (action === 'link') {
           this.chatInput.value = 'Application URL: ';
@@ -822,6 +843,8 @@ class JobTrackerApp {
 
     if (selected.action === 'store') {
       await this.handleStoreCommand();
+    } else if (selected.action === 'compare') {
+      await this.handleCompareCommand('/compare');
     } else if (selected.action === 'clear') {
       this.clearCurrentChat();
     } else if (selected.action === 'interview') {
@@ -846,6 +869,7 @@ class JobTrackerApp {
     const helpMsg = `💡 **Zuno Command Center & Shortcuts**\n\n` +
       `You can use slash commands anytime in the input box to rapidly manage your jobs:\n\n` +
       `• **/store** — Save the current drafted application to your Supabase Cloud database & Tracker\n` +
+      `• **/compare [company]** — Compare your About Me profile (skills, projects, marks, certs) against company requirements\n` +
       `• **/interview** — Set status to **Interviewing** and get tailored interview prep checklists\n` +
       `• **/offer** — Set status to **Offer** and receive offer negotiation guidance\n` +
       `• **/rejected** — Set status to **Rejected** and update application records\n` +
@@ -941,6 +965,71 @@ class JobTrackerApp {
     this.showToast(`Salary updated to ${cleanAmount}`, 'success');
   }
 
+  async handleCompareCommand(rawText = '/compare') {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+    this.chatInput.style.overflowY = 'hidden';
+    this.welcomeHero.style.display = 'none';
+
+    // Extract optional target argument, e.g. "/compare Stripe" or "/compare"
+    const query = (rawText || '').replace(/^\/(?:compare|cmp)\s*/i, '').trim();
+
+    // Identify target application
+    let targetApp = this.activeApplication;
+    if ((!targetApp || (!targetApp.companyName && !targetApp.roleTitle)) && this.applications && this.applications.length > 0) {
+      if (query) {
+        const q = query.toLowerCase();
+        targetApp = this.applications.find(a =>
+          (a.companyName && a.companyName.toLowerCase().includes(q)) ||
+          (a.roleTitle && a.roleTitle.toLowerCase().includes(q))
+        ) || this.applications[0];
+      } else {
+        targetApp = this.applications[0];
+      }
+    }
+
+    if (!targetApp || (!targetApp.companyName && !targetApp.roleTitle)) {
+      this.appendUserMessage(rawText || '/compare');
+      this.appendAssistantMessage(
+        `⚠️ **No active job application found to compare.**\n\n` +
+        `To compare your **About Me** profile against company requirements:\n` +
+        `1. Paste a **Job Description (JD)** in the chat or select an application from your **Applications Tracker**.\n` +
+        `2. Type **/compare** to generate your full candidacy match audit!`,
+        null
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    // Ensure latest profile data is loaded
+    if (!this.userProfile) {
+      this.userProfile = await SupabaseService.getUserProfile();
+    }
+
+    const displayText = rawText || `/compare ${targetApp.companyName || ''}`;
+    this.appendUserMessage(displayText);
+    this.showAssistantTyping();
+
+    try {
+      const result = await AiExtractor.processInput(
+        displayText,
+        targetApp,
+        this.chatMessages,
+        this.applications,
+        this.userProfile
+      );
+
+      this.removeAssistantTyping();
+      this.appendAssistantMessage(result.message, targetApp);
+      this.scrollToBottom();
+      this.showToast(`Analyzed fit for ${targetApp.companyName || 'role'}!`, 'info');
+    } catch (err) {
+      this.removeAssistantTyping();
+      this.appendAssistantMessage(`❌ **Comparison Error:** ${err.message}`, targetApp);
+      this.scrollToBottom();
+    }
+  }
+
   clearCurrentChat() {
     this.chatMessages = [];
     if (this.activeApplication) {
@@ -1021,6 +1110,12 @@ class JobTrackerApp {
     // Slash command to store currently drafted job in database
     if (lower === '/store' || lower === '/save' || lower.startsWith('/store ')) {
       await this.handleStoreCommand();
+      return;
+    }
+
+    // Slash command to compare candidate profile vs company requirements
+    if (lower === '/compare' || lower.startsWith('/compare ') || lower === '/cmp' || lower.startsWith('/cmp ')) {
+      await this.handleCompareCommand(text);
       return;
     }
 

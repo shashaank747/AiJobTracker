@@ -1102,6 +1102,19 @@ body {
   transform: translateY(-1px);
 }
 
+.quick-pill.quick-pill-compare {
+  background: rgba(168, 85, 247, 0.15) !important;
+  color: #c084fc !important;
+  border-color: rgba(168, 85, 247, 0.35) !important;
+  font-weight: 700 !important;
+}
+
+.quick-pill.quick-pill-compare:hover {
+  background: rgba(168, 85, 247, 0.25) !important;
+  border-color: #c084fc !important;
+  transform: translateY(-1px);
+}
+
 /* Skills tags */
 .card-skills-row {
   display: flex;
