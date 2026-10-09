@@ -321,7 +321,8 @@ export const AiExtractor = {
     const apiKey = settings.geminiKey;
 
     const today = new Date().toISOString().split('T')[0];
-    const systemPrompt = `You are an expert AI Job Application Tracker and Career Advisor Assistant.
+    const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
+Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your identity.
 TODAY'S REFERENCE DATE: ${today}
 
 CRITICAL APPLIED DATE RULE:
@@ -429,7 +430,8 @@ Return ONLY valid JSON matching this schema:
     const apiKey = settings.openaiKey;
     const url = 'https://api.openai.com/v1/chat/completions';
 
-    const systemPrompt = `You are an expert AI Job Application Tracker and Career Advisor Assistant.
+    const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
+Your name is Zuno.
 When user asks questions about a company, interview questions, or casual chat: provide a comprehensive markdown answer in "message" and set "data": null.
 When user pastes a job description (JD) or update: extract the job details in "data".
 Return JSON with { "message": "...", "data": { ... } or null }.`;
@@ -482,24 +484,32 @@ Return JSON with { "message": "...", "data": { ... } or null }.`;
     const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
     if (isGreeting) {
       return {
-        message: "👋 **Hello!** I'm your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Paste a Job Description**: I will automatically extract the company, role, salary, work mode, and application link.\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.\n- **Manage Applications**: Everything syncs automatically to your dashboard and Supabase!",
+        message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Paste a Job Description**: I will extract company, role, salary, work mode, and application link.\n- **Refine Details**: Tell me dates or platforms (*\"applied on 21 sept\"*, *\"applied through LinkedIn\"*).\n- **Save to Database**: Type **/store** whenever you want to save to your tracker board!\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
         data: null
       };
     }
 
-    // 2. Check for "How are you"
+    // 2. Check for "Who are you" / "What's your name"
+    if (/^(who are you|what is your name|what's your name|your name)\b/i.test(lower)) {
+      return {
+        message: "👋 I'm **Zuno**, your intelligent AI career assistant and job application tracker at **JobTrackerAI**!\n\nI can help you parse job descriptions, research companies, prepare for technical rounds, and track your applications.",
+        data: null
+      };
+    }
+
+    // 3. Check for "How are you"
     if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
       return {
-        message: "I'm doing great and fully energized to help you with your job search! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Ask me about a company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
+        message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Refine application dates or source links.\n- Type **/store** to save to your database.\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
         data: null
       };
     }
 
-    // 3. Check for Help / Capabilities
-    const isHelp = /^(help|what can you do|how does this work|who are you|commands|instructions)\b/i.test(lower);
+    // 4. Check for Help / Capabilities
+    const isHelp = /^(help|what can you do|how does this work|commands|instructions)\b/i.test(lower);
     if (isHelp) {
       return {
-        message: "💡 **How JobTrackerAI Works:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n3. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.\n4. **Cloud Database**: Your applications sync directly to Supabase and persist on your tracker board.",
+        message: "💡 **How Zuno & JobTrackerAI Work:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Conversational Refinements**: Forgot something? Just say *\"applied on 21 sept\"* or *\"applied through LinkedIn\"* and I will update your card.\n3. **Store in Database**: Type **/store** to permanently save your drafted application to Supabase and your dashboard.\n4. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n5. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.",
         data: null
       };
     }

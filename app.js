@@ -619,10 +619,10 @@ class JobTrackerApp {
     const div = document.createElement('div');
     div.className = 'chat-msg assistant thinking-wrapper';
     div.innerHTML = `
-      <div class="msg-avatar">AI</div>
+      <div class="msg-avatar">Zuno</div>
       <div class="msg-body">
         <div class="ai-thinking">
-          <span>Analyzing Job Description & extracting data</span>
+          <span>Zuno is analyzing Job Description & extracting data</span>
           <div class="thinking-dots">
             <span class="thinking-dot"></span>
             <span class="thinking-dot"></span>
@@ -675,7 +675,7 @@ class JobTrackerApp {
     const formattedText = this.renderMarkdown(text);
 
     msgDiv.innerHTML = `
-      <div class="msg-avatar">AI</div>
+      <div class="msg-avatar">Zuno</div>
       <div class="msg-body">
         <div class="msg-assistant-text">${formattedText}</div>
         ${cardHtml}
