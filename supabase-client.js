@@ -94,7 +94,8 @@ export const SupabaseService = {
               appliedDate: item.date_added || item.applied_date || new Date().toISOString().split('T')[0],
               skills: parsedSkills,
               notes: item.notes || '',
-              chatHistory: parsedChatHistory
+              chatHistory: parsedChatHistory,
+              isStored: true
             };
           });
 
@@ -131,7 +132,8 @@ export const SupabaseService = {
         salary: msg.data.salary || '',
         location: msg.data.location || '',
         workMode: msg.data.workMode || '',
-        appliedDate: msg.data.appliedDate || ''
+        appliedDate: msg.data.appliedDate || '',
+        isStored: true
       } : null
     }));
 
@@ -152,7 +154,8 @@ export const SupabaseService = {
       appliedDate: appData.appliedDate || now.split('T')[0],
       skills: appData.skills || [],
       notes: appData.notes || '',
-      chatHistory: safeChatHistory
+      chatHistory: safeChatHistory,
+      isStored: true
     };
 
     // Update local storage first

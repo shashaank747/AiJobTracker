@@ -907,7 +907,7 @@ class JobTrackerApp {
   }
 
   selectApplication(app) {
-    this.activeApplication = app;
+    this.activeApplication = { ...app, isStored: true };
     Config.setActiveSessionId(app.id);
 
     this.topbarSessionMeta.style.display = 'flex';
@@ -924,7 +924,8 @@ class JobTrackerApp {
         if (msg.role === 'user') {
           this.appendUserMessage(msg.text, false);
         } else {
-          this.appendAssistantMessage(msg.text, msg.data || app, false);
+          const cardData = msg.data ? { ...msg.data, isStored: true } : { ...app, isStored: true };
+          this.appendAssistantMessage(msg.text, cardData, false);
         }
       }
     } else {
@@ -932,10 +933,10 @@ class JobTrackerApp {
       const msg = {
         role: 'assistant',
         text: `Loaded application for **${app.roleTitle}** at **${app.companyName}**.`,
-        data: app
+        data: { ...app, isStored: true }
       };
       this.chatMessages = [msg];
-      this.appendAssistantMessage(msg.text, app, false);
+      this.appendAssistantMessage(msg.text, { ...app, isStored: true }, false);
     }
 
     this.highlightActiveHistoryItem();
@@ -1108,6 +1109,9 @@ class JobTrackerApp {
     }
 
     this.activeApplication.status = newStatus;
+    if (this.isJobStored(this.activeApplication)) {
+      this.activeApplication.isStored = true;
+    }
     if (this.activeApplication.isStored) {
       await SupabaseService.saveApplication(this.activeApplication);
       await this.loadApplications();
@@ -1164,6 +1168,9 @@ class JobTrackerApp {
     }
 
     this.activeApplication.salary = cleanAmount;
+    if (this.isJobStored(this.activeApplication)) {
+      this.activeApplication.isStored = true;
+    }
     if (this.activeApplication.isStored) {
       await SupabaseService.saveApplication(this.activeApplication);
       await this.loadApplications();
@@ -1284,13 +1291,13 @@ class JobTrackerApp {
 
     // Save to Supabase & local storage
     const saveRes = await SupabaseService.saveApplication(this.activeApplication);
-    this.activeApplication = saveRes.data;
-    this.activeApplication.isStored = true;
+    this.activeApplication = { ...saveRes.data, isStored: true };
     Config.setActiveSessionId(this.activeApplication.id);
 
     // Refresh application tracker list & counter
     await this.loadApplications();
     this.highlightActiveHistoryItem();
+    this.updateChatCardsToStored();
 
     const storageLocation = saveRes.isRemote ? 'Supabase Cloud database' : 'local database';
     const storeMsg = `🎉 **Successfully stored in database!**\n\n` +
@@ -1397,13 +1404,29 @@ class JobTrackerApp {
       }
 
       if (result.data) {
-        // A job was created or updated in chat!
+        // Detect if matching job already exists in stored database applications
+        const existingApp = this.applications.find(a => 
+          (this.activeApplication?.id && a.id === this.activeApplication.id) ||
+          (result.data.companyName && result.data.roleTitle &&
+           (a.companyName || '').trim().toLowerCase() === result.data.companyName.trim().toLowerCase() &&
+           (a.roleTitle || '').trim().toLowerCase() === result.data.roleTitle.trim().toLowerCase())
+        );
+
+        const isStored = Boolean(
+          this.activeApplication?.isStored ||
+          (existingApp && existingApp.isStored !== false)
+        );
+
+        const appId = this.activeApplication?.id || existingApp?.id || crypto.randomUUID();
+        const createdAt = this.activeApplication?.createdAt || existingApp?.createdAt || new Date().toISOString();
+
         const appData = {
+          ...(existingApp || {}),
           ...(this.activeApplication || {}),
           ...result.data,
-          id: this.activeApplication?.id || crypto.randomUUID(),
-          createdAt: this.activeApplication?.createdAt || new Date().toISOString(),
-          isStored: this.activeApplication?.isStored ? true : false
+          id: appId,
+          createdAt: createdAt,
+          isStored: isStored
         };
 
         this.activeApplication = appData;
@@ -1411,8 +1434,7 @@ class JobTrackerApp {
         // If it was ALREADY stored in DB, keep DB synced with edits
         if (this.activeApplication.isStored) {
           const saveRes = await SupabaseService.saveApplication(this.activeApplication);
-          this.activeApplication = saveRes.data;
-          this.activeApplication.isStored = true;
+          this.activeApplication = { ...saveRes.data, isStored: true };
           await this.loadApplications();
         }
 
@@ -1559,7 +1581,56 @@ class JobTrackerApp {
     }
   }
 
+  isJobStored(data) {
+    if (!data) return false;
+    if (data.isStored === true) return true;
+    if (!this.applications || !this.applications.length) return false;
+
+    // Check by ID
+    if (data.id && this.applications.some(a => a.id === data.id)) {
+      return true;
+    }
+
+    // Check by Company Name and Role Title
+    const dataCompany = (data.companyName || '').trim().toLowerCase();
+    const dataRole = (data.roleTitle || '').trim().toLowerCase();
+    if (dataCompany && dataRole) {
+      return this.applications.some(a => {
+        const c = (a.companyName || '').trim().toLowerCase();
+        const r = (a.roleTitle || '').trim().toLowerCase();
+        return c === dataCompany && r === dataRole;
+      });
+    }
+    return false;
+  }
+
+  updateChatCardsToStored() {
+    if (!this.chatMessagesEl) return;
+    const cards = this.chatMessagesEl.querySelectorAll('.ai-extraction-card');
+    cards.forEach(card => {
+      const draftBadge = card.querySelector('.status-draft-badge');
+      if (draftBadge) {
+        draftBadge.className = 'status-stored-badge';
+        draftBadge.title = 'Stored in Database';
+        draftBadge.textContent = '✓ Saved in DB';
+      }
+      const storeBtn = card.querySelector('.btn-store-job');
+      if (storeBtn) {
+        storeBtn.className = 'btn btn-secondary btn-sm btn-store-job';
+        storeBtn.title = 'Update in database (/store)';
+        storeBtn.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>Saved (Update /store)</span>
+        `;
+      }
+    });
+  }
+
   createExtractionCardHtml(data) {
+    const isStored = this.isJobStored(data);
+    if (isStored) {
+      data.isStored = true;
+    }
     const initial = (data.companyName || 'C').charAt(0).toUpperCase();
     const statusClass = `status-${(data.status || 'applied').toLowerCase()}`;
 
@@ -1600,7 +1671,7 @@ class JobTrackerApp {
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            ${data.isStored ? `
+            ${isStored ? `
               <span class="status-stored-badge" title="Stored in Database">✓ Saved in DB</span>
             ` : `
               <span class="status-draft-badge" title="Draft / Unsaved - Type /store to save">Draft • Unsaved</span>
@@ -1625,7 +1696,7 @@ class JobTrackerApp {
             ${linksHtml || '<span style="font-size: 0.78rem; color: var(--text-subtle);">No direct URLs detected yet. You can paste them in the chat.</span>'}
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            ${!data.isStored ? `
+            ${!isStored ? `
               <button class="btn btn-primary btn-sm btn-store-job" title="Save this application to database (/store)">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
                 <span>Store in DB (/store)</span>

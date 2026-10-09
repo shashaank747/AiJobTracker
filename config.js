@@ -96,7 +96,8 @@ export const Config = {
   getLocalApplications() {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
-      return data ? JSON.parse(data) : [];
+      const list = data ? JSON.parse(data) : [];
+      return list.map(app => ({ ...app, isStored: true }));
     } catch (e) {
       console.error('Failed to parse local applications:', e);
       return [];
