@@ -1308,12 +1308,16 @@ class JobTrackerApp {
     div.innerHTML = `
       <div class="msg-avatar msg-avatar-zuno" title="Zuno AI"><img src="logo.png" alt="Zuno" class="zuno-avatar-img" /></div>
       <div class="msg-body">
-        <div class="ai-thinking">
-          <span>Zuno is analyzing Job Description & extracting data</span>
-          <div class="thinking-dots">
-            <span class="thinking-dot"></span>
-            <span class="thinking-dot"></span>
-            <span class="thinking-dot"></span>
+        <div class="ai-thinking-card">
+          <div class="typewriter-loader-wrapper">
+            <div class="typewriter">
+              <div class="slide"><i></i></div>
+              <div class="paper"></div>
+              <div class="keyboard"></div>
+            </div>
+          </div>
+          <div class="thinking-text-row">
+            <span class="thinking-status-text">Zuno is thinking & typing...</span>
           </div>
         </div>
       </div>
