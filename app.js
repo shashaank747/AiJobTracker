@@ -429,9 +429,36 @@ class JobTrackerApp {
   // ==========================================
   // Chat Messaging & Extraction Flow
   // ==========================================
+  clearCurrentChat() {
+    this.chatMessages = [];
+    if (this.activeApplication) {
+      this.activeApplication.chatHistory = [];
+      SupabaseService.saveApplication(this.activeApplication);
+    }
+    this.chatMessagesEl.innerHTML = '';
+    this.chatMessagesEl.appendChild(this.welcomeHero);
+    this.welcomeHero.style.display = 'flex';
+    this.topbarSessionMeta.style.display = 'none';
+    this.activeApplication = null;
+    Config.setActiveSessionId(null);
+    this.highlightActiveHistoryItem();
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+    this.chatInput.style.overflowY = 'hidden';
+    this.chatInput.focus();
+    this.showToast('🧹 Chat cleared successfully', 'info');
+  }
+
   async handleSendMessage() {
     const text = this.chatInput.value.trim();
     if (!text) return;
+
+    // Slash command to clear chat
+    const lower = text.toLowerCase();
+    if (lower === '/clear' || lower === '/cls' || lower === '/reset' || lower.startsWith('/clear ')) {
+      this.clearCurrentChat();
+      return;
+    }
 
     this.welcomeHero.style.display = 'none';
     this.appendUserMessage(text);
