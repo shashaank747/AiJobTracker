@@ -15,8 +15,8 @@ const STORAGE_KEYS = {
 export const Config = {
   getSettings() {
     return {
-      supabaseUrl: localStorage.getItem(STORAGE_KEYS.SUPABASE_URL) || '',
-      supabaseKey: localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY) || '',
+      supabaseUrl: localStorage.getItem(STORAGE_KEYS.SUPABASE_URL) || 'https://bcblfftacinxymmgfjsz.supabase.co',
+      supabaseKey: localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY) || 'sb_publishable_e-5eedNJWiqBm7UQxWv7kw__7wT2OX9',
       supabaseTable: localStorage.getItem(STORAGE_KEYS.SUPABASE_TABLE) || 'job_applications',
       aiProvider: localStorage.getItem(STORAGE_KEYS.AI_PROVIDER) || 'gemini',
       geminiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '',

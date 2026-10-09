@@ -1,0 +1,25 @@
+{
+  "name": "jobtrackerai",
+  "version": "1.0.0",
+  "description": "An AI-powered Job Application Tracker that converts unstructured Job Descriptions (JDs), URLs, or follow-up notes into organized applications with automated **Supabase cloud sync** and an interactive **ChatGPT/Gemini-style workspace**.",
+  "main": "ai-extractor.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shashaank747/AiJobTracker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/shashaank747/AiJobTracker/issues"
+  },
+  "homepage": "https://github.com/shashaank747/AiJobTracker#readme",
+  "dependencies": {
+    "@supabase/server": "^1.9.1",
+    "@supabase/supabase-js": "^2.117.3"
+  }
+}
