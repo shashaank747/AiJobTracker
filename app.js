@@ -691,7 +691,9 @@ class JobTrackerApp {
     this.updateStats();
     this.renderHistoryList();
     this.renderApplicationsGrid();
-    this.totalAppsBadge.textContent = this.applications.length;
+    if (this.totalAppsBadge) {
+      this.totalAppsBadge.textContent = this.applications.length;
+    }
   }
 
   async checkSupabaseConnectionStatus() {
@@ -717,7 +719,9 @@ class JobTrackerApp {
     this.statAppliedCount.textContent = applied;
     this.statInterviewCount.textContent = interviewing;
     this.statOfferCount.textContent = offers;
-    this.totalAppsBadge.textContent = total;
+    if (this.totalAppsBadge) {
+      this.totalAppsBadge.textContent = total;
+    }
   }
 
   // ==========================================
