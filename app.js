@@ -128,6 +128,12 @@ class JobTrackerApp {
     this.navTabDashboard = document.getElementById('navTabDashboard');
     this.totalAppsBadge = document.getElementById('totalAppsBadge');
 
+    // Theme Switcher
+    this.btnThemeToggle = document.getElementById('btnThemeToggle');
+    this.themeIcon = document.getElementById('themeIcon');
+    this.themeLabel = document.getElementById('themeLabel');
+    this.currentTheme = Config.getTheme();
+
     // Sidebar
     this.sidebar = document.getElementById('sidebar');
     this.btnToggleSidebar = document.getElementById('btnToggleSidebar');
@@ -305,6 +311,7 @@ class JobTrackerApp {
   }
 
   async init() {
+    this.applyTheme(this.currentTheme);
     this.updateAiModelTag();
     await this.loadApplications();
     await this.loadUserProfile();
@@ -328,6 +335,11 @@ class JobTrackerApp {
     }
     if (this.btnEmptyGoChat) {
       this.btnEmptyGoChat.addEventListener('click', () => this.switchView('chat'));
+    }
+
+    // Theme Toggle
+    if (this.btnThemeToggle) {
+      this.btnThemeToggle.addEventListener('click', () => this.toggleTheme());
     }
 
     // Profile Actions
@@ -609,6 +621,33 @@ class JobTrackerApp {
 
     // Drag & Drop
     this.setupDragAndDrop();
+  }
+
+  // ==========================================
+  // Theme Switching (Dark & Dull Light)
+  // ==========================================
+  applyTheme(theme) {
+    this.currentTheme = theme === 'light' ? 'light' : 'dark';
+    if (this.currentTheme === 'light') {
+      document.body.classList.remove('theme-dark');
+      document.body.classList.add('theme-light');
+      if (this.themeIcon) this.themeIcon.textContent = '🌙';
+      if (this.themeLabel) this.themeLabel.textContent = 'Dark';
+      if (this.btnThemeToggle) this.btnThemeToggle.setAttribute('title', 'Switch to Dark Theme');
+    } else {
+      document.body.classList.remove('theme-light');
+      document.body.classList.add('theme-dark');
+      if (this.themeIcon) this.themeIcon.textContent = '☀️';
+      if (this.themeLabel) this.themeLabel.textContent = 'Light';
+      if (this.btnThemeToggle) this.btnThemeToggle.setAttribute('title', 'Switch to Dull Light Theme');
+    }
+    Config.setTheme(this.currentTheme);
+  }
+
+  toggleTheme() {
+    const nextTheme = this.currentTheme === 'light' ? 'dark' : 'light';
+    this.applyTheme(nextTheme);
+    this.showToast(`Switched to ${nextTheme === 'light' ? 'Dull Light' : 'Dark'} theme`, 'info');
   }
 
   // ==========================================

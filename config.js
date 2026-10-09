@@ -85,6 +85,14 @@ export const Config = {
     if (settings.theme !== undefined) localStorage.setItem(STORAGE_KEYS.THEME, settings.theme);
   },
 
+  getTheme() {
+    return localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
+  },
+
+  setTheme(theme) {
+    localStorage.setItem(STORAGE_KEYS.THEME, theme);
+  },
+
   getLocalApplications() {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
