@@ -1347,6 +1347,7 @@ body {
 .slash-menu-list {
   max-height: 290px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 6px;
   display: flex;
   flex-direction: column;
