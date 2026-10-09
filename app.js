@@ -200,6 +200,8 @@ class JobTrackerApp {
     this.isRecording = false;
     this.speechRecognition = null;
     this.baseVoiceText = '';
+    this.voiceSilenceTimer = null;
+    this.VOICE_SILENCE_TIMEOUT_MS = 12000; // 12 seconds silence timeout (within 10-15s range)
     this.currentAttachment = null;
 
     // Toast Container
@@ -855,6 +857,10 @@ class JobTrackerApp {
     if (lower.startsWith('/salary')) {
       await this.handleSalaryCommand(text);
       return;
+    }
+
+    if (this.isRecording) {
+      this.stopVoiceDictation();
     }
 
     this.welcomeHero.style.display = 'none';
@@ -1527,8 +1533,30 @@ class JobTrackerApp {
   }
 
   // ==========================================
-  // Voice Dictation (Web Speech API)
+  // Voice Dictation (Web Speech API) & Silence Auto-Stop
   // ==========================================
+  startVoiceSilenceTimer() {
+    this.clearVoiceSilenceTimer();
+    this.voiceSilenceTimer = setTimeout(() => {
+      if (this.isRecording) {
+        this.stopVoiceDictation();
+        this.showToast('🎙️ Mic auto-stopped after silence', 'info');
+      }
+    }, this.VOICE_SILENCE_TIMEOUT_MS);
+  }
+
+  resetVoiceSilenceTimer() {
+    if (!this.isRecording) return;
+    this.startVoiceSilenceTimer();
+  }
+
+  clearVoiceSilenceTimer() {
+    if (this.voiceSilenceTimer) {
+      clearTimeout(this.voiceSilenceTimer);
+      this.voiceSilenceTimer = null;
+    }
+  }
+
   initSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -1546,12 +1574,25 @@ class JobTrackerApp {
       this.btnVoiceDictate.title = 'Click to stop live voice transcription';
       this.voiceStatusBanner.style.display = 'flex';
       if (this.voiceStatusText) {
-        this.voiceStatusText.textContent = 'Listening live... Speak now (words will appear as you speak)';
+        this.voiceStatusText.textContent = 'Listening live... Speak now (auto-stops if silent for 12s)';
       }
-      this.showToast('🎙️ Live speech active — speak freely!', 'info');
+      this.startVoiceSilenceTimer();
+      this.showToast('🎙️ Live speech active — speak freely! (Auto-stops if silent)', 'info');
+    };
+
+    // Whenever user starts speaking sounds or words, reset the silence timer
+    recognition.onspeechstart = () => {
+      this.resetVoiceSilenceTimer();
+    };
+
+    recognition.onsoundstart = () => {
+      this.resetVoiceSilenceTimer();
     };
 
     recognition.onresult = (event) => {
+      // Some word was heard from the user -> reset timer!
+      this.resetVoiceSilenceTimer();
+
       let finalTranscript = '';
       let interimTranscript = '';
 
@@ -1582,7 +1623,7 @@ class JobTrackerApp {
         if (interimTranscript.trim()) {
           this.voiceStatusText.textContent = `Speaking: "${interimTranscript.trim()}"`;
         } else {
-          this.voiceStatusText.textContent = 'Listening live... Keep speaking or click mic to finish';
+          this.voiceStatusText.textContent = 'Listening live... Keep speaking (auto-stops if silent for 12s)';
         }
       }
     };
@@ -1590,7 +1631,8 @@ class JobTrackerApp {
     recognition.onerror = (event) => {
       console.warn('Speech recognition error event:', event.error);
       if (event.error === 'no-speech') {
-        return; // Ignore brief pauses
+        // Natural pause, keep our silence countdown timer running
+        return;
       }
       this.stopVoiceDictation();
       if (event.error === 'not-allowed') {
@@ -1601,7 +1643,7 @@ class JobTrackerApp {
     };
 
     recognition.onend = () => {
-      // If user hasn't clicked stop and browser paused on silence, keep listening
+      // If user hasn't clicked stop and silence timer hasn't expired yet, keep listening
       if (this.isRecording) {
         try {
           this.baseVoiceText = this.chatInput.value;
@@ -1625,10 +1667,6 @@ class JobTrackerApp {
     }
 
     if (this.isRecording) {
-      this.isRecording = false;
-      if (this.speechRecognition) {
-        try { this.speechRecognition.stop(); } catch (e) {}
-      }
       this.stopVoiceDictation();
       this.showToast('Voice dictation stopped.', 'info');
     } else {
@@ -1648,7 +1686,11 @@ class JobTrackerApp {
   }
 
   stopVoiceDictation() {
+    this.clearVoiceSilenceTimer();
     this.isRecording = false;
+    if (this.speechRecognition) {
+      try { this.speechRecognition.stop(); } catch (e) {}
+    }
     this.baseVoiceText = this.chatInput.value;
     this.btnVoiceDictate.classList.remove('recording');
     this.btnVoiceDictate.title = 'Voice Dictation (Speak your JD)';
