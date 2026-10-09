@@ -182,7 +182,9 @@ class JobTrackerApp {
     // Chat input auto-grow and submit
     this.chatInput.addEventListener('input', () => {
       this.chatInput.style.height = 'auto';
-      this.chatInput.style.height = Math.min(this.chatInput.scrollHeight, 180) + 'px';
+      const scrollH = this.chatInput.scrollHeight;
+      this.chatInput.style.height = Math.min(scrollH, 180) + 'px';
+      this.chatInput.style.overflowY = scrollH > 180 ? 'auto' : 'hidden';
     });
 
     this.chatInput.addEventListener('keydown', (e) => {
@@ -433,6 +435,7 @@ class JobTrackerApp {
     this.appendUserMessage(text);
     this.chatInput.value = '';
     this.chatInput.style.height = 'auto';
+    this.chatInput.style.overflowY = 'hidden';
 
     // Show AI thinking indicator
     const thinkingEl = this.appendThinkingIndicator();
