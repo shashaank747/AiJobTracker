@@ -1137,74 +1137,61 @@ body {
   gap: 10px;
 }
 
-.input-toolbar-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-.engine-picker-wrapper {
+/* Inline Extraction Engine inside Chat Input Box (beside mic) */
+.chat-engine-picker-inline {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(18, 18, 22, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  gap: 6px;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
-  padding: 5px 10px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  padding: 0 8px 0 10px;
+  flex-shrink: 0;
   transition: var(--transition);
 }
 
-.engine-picker-wrapper:hover,
-.engine-picker-wrapper:focus-within {
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.25);
+.chat-engine-picker-inline:hover,
+.chat-engine-picker-inline:focus-within {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
 }
 
-.engine-picker-label {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #d4d4d8;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  user-select: none;
+.engine-inline-icon {
+  color: #a1a1aa;
+  flex-shrink: 0;
 }
 
-.engine-picker-label svg {
-  color: #ffffff;
-}
-
-.engine-picker-dropdown {
-  background: rgba(30, 41, 59, 0.95);
-  color: #f8fafc;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--radius-sm);
-  padding: 4px 10px;
+.chat-engine-inline-select {
+  background: transparent;
+  color: #f4f4f5;
+  border: none;
   font-size: 0.76rem;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   outline: none;
-  font-family: inherit;
-  transition: var(--transition);
+  max-width: 210px;
+  text-overflow: ellipsis;
+  padding-right: 4px;
 }
 
-.engine-picker-dropdown:hover,
-.engine-picker-dropdown:focus {
-  border-color: #ffffff;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+.chat-engine-inline-select option {
+  background: #141418;
+  color: #f4f4f5;
+  font-size: 0.82rem;
+  padding: 8px 12px;
 }
 
-.engine-picker-dropdown option {
-  background: #121216;
-  color: #f8fafc;
-  font-size: 0.8rem;
-  padding: 8px;
+@media (max-width: 768px) {
+  .chat-engine-picker-inline {
+    padding: 0 6px;
+  }
+  .chat-engine-inline-select {
+    max-width: 130px;
+    font-size: 0.72rem;
+  }
 }
 
 .quick-prompts-bar {
