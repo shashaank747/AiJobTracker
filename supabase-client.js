@@ -77,6 +77,15 @@ export const SupabaseService = {
               } catch (e) {}
             }
 
+            // Extract portalName if formatted as "Source (Portal)" or present directly
+            let detectedSource = item.applied_through || item.source || 'Portal';
+            let detectedPortal = item.portal_name || item.portalName || '';
+            const matchPortal = detectedSource.match(/^(.+?)\s*\((.+?)\)$/);
+            if (matchPortal && !detectedPortal) {
+              detectedSource = matchPortal[1].trim();
+              detectedPortal = matchPortal[2].trim();
+            }
+
             return {
               id: item.id,
               createdAt: item.created_at,
@@ -87,11 +96,17 @@ export const SupabaseService = {
               workMode: item.work_mode || 'On-site',
               location: item.location || 'Not specified',
               salary: item.salary_ctc || item.salary || 'Not disclosed',
-              source: item.applied_through || item.source || 'Portal',
+              source: detectedSource,
+              portalName: detectedPortal,
               applicationUrl: item.job_link || item.application_url || '',
               sourceUrl: item.company_link || item.source_url || '',
               status: item.status || 'Applied',
               appliedDate: item.date_added || item.applied_date || new Date().toISOString().split('T')[0],
+              recruiterName: item.recruiter_name || item.recruiterName || '',
+              recruiterEmail: item.recruiter_email || item.recruiterEmail || '',
+              recruiterPhone: item.recruiter_phone || item.recruiterPhone || '',
+              callNotes: item.call_notes || item.callNotes || '',
+              interviewQuestions: Array.isArray(item.interview_questions || item.interviewQuestions) ? (item.interview_questions || item.interviewQuestions) : [],
               skills: parsedSkills,
               notes: item.notes || '',
               chatHistory: parsedChatHistory,
@@ -148,10 +163,16 @@ export const SupabaseService = {
       location: appData.location || 'Not specified',
       salary: appData.salary || 'Not disclosed',
       source: appData.source || 'Portal',
+      portalName: appData.portalName || '',
       applicationUrl: appData.applicationUrl || '',
       sourceUrl: appData.sourceUrl || '',
       status: appData.status || 'Applied',
       appliedDate: appData.appliedDate || now.split('T')[0],
+      recruiterName: appData.recruiterName || '',
+      recruiterEmail: appData.recruiterEmail || '',
+      recruiterPhone: appData.recruiterPhone || '',
+      callNotes: appData.callNotes || '',
+      interviewQuestions: Array.isArray(appData.interviewQuestions) ? appData.interviewQuestions : [],
       skills: appData.skills || [],
       notes: appData.notes || '',
       chatHistory: safeChatHistory,
@@ -171,6 +192,10 @@ export const SupabaseService = {
     // Save to Supabase if available
     if (client) {
       // Primary payload for actual table schema
+      const formattedAppliedThrough = appData.portalName && appData.portalName.trim()
+        ? (appData.source && appData.source !== 'Portal' ? `${appData.source} (${appData.portalName})` : appData.portalName)
+        : (appData.source || 'Portal');
+
       const primaryPayload = {
         id: appId,
         company_name: appData.companyName || '',
@@ -180,7 +205,7 @@ export const SupabaseService = {
         job_type: appData.jobType || 'Full-time',
         experience_required: appData.experienceRequired || '',
         salary_ctc: appData.salary || '',
-        applied_through: appData.source || 'Portal',
+        applied_through: formattedAppliedThrough,
         status: appData.status || 'Applied',
         date_added: appData.appliedDate || now.split('T')[0],
         recruiter_name: appData.recruiterName || '',
@@ -210,7 +235,7 @@ export const SupabaseService = {
             work_mode: appData.workMode || 'On-site',
             location: appData.location || 'Not specified',
             salary: appData.salary || 'Not disclosed',
-            source: appData.source || 'Portal',
+            source: formattedAppliedThrough,
             application_url: appData.applicationUrl || '',
             source_url: appData.sourceUrl || '',
             status: appData.status || 'Applied',

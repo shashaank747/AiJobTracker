@@ -1855,6 +1855,13 @@ body {
   font-weight: 600;
 }
 
+.meta-chip.chip-portal {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+  font-weight: 600;
+}
+
 .meta-chip.chip-time {
   background: rgba(56, 189, 248, 0.1);
   border-color: rgba(56, 189, 248, 0.25);
@@ -1945,6 +1952,93 @@ body {
   background: rgba(255, 255, 255, 0.04);
   color: #cbd5e1;
   border: 1px solid var(--border-subtle);
+}
+
+/* Action Links inside extraction card */
+/* Recruiter & Interview Call Log Box in Extraction Card */
+.card-call-notes-box {
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.call-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.call-notes-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.call-header-icon {
+  font-size: 1rem;
+}
+
+.call-header-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #34d399;
+}
+
+.recruiter-badge {
+  font-size: 0.76rem;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.call-questions-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.block-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.call-questions-items {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.82rem;
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.call-questions-items li {
+  line-height: 1.4;
+}
+
+.call-summary-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.call-summary-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
 }
 
 /* Action Links inside extraction card */
@@ -2771,6 +2865,100 @@ body {
   padding: 4px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
+}
+
+.badge-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #38bdf8;
+  background: rgba(14, 165, 233, 0.1);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+
+.badge-portal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.1);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+.badge-recruiter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badge-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* Dashboard Job Card Call Snippet */
+.job-card-call-snippet {
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.snippet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  color: #34d399;
+  font-size: 0.76rem;
+}
+
+.snippet-recruiter {
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.snippet-qs {
+  color: var(--text-main);
+  line-height: 1.35;
+}
+
+.snippet-qs strong {
+  color: #34d399;
+}
+
+.snippet-text {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
 /* Card Bottom Footer: Links & Action Buttons */
@@ -4796,6 +4984,45 @@ body.theme-light .badge-3d {
   background: #dfe4eb;
   border-color: rgba(15, 23, 42, 0.14);
   color: #1e293b;
+}
+
+body.theme-light .badge-source,
+body.theme-light .meta-chip.chip-source {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.25);
+}
+
+body.theme-light .badge-portal,
+body.theme-light .meta-chip.chip-portal {
+  color: #7e22ce;
+  background: rgba(147, 51, 234, 0.08);
+  border-color: rgba(147, 51, 234, 0.25);
+}
+
+body.theme-light .card-call-notes-box,
+body.theme-light .job-card-call-snippet {
+  background: #f0fdf4;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+body.theme-light .call-header-title,
+body.theme-light .snippet-header,
+body.theme-light .snippet-qs strong {
+  color: #059669;
+}
+
+body.theme-light .badge-call {
+  color: #059669;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+body.theme-light .badge-recruiter,
+body.theme-light .recruiter-badge {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.25);
 }
 
 body.theme-light .quick-pill {

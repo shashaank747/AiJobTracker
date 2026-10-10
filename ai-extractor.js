@@ -107,6 +107,56 @@ export function parseJobSource(text) {
   return null;
 }
 
+/**
+ * Smart Portal Name Parser to detect where the application was filled/submitted
+ * Handles ATS systems (Greenhouse, Workday, Lever, Ashby, etc.) or company career portals
+ */
+export function parsePortalName(text, url = '') {
+  const t = (text || '').toLowerCase();
+  const u = (url || '').toLowerCase();
+
+  // 1. URL-based ATS detection
+  if (u.includes('greenhouse.io')) return 'Greenhouse';
+  if (u.includes('lever.co')) return 'Lever';
+  if (u.includes('workday') || u.includes('myworkdayjobs')) return 'Workday';
+  if (u.includes('ashbyhq.com')) return 'Ashby';
+  if (u.includes('taleo.net')) return 'Taleo';
+  if (u.includes('icims.com')) return 'iCIMS';
+  if (u.includes('smartrecruiters.com')) return 'SmartRecruiters';
+  if (u.includes('jobvite.com')) return 'Jobvite';
+  if (u.includes('successfactors.com')) return 'SAP SuccessFactors';
+  if (u.includes('bamboohr.com')) return 'BambooHR';
+
+  // 2. Explicit phrase: "filled (the application) on/at/in [Company Portal / Cisco Career Portal / etc.]"
+  const filledOnMatch = text && text.match(/(?:filled|applied|submitted)(?:\s+the\s+application)?\s+(?:on|in|at)\s+([^:,\n\r]+)/i);
+  if (filledOnMatch && filledOnMatch[1].trim()) {
+    const val = filledOnMatch[1].trim().replace(/\s+(?:link|url|here)$/i, '');
+    if (val.length > 2 && val.length < 50 && !val.startsWith('http') && !val.includes('://')) {
+      return val;
+    }
+  }
+
+  // 3. Explicit label: "portal name: <name>" or "portal: <name>"
+  const explicitPortalMatch = text && text.match(/(?:portal\s*(?:name|type)?|platform)\s*[:\-]\s*([a-zA-Z0-9\s\-]+)/i);
+  if (explicitPortalMatch && explicitPortalMatch[1].trim()) {
+    const val = explicitPortalMatch[1].trim();
+    if (val.length > 2 && val.length < 40 && !val.startsWith('http') && !val.includes('://')) {
+      return val;
+    }
+  }
+
+  // 4. ATS or portal keywords in text
+  if (/\bgreenhouse\b/i.test(t)) return 'Greenhouse';
+  if (/\bworkday\b/i.test(t)) return 'Workday';
+  if (/\blever\b/i.test(t)) return 'Lever';
+  if (/\bashby\b/i.test(t)) return 'Ashby';
+  if (/\btaleo\b/i.test(t)) return 'Taleo';
+  if (/\bicims\b/i.test(t)) return 'iCIMS';
+  if (/\b(?:company\s*(?:career[s]?\s*)?portal|careers?\s*(?:page|site)|direct\s*portal|company\s*site)\b/i.test(t)) return 'Company Portal';
+
+  return null;
+}
+
 
 // Curated company intelligence database for offline mode
 const COMPANY_DATABASE = {
@@ -458,7 +508,11 @@ If the user specifies when they applied (e.g. "applied last week", "applied 3 da
 
 Your capabilities:
 1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
-   - Extract companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
+   - Extract companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
+   - DUAL LINK RULE: If user found/saw the job on Indeed, LinkedIn, or a job board, but applied/filled the form on an official company portal or ATS (Greenhouse, Workday, Lever, etc.):
+     * Set "source" to discovery platform (e.g. Indeed, LinkedIn) and "sourceUrl" to the listing URL.
+     * Set "portalName" to portal name (e.g. Company Portal, Greenhouse, Workday) and "applicationUrl" to the form/portal URL.
+     * Never drop or overwrite either URL! Preserve both.
    - Return this in the "data" object.
 2. PERSISTENT DATABASE & SESSION QUERYING:
    - You have direct access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
@@ -628,7 +682,7 @@ You have direct live access to the user's persistent backend database (${allAppl
 When user asks about past applications, statistics, interview status, specific applied companies, or advice: provide a comprehensive markdown answer using the database records in "message" and set "data": null.
 When user asks you to add projects, certifications, semester marks, or update profile: return structured "profileUpdate" in JSON and set "data": null.
 When user asks to compare profile vs company requirements using "/compare": provide a comprehensive comparative analysis (Match score %, skills match vs missing, projects alignment, sem marks & education review, strengths, gap plan) and set "data": null.
-When user pastes a job description (JD) or update: extract the job details in "data" including companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
+When user pastes a job description (JD) or update: extract the job details in "data" including companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes. (If user saw on Indeed/LinkedIn but applied on company portal, capture discovery link in sourceUrl and form link in applicationUrl and portal name in portalName).
 Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
 
     const response = await fetch(url, {
@@ -1501,6 +1555,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     const today = new Date().toISOString().split('T')[0];
     const currentTimeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const detectedDate = parseAppliedDate(text, null);
+    const detectedPortal = parsePortalName(text);
 
     const data = existingJob ? { ...existingJob } : {
       companyName: '',
@@ -1509,7 +1564,8 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       workMode: 'On-site',
       location: 'Not specified',
       salary: 'Not disclosed',
-      source: 'Direct Portal',
+      source: 'Portal',
+      portalName: '',
       applicationUrl: '',
       sourceUrl: '',
       status: 'Applied',
@@ -1530,59 +1586,126 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     if (detectedSource) {
       data.source = detectedSource;
     }
+    if (detectedPortal) {
+      data.portalName = detectedPortal;
+    } else if (existingJob && existingJob.portalName) {
+      data.portalName = existingJob.portalName;
+    }
 
     let summaryNotes = [];
     if (detectedDate) {
       summaryNotes.push(`Applied date set to ${detectedDate}.`);
     }
     if (detectedSource) {
-      summaryNotes.push(`Application source set to ${detectedSource}.`);
+      summaryNotes.push(`Discovery source set to ${detectedSource}.`);
+    }
+    if (data.portalName) {
+      summaryNotes.push(`Application portal set to ${data.portalName}.`);
     }
 
     // Detect URLs
     const urlRegex = /(https?:\/\/[^\s]+)/gi;
     const foundUrls = text.match(urlRegex) || [];
     
+    // Explicit pattern matching for discovery link vs application link
+    const sourceLinkMatch = text.match(/(?:saw|found|seen|discovered|checked|source|listing|post|posting|job\s*board|indeed|linkedin|glassdoor|naukri)\s*(?:on|in|at|link|url|via)?[:\s]+(https?:\/\/[^\s]+)/i);
+    const appLinkMatch = text.match(/(?:filled|applied|application|submit|submitted|company\s*portal|portal|careers?)\s*(?:on|at|in|here|link|url|via)?[:\s]+(https?:\/\/[^\s]+)/i);
+
+    if (sourceLinkMatch) {
+      data.sourceUrl = sourceLinkMatch[1].replace(/[.,;!?)]+$/, '');
+      const srcName = parseJobSource(data.sourceUrl) || parseJobSource(text);
+      if (srcName) data.source = srcName;
+      summaryNotes.push('Identified discovery job listing URL.');
+    }
+
+    if (appLinkMatch) {
+      data.applicationUrl = appLinkMatch[1].replace(/[.,;!?)]+$/, '');
+      const portal = parsePortalName(text, data.applicationUrl);
+      if (portal) data.portalName = portal;
+      summaryNotes.push('Identified application portal URL.');
+    }
+
+    // If explicit patterns didn't match all found URLs, process them intelligently
     if (foundUrls.length > 0) {
       for (const u of foundUrls) {
         const cleanUrl = u.replace(/[.,;!?)]+$/, '');
         const lowerUrl = cleanUrl.toLowerCase();
         
-        if (lowerUrl.includes('linkedin.com')) {
-          data.source = 'LinkedIn';
-          data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lowerUrl.includes('indeed.com')) {
-          data.source = 'Indeed';
-          data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lowerUrl.includes('glassdoor.com')) {
-          data.source = 'Glassdoor';
-          data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lowerUrl.includes('wellfound.com') || lowerUrl.includes('angel.co')) {
-          data.source = 'Wellfound';
-          data.sourceUrl = data.sourceUrl || cleanUrl;
-        } else if (lowerUrl.includes('greenhouse.io') || lowerUrl.includes('lever.co') || lowerUrl.includes('workday') || lowerUrl.includes('myworkdayjobs')) {
+        // Is this a known job discovery aggregator?
+        const isAggregator = lowerUrl.includes('indeed.com') || lowerUrl.includes('linkedin.com') || lowerUrl.includes('glassdoor.com') || lowerUrl.includes('wellfound.com') || lowerUrl.includes('angel.co') || lowerUrl.includes('naukri.com') || lowerUrl.includes('instahyre.com');
+        
+        // Is this a known ATS / application portal?
+        const isAtsPortal = lowerUrl.includes('greenhouse.io') || lowerUrl.includes('lever.co') || lowerUrl.includes('workday') || lowerUrl.includes('myworkdayjobs') || lowerUrl.includes('ashbyhq.com') || lowerUrl.includes('taleo.net') || lowerUrl.includes('icims.com') || lowerUrl.includes('smartrecruiters.com') || lowerUrl.includes('jobvite.com') || lowerUrl.includes('successfactors.com') || lowerUrl.includes('/apply') || lowerUrl.includes('/careers') || lowerUrl.includes('jobs.');
+
+        if (isAggregator) {
+          data.sourceUrl = cleanUrl;
+          if (lowerUrl.includes('linkedin.com')) data.source = 'LinkedIn';
+          else if (lowerUrl.includes('indeed.com')) data.source = 'Indeed';
+          else if (lowerUrl.includes('glassdoor.com')) data.source = 'Glassdoor';
+          else if (lowerUrl.includes('wellfound.com') || lowerUrl.includes('angel.co')) data.source = 'Wellfound';
+          else if (lowerUrl.includes('naukri.com')) data.source = 'Naukri';
+          else if (lowerUrl.includes('instahyre.com')) data.source = 'Instahyre';
+        } else if (isAtsPortal) {
           data.applicationUrl = cleanUrl;
-          if (!data.source || data.source === 'Direct Portal') data.source = 'Company Career Site';
+          const detectedAts = parsePortalName('', cleanUrl);
+          if (detectedAts) data.portalName = detectedAts;
+          else if (!data.portalName) data.portalName = 'Company Portal';
         } else {
+          // If we already have applicationUrl, assign to sourceUrl, and vice versa
           if (!data.applicationUrl) {
             data.applicationUrl = cleanUrl;
-          } else if (!data.sourceUrl) {
+            if (!data.portalName) data.portalName = parsePortalName(text, cleanUrl) || 'Company Portal';
+          } else if (!data.sourceUrl && cleanUrl !== data.applicationUrl) {
             data.sourceUrl = cleanUrl;
           }
         }
       }
-      summaryNotes.push(`Extracted ${foundUrls.length} web link(s).`);
+      summaryNotes.push(`Processed ${foundUrls.length} web link(s).`);
     }
 
-    // Check for explicit follow-up phrases
-    const appLinkMatch = text.match(/(?:application|apply|careers?)\s*(?:link|url|portal)?[:\s]+(https?:\/\/[^\s]+)/i);
-    if (appLinkMatch) {
-      data.applicationUrl = appLinkMatch[1].replace(/[.,;!?)]+$/, '');
-      summaryNotes.push('Updated application URL.');
+    // Preserve existing URLs if not overwritten
+    if (existingJob) {
+      if (!data.sourceUrl && existingJob.sourceUrl) data.sourceUrl = existingJob.sourceUrl;
+      if (!data.applicationUrl && existingJob.applicationUrl) data.applicationUrl = existingJob.applicationUrl;
+      if (!data.portalName && existingJob.portalName) data.portalName = existingJob.portalName;
+      if ((!data.source || data.source === 'Portal' || data.source === 'Direct Portal') && existingJob.source) {
+        data.source = existingJob.source;
+      }
     }
 
-    // Status updates
-    if (/(?:offer|offered)/i.test(text) && !text.includes('offer letter requirements')) {
+    // Recruiter Call & Status updates
+    const isCallEvent = /(?:got\s+a\s+call|received\s+a\s+call|call\s+from|recruiter\s+called|had\s+a\s+call|screening\s+call|phone\s+screen|interview\s+call|called\s+me)/i.test(text);
+    if (isCallEvent) {
+      data.status = 'Interviewing';
+      summaryNotes.push('Updated status to Interviewing based on recruiter call.');
+
+      // Recruiter name detection
+      const recMatch = text.match(/(?:recruiter|interviewer|caller|hr|person|called\s+by)\s*(?:named|is|was|called)?\s+([A-Z][a-z]+)/i);
+      if (recMatch && recMatch[1] && !['the', 'this', 'a', 'an', 'my', 'some'].includes(recMatch[1].toLowerCase())) {
+        data.recruiterName = recMatch[1];
+        summaryNotes.push(`Logged recruiter: ${data.recruiterName}.`);
+      }
+
+      // Question/topics extraction (handles dots in words like Node.js)
+      const qMatch = text.match(/(?:asked|inquired|wanted to know|questions?|topics?)\s*(?:about|me|were)?\s*[:\-]?\s*(.+?)(?=(?:\n|\r|\.\s+[A-Z]|$))/i);
+      if (qMatch && qMatch[1].trim()) {
+        const rawTopics = qMatch[1].trim().replace(/^about\s+/i, '').replace(/[.]+$/, '');
+        data.callNotes = rawTopics;
+        const qList = rawTopics.split(/,|;|\band\b/i).map(s => s.trim()).filter(s => s.length > 2);
+        if (qList.length > 0) {
+          data.interviewQuestions = qList;
+        }
+        summaryNotes.push('Documented questions asked during the call.');
+      }
+
+      // Format clean call log entry in notes
+      const recStr = data.recruiterName ? `Recruiter: ${data.recruiterName}` : '';
+      const qStr = data.callNotes ? `Topics/Questions: ${data.callNotes}` : '';
+      const callLogEntry = `[Call on ${today}]: ${[recStr, qStr].filter(Boolean).join(' | ')}`;
+      if (!data.notes || !data.notes.includes(callLogEntry)) {
+        data.notes = data.notes ? `${data.notes}\n${callLogEntry}` : callLogEntry;
+      }
+    } else if (/(?:offer|offered)/i.test(text) && !text.includes('offer letter requirements')) {
       data.status = 'Offer';
       summaryNotes.push('Updated status to Offer.');
     } else if (/(?:interview|interviewing|round \d|screening)/i.test(text) && text.length < 100) {

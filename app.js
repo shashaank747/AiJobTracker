@@ -1966,12 +1966,36 @@ class JobTrackerApp {
         const appId = this.activeApplication?.id || existingApp?.id || crypto.randomUUID();
         const createdAt = this.activeApplication?.createdAt || existingApp?.createdAt || new Date().toISOString();
 
+        const prevApp = this.activeApplication || existingApp || {};
+        const mergedSourceUrl = result.data.sourceUrl || prevApp.sourceUrl || '';
+        const mergedApplicationUrl = result.data.applicationUrl || prevApp.applicationUrl || '';
+        const mergedPortalName = result.data.portalName || prevApp.portalName || '';
+        const mergedSource = (result.data.source && result.data.source !== 'Portal' && result.data.source !== 'Direct Portal')
+          ? result.data.source
+          : (prevApp.source || result.data.source || 'Portal');
+        const mergedRecruiterName = result.data.recruiterName || prevApp.recruiterName || '';
+        const mergedRecruiterEmail = result.data.recruiterEmail || prevApp.recruiterEmail || '';
+        const mergedRecruiterPhone = result.data.recruiterPhone || prevApp.recruiterPhone || '';
+        const mergedCallNotes = result.data.callNotes || prevApp.callNotes || '';
+        const mergedQuestions = (result.data.interviewQuestions && result.data.interviewQuestions.length)
+          ? result.data.interviewQuestions
+          : (prevApp.interviewQuestions || []);
+
         const appData = {
           ...(existingApp || {}),
           ...(this.activeApplication || {}),
           ...result.data,
           id: appId,
           createdAt: createdAt,
+          sourceUrl: mergedSourceUrl,
+          applicationUrl: mergedApplicationUrl,
+          portalName: mergedPortalName,
+          source: mergedSource,
+          recruiterName: mergedRecruiterName,
+          recruiterEmail: mergedRecruiterEmail,
+          recruiterPhone: mergedRecruiterPhone,
+          callNotes: mergedCallNotes,
+          interviewQuestions: mergedQuestions,
           appliedTime: result.data.appliedTime || (this.activeApplication?.appliedTime || existingApp?.appliedTime || this.formatTimeOnly(new Date())),
           isStored: isStored
         };
@@ -2396,6 +2420,8 @@ class JobTrackerApp {
               ${salaryStr ? `<span class="meta-chip chip-salary">${this.escapeHtml(salaryStr)}</span>` : ''}
               ${modeStr ? `<span class="meta-chip chip-mode">${this.escapeHtml(modeStr)}</span>` : ''}
               ${locStr ? `<span class="meta-chip chip-loc">${this.escapeHtml(locStr)}</span>` : ''}
+              ${app.source && app.source !== 'Portal' ? `<span class="meta-chip chip-source">🌐 ${this.escapeHtml(app.source)}</span>` : ''}
+              ${app.portalName ? `<span class="meta-chip chip-portal">📝 ${this.escapeHtml(app.portalName)}</span>` : ''}
             </div>
 
             ${skillsHtml}
@@ -2406,13 +2432,13 @@ class JobTrackerApp {
                 <span>View in Dashboard</span>
               </button>
               ${app.applicationUrl ? `
-                <a href="${this.escapeHtml(app.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button link-button-sm">
-                  <span>🔗 Apply URL</span>
+                <a href="${this.escapeHtml(app.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button link-button-sm" title="Open Application Link (${this.escapeHtml(app.portalName || 'Portal')})">
+                  <span>🔗 Apply (${this.escapeHtml(app.portalName || 'Portal')})</span>
                 </a>
               ` : ''}
               ${app.sourceUrl && app.sourceUrl !== app.applicationUrl ? `
-                <a href="${this.escapeHtml(app.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button link-button-sm">
-                  <span>🌐 Source</span>
+                <a href="${this.escapeHtml(app.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button link-button-sm" title="View Source Listing on ${this.escapeHtml(app.source || 'Portal')}">
+                  <span>🌐 ${this.escapeHtml(app.source || 'Source')}</span>
                 </a>
               ` : ''}
             </div>
@@ -2973,18 +2999,20 @@ class JobTrackerApp {
     // External links
     let linksHtml = '';
     if (data.applicationUrl) {
+      const applyBtnText = data.portalName ? `Apply Portal (${this.escapeHtml(data.portalName)})` : 'Apply Portal';
       linksHtml += `
-        <a href="${this.escapeHtml(data.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button">
+        <a href="${this.escapeHtml(data.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(data.portalName || 'Portal')})">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-          <span>Apply Portal</span>
+          <span>${applyBtnText}</span>
         </a>
       `;
     }
     if (data.sourceUrl) {
+      const sourceBtnText = data.source ? `Job Post (${this.escapeHtml(data.source)})` : 'Job Post';
       linksHtml += `
-        <a href="${this.escapeHtml(data.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button">
+        <a href="${this.escapeHtml(data.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="View Original Post on ${this.escapeHtml(data.source || 'Platform')}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          <span>Job Post (${this.escapeHtml(data.source || 'Listing')})</span>
+          <span>${sourceBtnText}</span>
         </a>
       `;
     }
@@ -3014,12 +3042,39 @@ class JobTrackerApp {
           <span class="meta-chip chip-mode">🏢 <strong>${this.escapeHtml(data.workMode || 'On-site')}</strong></span>
           <span class="meta-chip">📍 ${this.escapeHtml(data.location || 'Not specified')}</span>
           <span class="meta-chip">💼 ${this.escapeHtml(data.jobType || 'Full-time')}</span>
-          <span class="meta-chip chip-source">🌐 Source: <strong>${this.escapeHtml(data.source || 'Direct Portal')}</strong></span>
+          <span class="meta-chip chip-source">🌐 Found: <strong>${this.escapeHtml(data.source || 'Direct Portal')}</strong></span>
+          ${data.portalName ? `<span class="meta-chip chip-portal">📝 Filled at: <strong>${this.escapeHtml(data.portalName)}</strong></span>` : ''}
           <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
           <span class="meta-chip chip-time">🕒 Time: <strong>${this.escapeHtml(data.appliedTime || this.formatTimeOnly(data.createdAt || new Date()))}</strong></span>
         </div>
 
         ${skillsHtml}
+
+        ${(data.recruiterName || data.callNotes || (data.interviewQuestions && data.interviewQuestions.length > 0)) ? `
+          <div class="card-call-notes-box">
+            <div class="call-notes-header">
+              <div class="call-notes-title-group">
+                <span class="call-header-icon">📞</span>
+                <span class="call-header-title">Recruiter / Interview Call Log</span>
+              </div>
+              ${data.recruiterName ? `<span class="recruiter-badge">👤 Recruiter: <strong>${this.escapeHtml(data.recruiterName)}</strong></span>` : ''}
+            </div>
+            ${(data.interviewQuestions && data.interviewQuestions.length > 0) ? `
+              <div class="call-questions-block">
+                <span class="block-label">💡 Questions Asked in Call:</span>
+                <ul class="call-questions-items">
+                  ${data.interviewQuestions.map(q => `<li>${this.escapeHtml(q)}</li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+            ${data.callNotes ? `
+              <div class="call-summary-block">
+                <span class="block-label">📝 Discussion & Details:</span>
+                <p class="call-summary-text">${this.escapeHtml(data.callNotes)}</p>
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
 
         <div class="card-actions-row">
           <div class="card-external-links">
@@ -3133,18 +3188,19 @@ class JobTrackerApp {
 
     let linksHtml = '';
     if (app.applicationUrl) {
+      const applyBtnText = app.portalName ? `Apply (${this.escapeHtml(app.portalName)})` : 'Apply Portal';
       linksHtml += `
-        <a href="${this.escapeHtml(app.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="job-link-btn" title="Open Application Link">
+        <a href="${this.escapeHtml(app.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="job-link-btn" title="Open Application Link (${this.escapeHtml(app.portalName || 'Portal')})">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-          <span>Apply Portal</span>
+          <span>${applyBtnText}</span>
         </a>
       `;
     }
-    if (app.sourceUrl) {
+    if (app.sourceUrl && app.sourceUrl !== app.applicationUrl) {
       linksHtml += `
-        <a href="${this.escapeHtml(app.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="job-link-btn" title="View Source Post">
+        <a href="${this.escapeHtml(app.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="job-link-btn" title="View Source Post on ${this.escapeHtml(app.source || 'Portal')}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          <span>${this.escapeHtml(app.source || 'Portal')}</span>
+          <span>${this.escapeHtml(app.source || 'Listing')}</span>
         </a>
       `;
     }
@@ -3178,7 +3234,26 @@ class JobTrackerApp {
         <span class="badge-workmode">${this.escapeHtml(app.workMode || 'On-site')}</span>
         ${app.salary && app.salary !== 'Not disclosed' ? `<span class="badge-salary">${this.escapeHtml(app.salary)}</span>` : ''}
         <span class="badge-location">📍 ${this.escapeHtml(app.location || 'Location')}</span>
+        ${app.source && app.source !== 'Portal' && app.source !== 'Direct Portal' ? `<span class="badge-source" title="Discovered on ${this.escapeHtml(app.source)}">🌐 ${this.escapeHtml(app.source)}</span>` : ''}
+        ${app.portalName ? `<span class="badge-portal" title="Applied on ${this.escapeHtml(app.portalName)}">📝 ${this.escapeHtml(app.portalName)}</span>` : ''}
+        ${app.recruiterName ? `<span class="badge-recruiter" title="Recruiter: ${this.escapeHtml(app.recruiterName)}">👤 ${this.escapeHtml(app.recruiterName)}</span>` : ''}
+        ${(app.callNotes || (app.interviewQuestions && app.interviewQuestions.length > 0)) ? `<span class="badge-call" title="Has Recruiter & Interview Notes">📞 Call Log</span>` : ''}
       </div>
+
+      ${(app.callNotes || (app.interviewQuestions && app.interviewQuestions.length > 0)) ? `
+        <div class="job-card-call-snippet">
+          <div class="snippet-header">
+            <span>📞 Call & Interview Notes</span>
+            ${app.recruiterName ? `<span class="snippet-recruiter">Recruiter: ${this.escapeHtml(app.recruiterName)}</span>` : ''}
+          </div>
+          ${(app.interviewQuestions && app.interviewQuestions.length > 0) ? `
+            <div class="snippet-qs">
+              <strong>Questions:</strong> ${this.escapeHtml(app.interviewQuestions.slice(0, 2).join(' • '))}${app.interviewQuestions.length > 2 ? ` <em>(+${app.interviewQuestions.length - 2} more)</em>` : ''}
+            </div>
+          ` : ''}
+          ${app.callNotes ? `<div class="snippet-text">${this.escapeHtml(app.callNotes)}</div>` : ''}
+        </div>
+      ` : ''}
 
       <div class="job-card-bottom">
         <div class="job-links-group">
@@ -3420,7 +3495,7 @@ class JobTrackerApp {
       return;
     }
 
-    const headers = ['Company', 'Role', 'Status', 'Applied Date', 'Work Mode', 'Location', 'Salary', 'Application URL', 'Source URL', 'Skills'];
+    const headers = ['Company', 'Role', 'Status', 'Applied Date', 'Work Mode', 'Location', 'Salary', 'Discovery Source', 'Application Portal', 'Application URL', 'Source URL', 'Skills'];
     const rows = this.applications.map(a => [
       `"${(a.companyName || '').replace(/"/g, '""')}"`,
       `"${(a.roleTitle || '').replace(/"/g, '""')}"`,
@@ -3429,6 +3504,8 @@ class JobTrackerApp {
       `"${(a.workMode || '').replace(/"/g, '""')}"`,
       `"${(a.location || '').replace(/"/g, '""')}"`,
       `"${(a.salary || '').replace(/"/g, '""')}"`,
+      `"${(a.source || '').replace(/"/g, '""')}"`,
+      `"${(a.portalName || '').replace(/"/g, '""')}"`,
       `"${(a.applicationUrl || '').replace(/"/g, '""')}"`,
       `"${(a.sourceUrl || '').replace(/"/g, '""')}"`,
       `"${((a.skills || []).join(', ')).replace(/"/g, '""')}"`
