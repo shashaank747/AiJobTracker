@@ -1627,12 +1627,28 @@ class JobTrackerApp {
             </div>
           </div>
           <div class="thinking-text-row">
-            <span class="thinking-status-text">Zuno is thinking & typing...</span>
+            <span class="thinking-status-text">Zuno is thinking... <span class="thinking-counter" style="opacity: 0.8; font-weight: 500;">(1s)</span></span>
           </div>
         </div>
       </div>
     `;
     this.chatMessagesEl.appendChild(div);
+
+    let sec = 1;
+    const counterEl = div.querySelector('.thinking-counter');
+    const timerId = setInterval(() => {
+      sec++;
+      if (counterEl) {
+        counterEl.textContent = `(${sec}s)`;
+      }
+    }, 1000);
+
+    const origRemove = div.remove.bind(div);
+    div.remove = () => {
+      clearInterval(timerId);
+      origRemove();
+    };
+
     return div;
   }
 

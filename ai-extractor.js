@@ -236,12 +236,33 @@ export const AiExtractor = {
     const provider = settings.aiProvider || 'gemini';
     let result = null;
 
-    // 1. If user explicitly chose Offline Heuristics
-    if (provider === 'heuristic') {
+    const trimmed = text.trim();
+    const lower = trimmed.toLowerCase();
+
+    // Fast-path 1: Real-time Clock / Date Queries -> INSTANT (< 5ms)
+    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now)\b/i.test(lower);
+    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today))\b/i.test(lower);
+
+    // Fast-path 2: Direct Greetings & Simple Identity -> INSTANT (< 5ms)
+    const isGreeting = /^(?:hi|hello|hey|hiya|howdy|good\s*(?:morning|afternoon|evening)|sup|yo|hola)(?:\s+zuno)?\b[!?. ]*$/i.test(trimmed);
+    const isIdentity = /^(who are you|what is your name|what's your name|your name)\b[!?. ]*$/i.test(lower);
+    const isHowAreYou = /^(how are you|how's it going|how are you doing)\b[!?. ]*$/i.test(lower);
+    const isCasualThanks = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
+
+    // Fast-path 3: Direct Profile commands (e.g. "add skill: ...", "add project: ...", "add sem 5 marks: ...") -> INSTANT (< 5ms)
+    const isDirectProfileCmd = /^(?:add\s+project|new\s+project|project\s*:|add\s+cert|add\s+certification|add\s+skill|add\s+technical\s+skill|remove\s+skill|add\s+sem\s+[1-8]\s+marks|update\s+college|my\s+college\s+is)\b/i.test(lower);
+    const isSimpleCountQuery = /^(?:how\s+many\s+(?:jobs|applications|interviews|offers)|show\s+(?:my\s+)?applications|list\s+(?:my\s+)?applications)\b/i.test(lower);
+
+    // If matches fast-path OR provider is explicitly set to offline heuristic
+    if (provider === 'heuristic' || isTimeQuery || isDateQuery || isGreeting || isIdentity || isHowAreYou || isCasualThanks || isDirectProfileCmd || isSimpleCountQuery) {
       result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
     } else {
-      // 2. Try Vercel Serverless /api/chat with selected provider & persistent DB context
+      // 2. Try Vercel Serverless /api/chat with strict 4.2-second hard timeout
+      const requestStart = Date.now();
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4200); // 4.2s hard timeout guarantee
+
         const serverRes = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -255,8 +276,10 @@ export const AiExtractor = {
             clientTimestamp: Date.now(),
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata',
             apiKey: (provider === 'openai' ? settings.openaiKey : settings.geminiKey) || undefined
-          })
+          }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         if (serverRes.ok) {
           const json = await serverRes.json();
@@ -270,25 +293,10 @@ export const AiExtractor = {
           }
         }
       } catch (serverErr) {
-        console.warn('Serverless endpoint not reachable, trying direct client API:', serverErr);
+        console.warn('Serverless endpoint exceeded budget (4.2s) or failed, switching instantly to heuristics:', serverErr.name || serverErr.message);
       }
 
-      // 3. Direct Client Fallback:
-      if (!result && provider === 'openai' && settings.openaiKey) {
-        try {
-          result = await this.extractWithOpenAI(text, existingJob, history, settings, allApplications, userProfile);
-        } catch (err) {
-          console.warn('Client OpenAI extraction failed:', err);
-        }
-      } else if (!result && provider === 'gemini' && settings.geminiKey) {
-        try {
-          result = await this.extractWithGemini(text, existingJob, history, settings, allApplications, userProfile);
-        } catch (err) {
-          console.warn('Client Gemini extraction failed:', err);
-        }
-      }
-
-      // 4. Fallback: Offline Smart Career Advisor & Heuristic Extractor
+      // 3. Fallback: Ultra-fast offline Smart Career Advisor & Heuristic Extractor (< 5ms)
       if (!result) {
         result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
       }
@@ -484,24 +492,32 @@ Return ONLY valid JSON matching this schema:
 
     const candidateModels = [
       settings.geminiModel,
-      'gemini-3.8-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-3.5-flash',
-      'gemini-3.7-flash',
-      'gemini-flash-latest'
+      'gemini-2.5-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3.8-flash'
     ].filter(Boolean);
 
     let lastError = null;
     let candidateText = null;
 
+    const startTime = Date.now();
     for (const m of candidateModels) {
+      if (Date.now() - startTime > 3500) break;
+      const controller = new AbortController();
+      const perModelTimer = setTimeout(() => controller.abort(), 2800);
+
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
         });
+        clearTimeout(perModelTimer);
 
         if (response.ok) {
           const data = await response.json();
@@ -512,6 +528,7 @@ Return ONLY valid JSON matching this schema:
           lastError = errorData.error?.message || response.statusText;
         }
       } catch (e) {
+        clearTimeout(perModelTimer);
         lastError = e.message;
       }
     }

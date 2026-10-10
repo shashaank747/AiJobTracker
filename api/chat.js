@@ -70,10 +70,11 @@ export default async function handler(req, res) {
       if (!Array.isArray(apps) || apps.length === 0) {
         return "STORED APPLICATIONS IN DATABASE: 0 applications currently stored.";
       }
-      const summaryList = apps.map((a, i) => 
+      const recentApps = apps.slice(-15);
+      const summaryList = recentApps.map((a, i) => 
         `[#${i + 1}] Company: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'Not disclosed'} | Work Mode: ${a.workMode || 'N/A'} | Location: ${a.location || 'N/A'} | Applied: ${a.appliedDate || 'N/A'}${a.appliedTime ? ` at ${a.appliedTime}` : ''} | Source: ${a.source || 'N/A'} | Skills: ${(a.skills || []).join(', ')}`
       ).join('\n');
-      return `PERSISTENT BACKEND DATABASE (${apps.length} stored applications):\n${summaryList}`;
+      return `PERSISTENT BACKEND DATABASE (Total ${apps.length} stored applications, showing recent ${recentApps.length}):\n${summaryList}`;
     };
 
     const formatProfileContext = (prof) => {
@@ -287,14 +288,14 @@ Ensure output is valid JSON.`;
       });
     }
 
-    // Modern Gemini models active in the environment
+    // Modern ultra-fast, low-latency Gemini models
     const candidateModels = [
-      'gemini-3.8-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-3.5-flash',
-      'gemini-3.7-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
       'gemini-3.1-flash-lite',
-      'gemini-flash-latest'
+      'gemini-3.8-flash'
     ];
 
     let lastError = null;
@@ -314,14 +315,27 @@ Ensure output is valid JSON.`;
       ]
     };
 
+    const serverStartTime = Date.now();
+    const MAX_SERVER_BUDGET_MS = 3800; // Keep entire backend processing strictly under 3.8s
+
     for (const model of candidateModels) {
+      const elapsed = Date.now() - serverStartTime;
+      const remainingTime = MAX_SERVER_BUDGET_MS - elapsed;
+      if (remainingTime <= 600) break; // Don't initiate if budget exhausted
+
+      const controller = new AbortController();
+      const perModelTimeout = Math.min(remainingTime, 3000);
+      const timer = setTimeout(() => controller.abort(), perModelTimeout);
+
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveGeminiKey}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
         });
+        clearTimeout(timer);
 
         if (response.ok) {
           const data = await response.json();
@@ -334,6 +348,7 @@ Ensure output is valid JSON.`;
           lastError = errMsg;
         }
       } catch (err) {
+        clearTimeout(timer);
         modelErrors[model] = `Exception: ${err.message}`;
         lastError = err.message;
       }
