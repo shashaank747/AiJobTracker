@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, existingJob, history, allApplications = [], userProfile = null, apiKey: clientApiKey, provider = 'auto' } = req.body || {};
+    const { text, existingJob, history, allApplications = [], userProfile = null, apiKey: clientApiKey, provider = 'auto', clientTimestamp = null, timeZone: clientTz = null } = req.body || {};
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Message text is required.' });
@@ -47,14 +47,31 @@ export default async function handler(req, res) {
     const effectiveGeminiKey = (clientApiKey && !clientApiKey.startsWith('sk-')) ? clientApiKey : geminiKey;
     const effectiveOpenaiKey = (clientApiKey && clientApiKey.startsWith('sk-')) ? clientApiKey : openaiKey;
 
-    const today = new Date().toISOString().split('T')[0];
+    const now = clientTimestamp ? new Date(clientTimestamp) : new Date();
+    const effectiveTimeZone = clientTz || 'Asia/Kolkata';
+    const today = now.toISOString().split('T')[0];
+    const fullDateStr = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: effectiveTimeZone
+    });
+    const fullTimeStr = now.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZone: effectiveTimeZone
+    });
+    const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long', timeZone: effectiveTimeZone });
 
     const formatDatabaseContext = (apps) => {
       if (!Array.isArray(apps) || apps.length === 0) {
         return "STORED APPLICATIONS IN DATABASE: 0 applications currently stored.";
       }
       const summaryList = apps.map((a, i) => 
-        `[#${i + 1}] Company: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'Not disclosed'} | Work Mode: ${a.workMode || 'N/A'} | Location: ${a.location || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'} | Source: ${a.source || 'N/A'} | Skills: ${(a.skills || []).join(', ')}`
+        `[#${i + 1}] Company: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'Not disclosed'} | Work Mode: ${a.workMode || 'N/A'} | Location: ${a.location || 'N/A'} | Applied: ${a.appliedDate || 'N/A'}${a.appliedTime ? ` at ${a.appliedTime}` : ''} | Source: ${a.source || 'N/A'} | Skills: ${(a.skills || []).join(', ')}`
       ).join('\n');
       return `PERSISTENT BACKEND DATABASE (${apps.length} stored applications):\n${summaryList}`;
     };
@@ -90,7 +107,24 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
 
     const systemPrompt = `You are Zuno, an intelligent conversational AI career assistant and job application tracker at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your name or identity.
-TODAY'S REFERENCE DATE: ${today}
+
+REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE & ACTIVE):
+- CURRENT EXACT TIME: ${fullTimeStr}
+- CURRENT DATE: ${fullDateStr}
+- DAY OF THE WEEK: ${dayOfWeek}
+- REFERENCE ISO DATE: ${today}
+- TIMEZONE: ${effectiveTimeZone}
+
+CORE TIME & DATE INTELLIGENCE:
+- You have an explicit, razor-sharp sense of time, dates, and days of the week!
+- When the user asks "what time is it?", "what is today's date?", "what day is today?", "what's the time right now?", "current time and date", or about current time:
+  * Answer directly, immediately and warmly with the exact current time (${fullTimeStr}), day (${dayOfWeek}), and date (${fullDateStr})!
+  * Set "data": null and "profileUpdate": null.
+- When extracting job applications, capture and set:
+  * "appliedDate": "YYYY-MM-DD"
+  * "appliedTime": "HH:MM AM/PM" (if user applied at a specific time, use that; otherwise default to current time "${fullTimeStr}")
+- For relative times like "applied 2 hours ago", "applied this morning at 10 AM", "applied yesterday at 3 PM":
+  * Calculate both "appliedDate" and "appliedTime" precisely relative to now (${fullDateStr}, ${fullTimeStr})!
 
 You act like ChatGPT / Gemini, offering full conversational answers, career advice, and interview preparation, while also automatically extracting job application details when presented with job posts.
 
@@ -164,6 +198,7 @@ CORE CAPABILITIES:
     "sourceUrl": "Listing URL if present",
     "status": "Applied" | "Interviewing" | "Offer" | "Rejected" | "Bookmarked",
     "appliedDate": "YYYY-MM-DD",
+    "appliedTime": "HH:MM AM/PM",
     "skills": ["Skill1", "Skill2", ...],
     "notes": "Short summary of key requirements or notes"
   }

@@ -158,6 +158,15 @@
         </div>
 
         <div class="topbar-right">
+          <div class="topbar-clock-badge" id="topbarLiveClock" title="Current Real-time Clock & Date">
+            <svg class="clock-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span class="clock-date" id="liveDateText">--</span>
+            <span class="clock-dot">•</span>
+            <span class="clock-time" id="liveTimeText">--:-- --</span>
+          </div>
           <div class="active-session-meta" id="topbarSessionMeta" style="display: none;">
             <span class="session-company" id="topbarCompany">Target Company</span>
             <span class="session-divider">•</span>

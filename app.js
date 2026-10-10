@@ -180,6 +180,9 @@ class JobTrackerApp {
     this.topbarSessionMeta = document.getElementById('topbarSessionMeta');
     this.topbarCompany = document.getElementById('topbarCompany');
     this.topbarRole = document.getElementById('topbarRole');
+    this.topbarLiveClock = document.getElementById('topbarLiveClock');
+    this.liveDateText = document.getElementById('liveDateText');
+    this.liveTimeText = document.getElementById('liveTimeText');
     this.activeAiModelTag = document.getElementById('activeAiModelTag');
 
     // Slash Commands Menu
@@ -338,6 +341,7 @@ class JobTrackerApp {
 
   async init() {
     this.applyTheme(this.currentTheme);
+    this.startLiveClock();
     this.updateAiModelTag();
     await this.loadApplications();
     await this.loadUserProfile();
@@ -350,6 +354,47 @@ class JobTrackerApp {
         this.selectApplication(found);
       }
     }
+  }
+
+  startLiveClock() {
+    const update = () => {
+      const now = new Date();
+      if (this.liveDateText) {
+        this.liveDateText.textContent = now.toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric'
+        });
+      }
+      if (this.liveTimeText) {
+        this.liveTimeText.textContent = now.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        });
+      }
+    };
+
+    update();
+    if (this._clockInterval) clearInterval(this._clockInterval);
+    this._clockInterval = setInterval(update, 1000);
+  }
+
+  formatMessageTime(isoOrTimestamp) {
+    if (!isoOrTimestamp) {
+      isoOrTimestamp = new Date();
+    }
+    const d = new Date(isoOrTimestamp);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  }
+
+  formatTimeOnly(isoOrTimestamp) {
+    if (!isoOrTimestamp) return '';
+    const d = new Date(isoOrTimestamp);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   }
 
   bindEvents() {
@@ -979,10 +1024,10 @@ class JobTrackerApp {
       this.chatMessages = [...app.chatHistory];
       for (const msg of this.chatMessages) {
         if (msg.role === 'user') {
-          this.appendUserMessage(msg.text, false);
+          this.appendUserMessage(msg.text, false, msg.timestamp);
         } else {
           const cardData = msg.data ? { ...msg.data, isStored: true } : { ...app, isStored: true };
-          this.appendAssistantMessage(msg.text, cardData, false);
+          this.appendAssistantMessage(msg.text, cardData, false, msg.timestamp);
         }
       }
     } else {
@@ -990,10 +1035,11 @@ class JobTrackerApp {
       const msg = {
         role: 'assistant',
         text: `Loaded application for **${app.roleTitle}** at **${app.companyName}**.`,
-        data: { ...app, isStored: true }
+        data: { ...app, isStored: true },
+        timestamp: app.createdAt || new Date().toISOString()
       };
       this.chatMessages = [msg];
-      this.appendAssistantMessage(msg.text, { ...app, isStored: true }, false);
+      this.appendAssistantMessage(msg.text, { ...app, isStored: true }, false, msg.timestamp);
     }
 
     this.highlightActiveHistoryItem();
@@ -1433,7 +1479,8 @@ class JobTrackerApp {
     }
 
     this.welcomeHero.style.display = 'none';
-    this.appendUserMessage(text);
+    const userTimestamp = new Date().toISOString();
+    this.appendUserMessage(text, true, userTimestamp);
     this.chatInput.value = '';
     this.chatInput.style.height = 'auto';
     this.chatInput.style.overflowY = 'hidden';
@@ -1481,6 +1528,7 @@ class JobTrackerApp {
           ...result.data,
           id: appId,
           createdAt: createdAt,
+          appliedTime: result.data.appliedTime || (this.activeApplication?.appliedTime || existingApp?.appliedTime || this.formatTimeOnly(new Date())),
           isStored: isStored
         };
 
@@ -1497,18 +1545,20 @@ class JobTrackerApp {
           ? '\n\n💡 *Type `/store` or click **Store in DB** on the card to save this job to your database!*'
           : '';
 
+        const assistantTimestamp = new Date().toISOString();
         const assistantMsg = {
           role: 'assistant',
           text: result.message + promptHint,
-          data: { ...this.activeApplication, chatHistory: [] }
+          data: { ...this.activeApplication, chatHistory: [] },
+          timestamp: assistantTimestamp
         };
 
-        this.chatMessages.push({ role: 'user', text });
+        this.chatMessages.push({ role: 'user', text, timestamp: userTimestamp });
         this.chatMessages.push(assistantMsg);
-        this.activeApplication.chatHistory = this.chatMessages.map(m => ({ role: m.role, text: m.text }));
+        this.activeApplication.chatHistory = this.chatMessages.map(m => ({ role: m.role, text: m.text, timestamp: m.timestamp || userTimestamp }));
 
         // Render assistant bubble with extraction card
-        this.appendAssistantMessage(assistantMsg.text, this.activeApplication);
+        this.appendAssistantMessage(assistantMsg.text, this.activeApplication, true, assistantTimestamp);
 
         // Update UI
         this.topbarSessionMeta.style.display = 'flex';
@@ -1518,13 +1568,15 @@ class JobTrackerApp {
         this.scrollToBottom();
       } else {
         // Pure conversational message (e.g., greeting, help, inquiry) - DO NOT create a dummy card!
+        const assistantTimestamp = new Date().toISOString();
         const assistantMsg = {
           role: 'assistant',
           text: result.message,
-          data: null
+          data: null,
+          timestamp: assistantTimestamp
         };
 
-        this.chatMessages.push({ role: 'user', text });
+        this.chatMessages.push({ role: 'user', text, timestamp: userTimestamp });
         this.chatMessages.push(assistantMsg);
 
         if (this.activeApplication) {
@@ -1533,7 +1585,7 @@ class JobTrackerApp {
         }
 
         // Render assistant bubble without an extraction card
-        this.appendAssistantMessage(result.message, null);
+        this.appendAssistantMessage(result.message, null, true, assistantTimestamp);
         this.scrollToBottom();
       }
 
@@ -1545,13 +1597,16 @@ class JobTrackerApp {
     }
   }
 
-  appendUserMessage(text, pushToState = true) {
+  appendUserMessage(text, pushToState = true, timestamp = null) {
+    const timeVal = timestamp || new Date().toISOString();
+    const timeDisplay = this.formatMessageTime(timeVal);
     const msgDiv = document.createElement('div');
     msgDiv.className = 'chat-msg user';
     msgDiv.innerHTML = `
       <div class="msg-avatar">You</div>
       <div class="msg-body">
         <div class="msg-bubble-user">${this.escapeHtml(text)}</div>
+        <div class="msg-timestamp">${timeDisplay}</div>
       </div>
     `;
     this.chatMessagesEl.appendChild(msgDiv);
@@ -1609,7 +1664,9 @@ class JobTrackerApp {
     return html;
   }
 
-  appendAssistantMessage(text, jobData, animate = true) {
+  appendAssistantMessage(text, jobData, animate = true, timestamp = null) {
+    const timeVal = timestamp || new Date().toISOString();
+    const timeDisplay = this.formatMessageTime(timeVal);
     const msgDiv = document.createElement('div');
     msgDiv.className = 'chat-msg assistant';
 
@@ -1625,6 +1682,7 @@ class JobTrackerApp {
       <div class="msg-body">
         <div class="msg-assistant-text">${formattedText}</div>
         ${cardHtml}
+        <div class="msg-timestamp">${timeDisplay}</div>
       </div>
     `;
 
@@ -1742,6 +1800,7 @@ class JobTrackerApp {
           <span class="meta-chip">💼 ${this.escapeHtml(data.jobType || 'Full-time')}</span>
           <span class="meta-chip chip-source">🌐 Source: <strong>${this.escapeHtml(data.source || 'Direct Portal')}</strong></span>
           <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
+          <span class="meta-chip chip-time">🕒 Time: <strong>${this.escapeHtml(data.appliedTime || this.formatTimeOnly(data.createdAt || new Date()))}</strong></span>
         </div>
 
         ${skillsHtml}
@@ -1892,9 +1951,13 @@ class JobTrackerApp {
       </div>
 
       <div class="job-meta-row">
-        <span class="badge-days-ago">
+        <span class="badge-days-ago" title="${app.appliedDate || ''}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
           <span>${daysAgoText}</span>
+        </span>
+        <span class="badge-time" title="Applied Time: ${this.escapeHtml(app.appliedTime || this.formatTimeOnly(app.createdAt))}">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span>${this.escapeHtml(app.appliedTime || this.formatTimeOnly(app.createdAt))}</span>
         </span>
         <span class="badge-workmode">${this.escapeHtml(app.workMode || 'On-site')}</span>
         ${app.salary && app.salary !== 'Not disclosed' ? `<span class="badge-salary">${this.escapeHtml(app.salary)}</span>` : ''}

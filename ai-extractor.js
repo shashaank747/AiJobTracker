@@ -252,6 +252,8 @@ export const AiExtractor = {
             allApplications,
             userProfile,
             provider,
+            clientTimestamp: Date.now(),
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata',
             apiKey: (provider === 'openai' ? settings.openaiKey : settings.geminiKey) || undefined
           })
         });
@@ -312,6 +314,9 @@ export const AiExtractor = {
       if (detectedSource) {
         result.data.source = detectedSource;
       }
+      if (!result.data.appliedTime) {
+        result.data.appliedTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
     }
 
     return result;
@@ -324,9 +329,49 @@ export const AiExtractor = {
     const model = settings.geminiModel || 'gemini-3.8-flash';
     const apiKey = settings.geminiKey;
 
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const effectiveTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+
+    let fullTimeStr = '';
+    let fullDateStr = '';
+    let dayOfWeek = '';
+    let today = '';
+
+    try {
+      fullTimeStr = now.toLocaleTimeString('en-US', {
+        timeZone: effectiveTimeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      fullDateStr = now.toLocaleDateString('en-US', {
+        timeZone: effectiveTimeZone,
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      dayOfWeek = now.toLocaleDateString('en-US', {
+        timeZone: effectiveTimeZone,
+        weekday: 'long'
+      });
+      const dateParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: effectiveTimeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(now);
+      today = dateParts;
+    } catch (e) {
+      fullTimeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      fullDateStr = now.toDateString();
+      dayOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+      today = now.toISOString().split('T')[0];
+    }
+
     const databaseSummary = Array.isArray(allApplications) && allApplications.length > 0
-      ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'}`).join('\n')
+      ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied: ${a.appliedDate || 'N/A'}${a.appliedTime ? ' ' + a.appliedTime : ''}`).join('\n')
       : '0 applications in database.';
 
     const formatFullProfileDossier = (prof) => {
@@ -359,14 +404,24 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
 
     const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your identity.
-TODAY'S REFERENCE DATE: ${today}
 
-CRITICAL APPLIED DATE RULE:
-If the user specifies when they applied (e.g. "applied last week", "applied 3 days ago", "applied yesterday", "applied on 2nd Oct", "confirmation email date"), CALCULATE and return the exact YYYY-MM-DD appliedDate relative to Today (${today})! Only default to ${today} if no past application timeframe was mentioned.
+REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE RIGHT NOW):
+- Current Live Time: ${fullTimeStr} (${effectiveTimeZone})
+- Today's Date: ${fullDateStr}
+- Day of the Week: ${dayOfWeek}
+- ISO Date Reference: ${today}
+
+CORE TIME & DATE INTELLIGENCE:
+1. You are 100% aware of the current exact time, day, and date.
+2. If the user asks about the time ("what time is it?", "current time"), day ("what day is today?"), date ("what is today's date?"), or any time calculation, answer them directly, accurately, and naturally based on the Live Time and Date above!
+3. If the user specifies when an application was submitted (e.g. "applied yesterday", "applied 2 hours ago", "applied last Friday", "applied on 3rd Oct at 4 PM"), compute the exact appliedDate and appliedTime relative to right now (${fullTimeStr}, ${today}).
+
+CRITICAL APPLIED DATE & TIME RULE:
+If the user specifies when they applied (e.g. "applied last week", "applied 3 days ago", "applied yesterday", "applied on 2nd Oct", "applied at 2:30 PM", "confirmation email date"), CALCULATE and return the exact YYYY-MM-DD appliedDate and appliedTime relative to right now (${today}, ${fullTimeStr})! Only default appliedDate to ${today} and appliedTime to "${fullTimeStr.replace(/:\d{2}\s/, ' ')}" if no past application timeframe was mentioned.
 
 Your capabilities:
 1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
-   - Extract companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, skills, notes.
+   - Extract companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
    - Return this in the "data" object.
 2. PERSISTENT DATABASE & SESSION QUERYING:
    - You have direct access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
@@ -493,17 +548,41 @@ Return ONLY valid JSON matching this schema:
     const apiKey = settings.openaiKey;
     const url = 'https://api.openai.com/v1/chat/completions';
 
+    const now = new Date();
+    const effectiveTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+    const fullTimeStr = now.toLocaleTimeString('en-US', { timeZone: effectiveTimeZone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    const fullDateStr = now.toLocaleDateString('en-US', { timeZone: effectiveTimeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const dayOfWeek = now.toLocaleDateString('en-US', { timeZone: effectiveTimeZone, weekday: 'long' });
+    let today = '';
+    try {
+      today = new Intl.DateTimeFormat('en-CA', { timeZone: effectiveTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    } catch {
+      today = now.toISOString().split('T')[0];
+    }
+
     const databaseSummary = Array.isArray(allApplications) && allApplications.length > 0
-      ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied Date: ${a.appliedDate || 'N/A'}`).join('\n')
+      ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied: ${a.appliedDate || 'N/A'}${a.appliedTime ? ' ' + a.appliedTime : ''}`).join('\n')
       : '0 applications in database.';
 
     const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
 Your name is Zuno.
+
+REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE RIGHT NOW):
+- Current Live Time: ${fullTimeStr} (${effectiveTimeZone})
+- Today's Date: ${fullDateStr}
+- Day of the Week: ${dayOfWeek}
+- ISO Date Reference: ${today}
+
+CORE TIME & DATE INTELLIGENCE:
+1. You are 100% aware of the current exact time, day, and date.
+2. If the user asks about the time ("what time is it?", "current time"), day ("what day is today?"), date ("what is today's date?"), or any time calculation, answer them directly, accurately, and naturally based on the Live Time and Date above!
+3. If the user specifies when an application was submitted, compute the exact appliedDate and appliedTime relative to right now (${fullTimeStr}, ${today}).
+
 You have direct live access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
 When user asks about past applications, statistics, interview status, specific applied companies, or advice: provide a comprehensive markdown answer using the database records in "message" and set "data": null.
 When user asks you to add projects, certifications, semester marks, or update profile: return structured "profileUpdate" in JSON and set "data": null.
 When user asks to compare profile vs company requirements using "/compare": provide a comprehensive comparative analysis (Match score %, skills match vs missing, projects alignment, sem marks & education review, strengths, gap plan) and set "data": null.
-When user pastes a job description (JD) or update: extract the job details in "data".
+When user pastes a job description (JD) or update: extract the job details in "data" including companyName, roleTitle, jobType, workMode, location, salary, source, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
 Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
 
     const response = await fetch(url, {
@@ -579,6 +658,27 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
       return {
         message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Tell me about your **projects, certifications, or semester marks** to update your profile.\n- Ask me about your **saved applications** (*\"Show my applications\"* or *\"How many jobs did I apply to?\"*).\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
+        data: null
+      };
+    }
+
+    // 3b. Real-Time Clock & Date Queries
+    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now)\b/i.test(lower);
+    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today))\b/i.test(lower);
+
+    if (isTimeQuery || isDateQuery) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+      const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const dayStr = now.toLocaleDateString('en-US', { weekday: 'long' });
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local Time';
+
+      return {
+        message: `🕒 **Real-Time Clock & Date**:\n\n` +
+          `- **Current Time**: **${timeStr}** (${tz})\n` +
+          `- **Today's Date**: **${dateStr}**\n` +
+          `- **Day of the Week**: **${dayStr}**\n\n` +
+          `*I am fully aware of real-time clock and calendar dates for tracking all your job application deadlines, submissions, and interviews.*`,
         data: null
       };
     }
@@ -1223,6 +1323,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     // 7. Job Extraction Flow
     // ==========================================
     const today = new Date().toISOString().split('T')[0];
+    const currentTimeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const detectedDate = parseAppliedDate(text, null);
 
     const data = existingJob ? { ...existingJob } : {
@@ -1237,9 +1338,13 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       sourceUrl: '',
       status: 'Applied',
       appliedDate: detectedDate || today,
+      appliedTime: currentTimeStr,
       skills: [],
       notes: ''
     };
+    if (existingJob && !data.appliedTime) {
+      data.appliedTime = currentTimeStr;
+    }
 
     const detectedSource = parseJobSource(text);
 
