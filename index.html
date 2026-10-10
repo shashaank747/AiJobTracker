@@ -32,6 +32,9 @@
             <span class="brand-title">JobTracker<span class="brand-ai">AI</span></span>
             <span class="brand-tagline">AI Application Vault</span>
           </div>
+          <button id="btnCloseSidebarMobile" class="btn-icon mobile-only sidebar-close-btn" title="Close Sidebar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
 
         <button id="btnSidebarDashboard" class="btn btn-sidebar-nav" title="Open Applications Dashboard">
@@ -67,6 +70,8 @@
         </button>
       </div>
     </aside>
+    <!-- MOBILE SIDEBAR BACKDROP -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
     <!-- MAIN WRAPPER -->
     <main class="main-content">
@@ -233,14 +238,6 @@
 
                   <!-- Chat Input Footer -->
         <div class="chat-input-area">
-          <div class="quick-prompts-bar">
-            <button class="quick-pill quick-pill-store" data-action="store" title="Store currently drafted job in database">💾 /store</button>
-            <button class="quick-pill quick-pill-compare" data-action="compare" title="Compare About Me profile against company requirements">⚖️ /compare</button>
-            <button class="quick-pill" data-action="link">🔗 Add Link</button>
-            <button class="quick-pill" data-action="salary">💵 Update Salary</button>
-            <button class="quick-pill" data-action="interview">🎯 Interviewing</button>
-            <button class="quick-pill" data-action="offer">🎉 Offer</button>
-          </div>
 
           <!-- Attachment Preview Box (Images/PDFs) -->
           <div id="attachmentPreview" class="attachment-preview" style="display: none;">
@@ -284,11 +281,11 @@
 
               <!-- Extraction Engine Dropdown (Inside Input Box beside Mic) -->
               <div class="chat-engine-picker-inline" title="Select Extraction Engine">
-                <svg class="engine-inline-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <svg class="engine-inline-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
                 <select id="chatAiEngineSelect" class="chat-engine-inline-select" title="Switch Extraction Engine">
-                  <option value="gemini">Google Gemini API (Recommended)</option>
-                  <option value="openai">OpenAI ChatGPT API</option>
-                  <option value="heuristic">Smart NLP Heuristics (Offline / Free)</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="openai">ChatGPT</option>
+                  <option value="heuristic">Offline</option>
                 </select>
               </div>
 

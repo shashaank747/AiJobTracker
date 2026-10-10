@@ -240,8 +240,25 @@ export const AiExtractor = {
     const lower = trimmed.toLowerCase();
 
     // Fast-path 1: Real-time Clock / Date Queries -> INSTANT (< 5ms)
-    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now)\b/i.test(lower);
-    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today))\b/i.test(lower);
+    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now|the\s+time|what\s+is\s+time|time\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?time\??$/i.test(trimmed);
+    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today)|date\s+today|today\s+date|what\s+is\s+date|date\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?date\??$/i.test(trimmed);
+
+    // Fast-path 1b: Today applications count query -> INSTANT (< 5ms)
+    const isTodayCountQuery = /\b(?:(?:how\s+many|show|list|count|what)\s+(?:applications?|jobs?|applied)?.*?\btoday\b|\b(?:applied|applications?|jobs?)\s+(?:for\s+|in\s+)?today\b|\btoday(?:'s)?\s+(?:applications?|jobs?|applied)\b)\b/i.test(lower) ||
+      /^(?:applied\s+today|today\s+applied|today\s+count|jobs\s+today|applications\s+today)\??$/i.test(trimmed);
+
+    // Fast-path 1c: Graph / Last week / Last month velocity queries -> INSTANT (< 5ms)
+    const isGraphWord = /\b(?:graph|chart|velocity|visualiz(?:e|ation)|trend|curve)\b/i.test(lower);
+    const isWeekWord = /\b(?:(?:last|past)\s+(?:week|7\s*days)|7\s*days|this\s+week)\b/i.test(lower);
+    const isMonthWord = /\b(?:(?:last|past)\s+(?:month|30\s*days)|30\s*days|this\s+month)\b/i.test(lower);
+    const isAppQuery = /\b(?:how\s+many|applications?|jobs?|applied|show|list|count|tell\s+me)\b/i.test(lower);
+    const isGraphQuery = isGraphWord ||
+      ((isWeekWord || isMonthWord) && isAppQuery) ||
+      /^(?:applications?\s+(?:last\s+week|last\s+month)|jobs?\s+(?:last\s+week|last\s+month))\??$/i.test(trimmed);
+
+    // Fast-path 1d: Search query in applications database (/search or search keywords) -> INSTANT (< 5ms)
+    const isSearchCmd = /^\/(?:search|find)\b/i.test(trimmed) ||
+      /\b(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\b/i.test(lower);
 
     // Fast-path 2: Direct Greetings & Simple Identity -> INSTANT (< 5ms)
     const isGreeting = /^(?:hi|hello|hey|hiya|howdy|good\s*(?:morning|afternoon|evening)|sup|yo|hola)(?:\s+zuno)?\b[!?. ]*$/i.test(trimmed);
@@ -254,7 +271,7 @@ export const AiExtractor = {
     const isSimpleCountQuery = /^(?:how\s+many\s+(?:jobs|applications|interviews|offers)|show\s+(?:my\s+)?applications|list\s+(?:my\s+)?applications)\b/i.test(lower);
 
     // If matches fast-path OR provider is explicitly set to offline heuristic
-    if (provider === 'heuristic' || isTimeQuery || isDateQuery || isGreeting || isIdentity || isHowAreYou || isCasualThanks || isDirectProfileCmd || isSimpleCountQuery) {
+    if (provider === 'heuristic' || isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery || isSearchCmd || isGreeting || isIdentity || isHowAreYou || isCasualThanks || isDirectProfileCmd || isSimpleCountQuery) {
       result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
     } else {
       // 2. Try Vercel Serverless /api/chat with strict 4.2-second hard timeout
@@ -288,6 +305,8 @@ export const AiExtractor = {
               message: json.message,
               data: json.data || null,
               profileUpdate: json.profileUpdate || null,
+              cardType: json.cardType || null,
+              cardData: json.cardData || null,
               provider: json.provider || provider
             };
           }
@@ -299,6 +318,16 @@ export const AiExtractor = {
       // 3. Fallback: Ultra-fast offline Smart Career Advisor & Heuristic Extractor (< 5ms)
       if (!result) {
         result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
+      }
+    }
+
+    if (result && !result.cardType) {
+      if (isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery) {
+        const widgetRes = this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
+        if (widgetRes && widgetRes.cardType) {
+          result.cardType = widgetRes.cardType;
+          result.cardData = widgetRes.cardData;
+        }
       }
     }
 
@@ -680,23 +709,33 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 3b. Real-Time Clock & Date Queries
-    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now)\b/i.test(lower);
-    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today))\b/i.test(lower);
+    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now|the\s+time|what\s+is\s+time|time\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?time\??$/i.test(trimmed);
+    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today)|date\s+today|today\s+date|what\s+is\s+date|date\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?date\??$/i.test(trimmed);
 
     if (isTimeQuery || isDateQuery) {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
       const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
       const dayStr = now.toLocaleDateString('en-US', { weekday: 'long' });
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local Time';
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+      const isoDateStr = new Intl.DateTimeFormat('en-CA').format(now);
 
       return {
         message: `🕒 **Real-Time Clock & Date**:\n\n` +
           `- **Current Time**: **${timeStr}** (${tz})\n` +
           `- **Today's Date**: **${dateStr}**\n` +
           `- **Day of the Week**: **${dayStr}**\n\n` +
-          `*I am fully aware of real-time clock and calendar dates for tracking all your job application deadlines, submissions, and interviews.*`,
-        data: null
+          `*Real-time active clock synchronized for accurate job application tracking, deadlines, and relative dates.*`,
+        data: null,
+        cardType: 'time_date',
+        cardData: {
+          time: timeStr,
+          date: dateStr,
+          day: dayStr,
+          timeZone: tz,
+          isoDate: isoDateStr,
+          timestamp: now.toISOString()
+        }
       };
     }
 
@@ -1124,7 +1163,127 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       }
     }
 
-    // 7. Check for Database Application Statistics & Counts
+    // 7a. Check for Applications Applied Today -> Card Format
+    const isTodayCountQuery = /\b(?:(?:how\s+many|show|list|count|what)\s+(?:applications?|jobs?|applied)?.*?\btoday\b|\b(?:applied|applications?|jobs?)\s+(?:for\s+|in\s+)?today\b|\btoday(?:'s)?\s+(?:applications?|jobs?|applied)\b)\b/i.test(lower) ||
+      /^(?:applied\s+today|today\s+applied|today\s+count|jobs\s+today|applications\s+today)\??$/i.test(trimmed);
+
+    if (isTodayCountQuery) {
+      const now = new Date();
+      const localTodayStr = new Intl.DateTimeFormat('en-CA').format(now);
+      const utcTodayStr = now.toISOString().split('T')[0];
+      const todayFormatted = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+      const todayApps = (allApplications || []).filter(a => {
+        const d = a.appliedDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
+        return d === localTodayStr || d === utcTodayStr;
+      });
+
+      const count = todayApps.length;
+      const countMsg = count === 0
+        ? `You have **not applied to any jobs today** (${todayFormatted}).`
+        : `You applied to **${count} job${count === 1 ? '' : 's'} today** (${todayFormatted}).`;
+
+      return {
+        message: countMsg,
+        data: null,
+        cardType: 'today_count',
+        cardData: {
+          count: count,
+          date: todayFormatted,
+          isoDate: localTodayStr,
+          applications: todayApps.map(a => ({
+            id: a.id,
+            companyName: a.companyName || 'Unknown Company',
+            roleTitle: a.roleTitle || 'Job Title',
+            status: a.status || 'Applied',
+            salary: a.salary || null,
+            workMode: a.workMode || null,
+            location: a.location || null,
+            appliedTime: a.appliedTime || (a.createdAt ? new Date(a.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : null)
+          }))
+        }
+      };
+    }
+
+    // 7b. Check for Applications Graph & Weekly / Monthly Velocity -> Graph Card
+    const isGraphWord = /\b(?:graph|chart|velocity|visualiz(?:e|ation)|trend|curve)\b/i.test(lower);
+    const isWeekWord = /\b(?:(?:last|past)\s+(?:week|7\s*days)|7\s*days|this\s+week)\b/i.test(lower);
+    const isMonthWord = /\b(?:(?:last|past)\s+(?:month|30\s*days)|30\s*days|this\s+month)\b/i.test(lower);
+    const isAppQuery = /\b(?:how\s+many|applications?|jobs?|applied|show|list|count|tell\s+me)\b/i.test(lower);
+    const isGraphQuery = isGraphWord ||
+      ((isWeekWord || isMonthWord) && isAppQuery) ||
+      /^(?:applications?\s+(?:last\s+week|last\s+month)|jobs?\s+(?:last\s+week|last\s+month))\??$/i.test(trimmed);
+
+    if (isGraphQuery) {
+      const isMonth = isMonthWord;
+      const range = isMonth ? 30 : 7;
+      const rangeLabel = isMonth ? 'Last 30 Days (Month)' : 'Last 7 Days (Week)';
+
+      return {
+        message: `Here is your **Applications Velocity Graph** for **${rangeLabel}**:`,
+        data: null,
+        cardType: 'graph',
+        cardData: {
+          range: range,
+          rangeLabel: rangeLabel,
+          allApplications: allApplications || []
+        }
+      };
+    }
+
+    // 7c. Check for Database Search (/search or natural search in applications)
+    const isSearchExplicit = /^\/(?:search|find)\b/i.test(trimmed);
+    const isSearchNatural = /\b(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\b/i.test(lower);
+    if (isSearchExplicit || isSearchNatural) {
+      const searchArg = trimmed.replace(/^\/(?:search|find)\s*/i, '')
+        .replace(/^(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\s*(?:for|about|with)?\s*/i, '')
+        .trim();
+
+      const qLower = searchArg.toLowerCase();
+      const qTerms = qLower.split(/\s+/).filter(Boolean);
+
+      const allApps = allApplications || [];
+      const matched = !searchArg ? [...allApps] : allApps.filter(app => {
+        const co = (app.companyName || '').toLowerCase();
+        const role = (app.roleTitle || '').toLowerCase();
+        const status = (app.status || '').toLowerCase();
+        const loc = (app.location || '').toLowerCase();
+        const mode = (app.workMode || '').toLowerCase();
+        const sal = (app.salary || '').toLowerCase();
+        const date = (app.appliedDate || '').toLowerCase();
+        const skills = Array.isArray(app.skills) ? app.skills.map(s => String(s).toLowerCase()).join(' ') : '';
+        const source = (app.source || '').toLowerCase();
+        const notes = (app.notes || app.description || '').toLowerCase();
+        const full = `${co} ${role} ${status} ${loc} ${mode} ${sal} ${date} ${skills} ${source} ${notes}`;
+        return qTerms.every(t => full.includes(t));
+      });
+
+      const statusCounts = { applied: 0, interviewing: 0, offer: 0, rejected: 0, bookmarked: 0 };
+      matched.forEach(a => {
+        const s = (a.status || 'applied').toLowerCase();
+        if (s.includes('interview')) statusCounts.interviewing++;
+        else if (s.includes('offer')) statusCounts.offer++;
+        else if (s.includes('reject')) statusCounts.rejected++;
+        else if (s.includes('bookmark')) statusCounts.bookmarked++;
+        else statusCounts.applied++;
+      });
+
+      return {
+        message: searchArg
+          ? `Found **${matched.length}** application${matched.length === 1 ? '' : 's'} matching **"${searchArg}"** in your database:`
+          : `Showing all **${allApps.length}** applications in your database:`,
+        data: null,
+        cardType: 'search_results',
+        cardData: {
+          query: searchArg,
+          results: matched,
+          totalCount: allApps.length,
+          statusCounts
+        }
+      };
+    }
+
+    // 7d. Check for Database Application Statistics & Counts
     const isStatsQuery = /\b(how\s+many\s+(?:jobs|applications)|application\s+stats|stats|summary\s+of\s+(?:my\s+)?applications|overview\s+of\s+(?:my\s+)?applications|how\s+is\s+my\s+job\s+search\s+going)\b/i.test(lower) || lower === '/stats';
     if (isStatsQuery) {
       if (!allApplications || allApplications.length === 0) {

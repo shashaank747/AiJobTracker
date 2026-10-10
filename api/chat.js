@@ -236,8 +236,15 @@ Respond with a JSON object with:
 {
   "message": "Your rich, formatted markdown response to the user",
   "data": { ... } or null,
-  "profileUpdate": { ... } or null
+  "profileUpdate": { ... } or null,
+  "cardType": "time_date" | "today_count" | "graph" | "search_results" | null,
+  "cardData": { ... } or null
 }
+Special Card rules:
+- If asked for time or date: set "cardType": "time_date", "cardData": { "time": "${fullTimeStr}", "date": "${fullDateStr}", "day": "${dayOfWeek}", "timeZone": "${effectiveTimeZone}", "isoDate": "${today}" }
+- If asked how many applications applied today: set "cardType": "today_count", "cardData": { "count": <number applied today>, "date": "${fullDateStr}", "isoDate": "${today}" }
+- If asked how many applied last week/month or for a graph/chart: set "cardType": "graph", "cardData": { "range": 7 or 30 }
+- If asked to search applications or query /search: set "cardType": "search_results", "cardData": { "query": "<search keyword>", "results": <matching applications from database>, "totalCount": <total applications count> }
 Ensure output is valid JSON.`;
 
     // --- TRY OPENAI IF KEY PROVIDED ---
@@ -272,6 +279,8 @@ Ensure output is valid JSON.`;
               message: parsed.message || 'Done',
               data: parsed.data || null,
               profileUpdate: parsed.profileUpdate || null,
+              cardType: parsed.cardType || null,
+              cardData: parsed.cardData || null,
               provider: 'openai'
             });
           }
@@ -402,6 +411,8 @@ Ensure output is valid JSON.`;
       message: parsed.message || candidateText,
       data: parsed.data || null,
       profileUpdate: parsed.profileUpdate || null,
+      cardType: parsed.cardType || null,
+      cardData: parsed.cardData || null,
       provider: 'gemini'
     });
   } catch (err) {

@@ -27,6 +27,13 @@ const SLASH_COMMANDS = [
     action: 'compare'
   },
   {
+    cmd: '/search',
+    label: 'Search Stored Applications',
+    desc: 'Search all stored applications in your database by company, role, skill, status, location, or salary',
+    icon: '🔍',
+    action: 'search'
+  },
+  {
     cmd: '/interview',
     label: 'Status: Interviewing',
     desc: 'Mark job as Interviewing and ask Zuno for targeted interview questions',
@@ -151,6 +158,8 @@ class JobTrackerApp {
     this.cloudStatusBadge = document.getElementById('cloudStatusBadge');
     this.cloudStatusDot = this.cloudStatusBadge.querySelector('.status-dot');
     this.cloudStatusText = document.getElementById('cloudStatusText');
+    this.sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    this.btnCloseSidebarMobile = document.getElementById('btnCloseSidebarMobile');
 
     // Sidebar Activity Dashboard
     this.sidebarDashboardWidget = document.getElementById('sidebarDashboardWidget');
@@ -569,6 +578,12 @@ class JobTrackerApp {
     if (this.brandIconCollapse) {
       this.brandIconCollapse.addEventListener('click', () => this.closeSidebar());
     }
+    if (this.btnCloseSidebarMobile) {
+      this.btnCloseSidebarMobile.addEventListener('click', () => this.closeSidebar());
+    }
+    if (this.sidebarBackdrop) {
+      this.sidebarBackdrop.addEventListener('click', () => this.closeSidebar());
+    }
 
     // Dashboard Analytics Banner Events
     if (this.sidebarDateFilter) {
@@ -769,6 +784,10 @@ class JobTrackerApp {
         } else if (action === 'compare') {
           this.handleCompareCommand('/compare');
           return;
+        } else if (action === 'search') {
+          this.chatInput.value = '/search ';
+          this.chatInput.focus();
+          return;
         } else if (action === 'link') {
           this.chatInput.value = 'Application URL: ';
         } else if (action === 'salary') {
@@ -905,6 +924,9 @@ class JobTrackerApp {
       if (this.navTabProfile) this.navTabProfile.classList.remove('active');
       this.updateSidebarDashboard();
       this.renderApplicationsGrid();
+    }
+    if (window.innerWidth <= 768) {
+      this.closeSidebar();
     }
   }
 
@@ -1341,8 +1363,9 @@ class JobTrackerApp {
         if (msg.role === 'user') {
           this.appendUserMessage(msg.text, false, msg.timestamp);
         } else {
-          const cardData = msg.data ? { ...msg.data, isStored: true } : { ...app, isStored: true };
-          this.appendAssistantMessage(msg.text, cardData, false, msg.timestamp);
+          const cardData = msg.data ? { ...msg.data, isStored: true } : (msg.cardType ? null : { ...app, isStored: true });
+          const specialCard = msg.cardType ? { type: msg.cardType, data: msg.cardData } : null;
+          this.appendAssistantMessage(msg.text, cardData, false, msg.timestamp, specialCard);
         }
       }
     } else {
@@ -1475,6 +1498,9 @@ class JobTrackerApp {
       await this.handleStoreCommand();
     } else if (selected.action === 'compare') {
       await this.handleCompareCommand('/compare');
+    } else if (selected.action === 'search') {
+      this.chatInput.value = '/search ';
+      this.chatInput.focus();
     } else if (selected.action === 'clear') {
       this.clearCurrentChat();
     } else if (selected.action === 'interview') {
@@ -1501,6 +1527,7 @@ class JobTrackerApp {
       `• **/new** — Start a fresh new chat session & clear active drafted job\n` +
       `• **/store** — Save the current drafted application to your Supabase Cloud database & Tracker\n` +
       `• **/compare [company]** — Compare your About Me profile (skills, projects, marks, certs) against company requirements\n` +
+      `• **/search [query]** — Search across all applications stored in your database (e.g. \`/search Google\` or \`/search React\`)\n` +
       `• **/interview** — Set status to **Interviewing** and get tailored interview prep checklists\n` +
       `• **/offer** — Set status to **Offer** and receive offer negotiation guidance\n` +
       `• **/rejected** — Set status to **Rejected** and update application records\n` +
@@ -1664,6 +1691,102 @@ class JobTrackerApp {
     }
   }
 
+  async handleSearchCommand(rawText = '/search') {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+    this.chatInput.style.overflowY = 'hidden';
+    this.welcomeHero.style.display = 'none';
+
+    // Extract query argument, e.g. "/search Google", "/search React", or "/search"
+    const query = (rawText || '').replace(/^\/(?:search|find)\s*/i, '').trim();
+
+    this.appendUserMessage(rawText || '/search');
+    this.scrollToBottom();
+
+    const allApps = this.applications || [];
+
+    if (allApps.length === 0) {
+      const emptyVaultMsg = `🔍 **Applications Database is Empty**\n\n` +
+        `You don't have any job applications stored in your database yet!\n\n` +
+        `• Paste a **Job Description (JD)** in the chat box to draft your first application.\n` +
+        `• Type **/store** to permanently save it to your Supabase Cloud vault.`;
+      this.appendAssistantMessage(emptyVaultMsg, null);
+      this.scrollToBottom();
+      return;
+    }
+
+    let matchedApps = [];
+    if (!query) {
+      // If user typed just "/search" without keywords, return all stored applications
+      matchedApps = [...allApps];
+    } else {
+      const qLower = query.toLowerCase();
+      const qTerms = qLower.split(/\s+/).filter(Boolean);
+
+      matchedApps = allApps.filter(app => {
+        const co = (app.companyName || '').toLowerCase();
+        const role = (app.roleTitle || '').toLowerCase();
+        const status = (app.status || '').toLowerCase();
+        const loc = (app.location || '').toLowerCase();
+        const mode = (app.workMode || '').toLowerCase();
+        const sal = (app.salary || '').toLowerCase();
+        const date = (app.appliedDate || '').toLowerCase();
+        const time = (app.appliedTime || '').toLowerCase();
+        const source = (app.source || '').toLowerCase();
+        const notes = (app.notes || app.description || '').toLowerCase();
+        const skills = Array.isArray(app.skills) ? app.skills.map(s => String(s).toLowerCase()).join(' ') : '';
+        const fullSearchable = `${co} ${role} ${status} ${loc} ${mode} ${sal} ${date} ${time} ${skills} ${source} ${notes}`;
+
+        return qTerms.every(term => fullSearchable.includes(term));
+      });
+    }
+
+    // Sort: most recent appliedDate first
+    matchedApps.sort((a, b) => {
+      const dateA = a.appliedDate || a.createdAt || '';
+      const dateB = b.appliedDate || b.createdAt || '';
+      return dateB.localeCompare(dateA);
+    });
+
+    // Compute status breakdown
+    const statusCounts = { applied: 0, interviewing: 0, offer: 0, rejected: 0, bookmarked: 0 };
+    matchedApps.forEach(a => {
+      const s = (a.status || 'applied').toLowerCase();
+      if (s.includes('interview')) statusCounts.interviewing++;
+      else if (s.includes('offer')) statusCounts.offer++;
+      else if (s.includes('reject')) statusCounts.rejected++;
+      else if (s.includes('bookmark')) statusCounts.bookmarked++;
+      else statusCounts.applied++;
+    });
+
+    let assistantMsgText = '';
+    if (!query) {
+      assistantMsgText = `🔍 **Application Database Vault**\n\n` +
+        `Displaying all **${matchedApps.length}** application${matchedApps.length === 1 ? '' : 's'} stored in your database.\n` +
+        `*Tip: Type \`/search <keyword>\` (e.g. \`/search Google\`, \`/search React\`, or \`/search Interviewing\`) to filter.*`;
+    } else if (matchedApps.length === 0) {
+      assistantMsgText = `🔍 **Search Results for "${query}"**\n\n` +
+        `No applications found matching **"${query}"** in your database of ${allApps.length} saved application${allApps.length === 1 ? '' : 's'}.\n` +
+        `Try searching with another company name, job title, technology, or status!`;
+    } else {
+      assistantMsgText = `🔍 **Search Results for "${query}"**\n\n` +
+        `Found **${matchedApps.length}** matching application${matchedApps.length === 1 ? '' : 's'} in your database (${allApps.length} total saved).`;
+    }
+
+    const specialCardData = {
+      query: query || '',
+      results: matchedApps,
+      totalCount: allApps.length,
+      statusCounts
+    };
+
+    this.appendAssistantMessage(assistantMsgText, null, true, null, {
+      type: 'search_results',
+      data: specialCardData
+    });
+    this.scrollToBottom();
+  }
+
   clearCurrentChat() {
     this.chatMessages = [];
     if (this.activeApplication) {
@@ -1756,6 +1879,12 @@ class JobTrackerApp {
     // Slash command to compare candidate profile vs company requirements
     if (lower === '/compare' || lower.startsWith('/compare ') || lower === '/cmp' || lower.startsWith('/cmp ')) {
       await this.handleCompareCommand(text);
+      return;
+    }
+
+    // Slash command to search all stored applications in database
+    if (lower === '/search' || lower.startsWith('/search ') || lower === '/find' || lower.startsWith('/find ')) {
+      await this.handleSearchCommand(text);
       return;
     }
 
@@ -1882,12 +2011,14 @@ class JobTrackerApp {
 
         this.scrollToBottom();
       } else {
-        // Pure conversational message (e.g., greeting, help, inquiry) - DO NOT create a dummy card!
+        // Pure conversational message (e.g., greeting, help, inquiry) or Special Card Widget (time_date, today_count, graph)
         const assistantTimestamp = new Date().toISOString();
         const assistantMsg = {
           role: 'assistant',
           text: result.message,
           data: null,
+          cardType: result.cardType || null,
+          cardData: result.cardData || null,
           timestamp: assistantTimestamp
         };
 
@@ -1899,8 +2030,9 @@ class JobTrackerApp {
           await SupabaseService.saveApplication(this.activeApplication);
         }
 
-        // Render assistant bubble without an extraction card
-        this.appendAssistantMessage(result.message, null, true, assistantTimestamp);
+        const specialCard = result.cardType ? { type: result.cardType, data: result.cardData } : null;
+        // Render assistant bubble with optional special widget card
+        this.appendAssistantMessage(result.message, null, true, assistantTimestamp, specialCard);
         this.scrollToBottom();
       }
 
@@ -1995,7 +2127,7 @@ class JobTrackerApp {
     return html;
   }
 
-  appendAssistantMessage(text, jobData, animate = true, timestamp = null) {
+  appendAssistantMessage(text, jobData, animate = true, timestamp = null, specialCard = null) {
     const timeVal = timestamp || new Date().toISOString();
     const timeDisplay = this.formatMessageTime(timeVal);
     const msgDiv = document.createElement('div');
@@ -2004,6 +2136,16 @@ class JobTrackerApp {
     let cardHtml = '';
     if (jobData) {
       cardHtml = this.createExtractionCardHtml(jobData);
+    } else if (specialCard) {
+      if (specialCard.type === 'time_date') {
+        cardHtml = this.createTimeDateCardHtml(specialCard.data);
+      } else if (specialCard.type === 'today_count') {
+        cardHtml = this.createTodayCountCardHtml(specialCard.data);
+      } else if (specialCard.type === 'graph') {
+        cardHtml = this.createGraphCardHtml(specialCard.data);
+      } else if (specialCard.type === 'search_results') {
+        cardHtml = this.createSearchResultsCardHtml(specialCard.data);
+      }
     }
 
     const formattedText = this.renderMarkdown(text);
@@ -2022,6 +2164,749 @@ class JobTrackerApp {
     // Bind events inside the card
     if (jobData) {
       this.bindCardEvents(msgDiv, jobData);
+    }
+    if (specialCard) {
+      this.bindWidgetCardEvents(msgDiv, specialCard);
+    }
+  }
+
+  createTimeDateCardHtml(cardData) {
+    const time = cardData?.time || this.formatTimeOnly(new Date());
+    const date = cardData?.date || new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const day = cardData?.day || new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const tz = cardData?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+    const isoDate = cardData?.isoDate || new Date().toISOString().split('T')[0];
+
+    return `
+      <div class="zuno-widget-card zuno-time-card">
+        <div class="widget-card-header">
+          <div class="widget-header-title">
+            <div class="widget-icon widget-icon-time">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h4 class="widget-title">Live Clock & Date</h4>
+              <span class="widget-subtitle">Real-Time System Synchronization</span>
+            </div>
+          </div>
+          <span class="widget-badge widget-badge-live">
+            <span class="live-dot-pulse"></span>
+            LIVE
+          </span>
+        </div>
+
+        <div class="time-card-body">
+          <div class="time-main-display">
+            <span class="time-big-digit" data-live-time>${this.escapeHtml(time)}</span>
+            <span class="time-tz-badge">${this.escapeHtml(tz)}</span>
+          </div>
+
+          <div class="date-main-row">
+            <div class="date-chip-item">
+              <span class="date-chip-label">Day of Week</span>
+              <span class="date-chip-val">${this.escapeHtml(day)}</span>
+            </div>
+            <div class="date-chip-item">
+              <span class="date-chip-label">Full Date</span>
+              <span class="date-chip-val">${this.escapeHtml(date)}</span>
+            </div>
+            <div class="date-chip-item">
+              <span class="date-chip-label">ISO Format</span>
+              <span class="date-chip-val font-mono">${this.escapeHtml(isoDate)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="widget-card-footer">
+          <span class="widget-footer-note">⚡ Real-time clock synchronized for tracking application submissions, deadlines, and follow-ups.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  createTodayCountCardHtml(cardData) {
+    const count = typeof cardData?.count === 'number' ? cardData.count : 0;
+    const dateStr = cardData?.date || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const apps = Array.isArray(cardData?.applications) ? cardData.applications : [];
+
+    let appsHtml = '';
+    if (apps.length > 0) {
+      appsHtml = apps.map((app) => {
+        const initial = (app.companyName || 'C').charAt(0).toUpperCase();
+        const statusClass = `status-${(app.status || 'applied').toLowerCase()}`;
+        return `
+          <div class="today-app-item">
+            <div class="today-app-initial">${initial}</div>
+            <div class="today-app-info">
+              <div class="today-app-title">${this.escapeHtml(app.roleTitle || 'Job Title')}</div>
+              <div class="today-app-company">${this.escapeHtml(app.companyName || 'Company')}</div>
+            </div>
+            <div class="today-app-meta">
+              ${app.appliedTime ? `<span class="today-app-time">🕒 ${this.escapeHtml(app.appliedTime)}</span>` : ''}
+              <span class="status-pill ${statusClass}">${this.escapeHtml(app.status || 'Applied')}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    return `
+      <div class="zuno-widget-card zuno-today-count-card">
+        <div class="widget-card-header">
+          <div class="widget-header-title">
+            <div class="widget-icon widget-icon-today">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+            </div>
+            <div>
+              <h4 class="widget-title">Applications Applied Today</h4>
+              <span class="widget-subtitle">${this.escapeHtml(dateStr)}</span>
+            </div>
+          </div>
+          <span class="widget-badge ${count > 0 ? 'badge-success' : 'badge-neutral'}">
+            ${count > 0 ? '🎯 Active Submissions' : '☕ Standing By'}
+          </span>
+        </div>
+
+        <div class="today-count-body">
+          <div class="today-count-stat-box">
+            <div class="today-big-number ${count > 0 ? 'highlight-positive' : ''}">${count}</div>
+            <div class="today-number-label">
+              <strong>${count === 1 ? 'Application' : 'Applications'}</strong> Applied Today
+            </div>
+          </div>
+
+          ${count > 0 ? `
+            <div class="today-apps-list">
+              <div class="today-list-title">Submissions from Today (${count}):</div>
+              ${appsHtml}
+            </div>
+          ` : `
+            <div class="today-empty-state">
+              <div class="today-empty-icon">📝</div>
+              <p class="today-empty-title">No applications submitted today yet.</p>
+              <p class="today-empty-sub">Paste any Job Description (JD) here to extract and track your first job today!</p>
+            </div>
+          `}
+        </div>
+
+        <div class="widget-card-footer">
+          <button class="btn btn-secondary btn-sm btn-widget-dash" title="Open Applications Dashboard">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span>Open Dashboard</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  createGraphCardHtml(cardData) {
+    const initialRange = cardData?.range || 7;
+    const apps = cardData?.allApplications || this.applications || [];
+    const content = this.buildGraphCardContent(initialRange, apps);
+
+    return `
+      <div class="zuno-widget-card zuno-graph-card" data-card-range="${initialRange}">
+        <div class="widget-card-header">
+          <div class="widget-header-title">
+            <div class="widget-icon widget-icon-graph">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h4 class="widget-title">Applications Velocity Graph</h4>
+              <span class="widget-subtitle graph-subtitle-text">${this.escapeHtml(content.rangeLabel)}</span>
+            </div>
+          </div>
+          <div class="graph-card-range-pills">
+            <button type="button" class="graph-pill-btn ${initialRange === 7 ? 'active' : ''}" data-range="7">Last 7 Days (Week)</button>
+            <button type="button" class="graph-pill-btn ${initialRange === 30 ? 'active' : ''}" data-range="30">Last 30 Days (Month)</button>
+            <button type="button" class="graph-pill-btn ${initialRange === 'all' ? 'active' : ''}" data-range="all">All Time</button>
+          </div>
+        </div>
+
+        <div class="graph-card-inner-content">
+          ${content.bodyHtml}
+        </div>
+
+        <div class="widget-card-footer">
+          <button class="btn btn-secondary btn-sm btn-widget-dash" title="Open Applications Dashboard">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span>View Full Dashboard</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  createSearchResultsCardHtml(cardData) {
+    const query = cardData?.query || '';
+    const results = Array.isArray(cardData?.results) ? cardData.results : [];
+    const totalCount = cardData?.totalCount || 0;
+    const statusCounts = cardData?.statusCounts || { applied: 0, interviewing: 0, offer: 0, rejected: 0, bookmarked: 0 };
+
+    let resultsListHtml = '';
+    if (results.length > 0) {
+      resultsListHtml = results.map(app => {
+        const coName = app.companyName || 'Unknown Company';
+        const role = app.roleTitle || 'Job Title';
+        const initial = coName.charAt(0).toUpperCase();
+        const status = app.status || 'Applied';
+        const statusClass = `status-${status.toLowerCase()}`;
+
+        let skillsHtml = '';
+        if (Array.isArray(app.skills) && app.skills.length > 0) {
+          const shownSkills = app.skills.slice(0, 4);
+          skillsHtml = `
+            <div class="search-item-skills">
+              ${shownSkills.map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
+              ${app.skills.length > 4 ? `<span class="skill-tag">+${app.skills.length - 4}</span>` : ''}
+            </div>
+          `;
+        }
+
+        const dateStr = app.appliedDate ? `📅 ${app.appliedDate}` : '';
+        const salaryStr = app.salary ? `💵 ${app.salary}` : '';
+        const modeStr = app.workMode ? `📍 ${app.workMode}` : '';
+        const locStr = app.location ? `${app.location}` : '';
+
+        return `
+          <div class="search-result-item" data-job-id="${this.escapeHtml(app.id)}">
+            <div class="search-item-top">
+              <div class="search-item-brand">
+                <div class="search-item-avatar">${initial}</div>
+                <div class="search-item-title-group">
+                  <span class="search-item-role" title="${this.escapeHtml(role)}">${this.escapeHtml(role)}</span>
+                  <span class="search-item-company" title="${this.escapeHtml(coName)}">${this.escapeHtml(coName)}</span>
+                </div>
+              </div>
+              <span class="status-pill ${statusClass}">${this.escapeHtml(status)}</span>
+            </div>
+
+            <div class="search-item-meta-chips">
+              ${dateStr ? `<span class="meta-chip chip-date">${this.escapeHtml(dateStr)}</span>` : ''}
+              ${salaryStr ? `<span class="meta-chip chip-salary">${this.escapeHtml(salaryStr)}</span>` : ''}
+              ${modeStr ? `<span class="meta-chip chip-mode">${this.escapeHtml(modeStr)}</span>` : ''}
+              ${locStr ? `<span class="meta-chip chip-loc">${this.escapeHtml(locStr)}</span>` : ''}
+            </div>
+
+            ${skillsHtml}
+
+            <div class="search-item-actions">
+              <button type="button" class="btn btn-secondary btn-sm btn-search-view-job" data-job-id="${this.escapeHtml(app.id)}" title="View and manage in tracker">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                <span>View in Dashboard</span>
+              </button>
+              ${app.applicationUrl ? `
+                <a href="${this.escapeHtml(app.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button link-button-sm">
+                  <span>🔗 Apply URL</span>
+                </a>
+              ` : ''}
+              ${app.sourceUrl && app.sourceUrl !== app.applicationUrl ? `
+                <a href="${this.escapeHtml(app.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button link-button-sm">
+                  <span>🌐 Source</span>
+                </a>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      resultsListHtml = `
+        <div class="search-empty-box">
+          <div class="search-empty-icon">🔍</div>
+          <div class="search-empty-title">No applications matching "${this.escapeHtml(query)}"</div>
+          <div class="search-empty-sub">We checked your database of ${totalCount} saved applications. Try another keyword or explore by status:</div>
+          <div class="search-quick-suggestions">
+            <button type="button" class="suggestion-pill" data-query="Applied">Status: Applied</button>
+            <button type="button" class="suggestion-pill" data-query="Interviewing">Status: Interviewing</button>
+            <button type="button" class="suggestion-pill" data-query="Remote">Remote</button>
+            <button type="button" class="suggestion-pill" data-query="Engineer">Engineer</button>
+          </div>
+        </div>
+      `;
+    }
+
+    const titleText = query ? `Search: "${this.escapeHtml(query)}"` : 'Database Applications Vault';
+    const subtitleText = query
+      ? `${results.length} of ${totalCount} applications match your search`
+      : `All ${totalCount} persistent applications stored in database`;
+
+    return `
+      <div class="zuno-widget-card zuno-search-card">
+        <div class="widget-card-header">
+          <div class="widget-header-title">
+            <div class="widget-icon widget-icon-search">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <div>
+              <h4 class="widget-title">${titleText}</h4>
+              <span class="widget-subtitle">${subtitleText}</span>
+            </div>
+          </div>
+          <span class="widget-badge ${results.length > 0 ? 'badge-success' : 'badge-neutral'}">
+            ${results.length} ${results.length === 1 ? 'Match' : 'Matches'}
+          </span>
+        </div>
+
+        <div class="search-card-body">
+          ${results.length > 0 ? `
+            <div class="search-summary-pills">
+              <span class="search-summary-pill">Total: <strong>${results.length}</strong></span>
+              ${statusCounts.applied > 0 ? `<span class="search-summary-pill">Applied: <strong>${statusCounts.applied}</strong></span>` : ''}
+              ${statusCounts.interviewing > 0 ? `<span class="search-summary-pill" style="color: #fbbf24;">Interviewing: <strong>${statusCounts.interviewing}</strong></span>` : ''}
+              ${statusCounts.offer > 0 ? `<span class="search-summary-pill" style="color: #34d399;">Offers: <strong>${statusCounts.offer}</strong></span>` : ''}
+              ${statusCounts.rejected > 0 ? `<span class="search-summary-pill" style="color: #fb7185;">Rejected: <strong>${statusCounts.rejected}</strong></span>` : ''}
+            </div>
+          ` : ''}
+
+          <div class="search-results-list">
+            ${resultsListHtml}
+          </div>
+        </div>
+
+        <div class="widget-card-footer">
+          <button type="button" class="btn btn-secondary btn-sm btn-filter-dashboard-query" data-query="${this.escapeHtml(query)}" title="Open in Applications Dashboard">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span>Open in Tracker Dashboard</span>
+          </button>
+          <span class="widget-footer-note">⚡ Type <code>/search &lt;query&gt;</code> anytime to query your database.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  buildGraphCardContent(range, appsList = null) {
+    const apps = appsList || this.applications || [];
+    const dateAppsMap = {};
+    for (const a of apps) {
+      const dateKey = a.appliedDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
+      if (dateKey) {
+        if (!dateAppsMap[dateKey]) dateAppsMap[dateKey] = [];
+        dateAppsMap[dateKey].push(a);
+      }
+    }
+
+    const daysData = [];
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    let rangeLabel = 'Last 7 Days (Week)';
+    if (range === 'all') {
+      rangeLabel = 'All-Time Application Timeline';
+      const recordedDates = Object.keys(dateAppsMap).sort();
+      let startDate = null;
+      const endDate = new Date(now);
+
+      if (recordedDates.length > 0) {
+        const parts = recordedDates[0].split('-');
+        if (parts.length === 3) {
+          startDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        } else {
+          startDate = new Date(now);
+          startDate.setDate(startDate.getDate() - 13);
+        }
+      } else {
+        startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 6);
+      }
+
+      const dayDiff = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24));
+      if (dayDiff > 60) {
+        startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - 60);
+      }
+
+      const cur = new Date(startDate);
+      while (cur <= endDate) {
+        const dStr = cur.toISOString().split('T')[0];
+        const dayApps = dateAppsMap[dStr] || [];
+        daysData.push({
+          dateStr: dStr,
+          label: cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          count: dayApps.length,
+          apps: dayApps
+        });
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else {
+      const numDays = parseInt(range, 10) || 7;
+      rangeLabel = numDays === 30 ? 'Last 30 Days (Month)' : (numDays === 7 ? 'Last 7 Days (Week)' : `Last ${numDays} Days`);
+      for (let i = numDays - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().split('T')[0];
+        const dayApps = dateAppsMap[dStr] || [];
+        daysData.push({
+          dateStr: dStr,
+          label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          count: dayApps.length,
+          apps: dayApps
+        });
+      }
+    }
+
+    let peakCount = 0;
+    let peakDateLabel = '-';
+    let totalInRange = 0;
+
+    daysData.forEach(d => {
+      totalInRange += d.count;
+      if (d.count > peakCount) {
+        peakCount = d.count;
+        peakDateLabel = d.label;
+      }
+    });
+
+    const avgDaily = (totalInRange / (daysData.length || 1)).toFixed(1);
+    const mostActiveDay = peakCount > 0 ? `${peakDateLabel} (${peakCount} apps)` : 'None yet';
+
+    // SVG parameters
+    const svgW = 700;
+    const svgH = 190;
+    const padL = 38;
+    const padR = 24;
+    const padT = 20;
+    const padB = 35;
+    const chartW = svgW - padL - padR;
+    const chartH = svgH - padT - padB;
+    const maxVal = Math.max(3, peakCount);
+
+    // Y-Axis Gridlines
+    const ySteps = 3;
+    let gridHtml = '';
+    for (let s = 0; s <= ySteps; s++) {
+      const val = Math.round((maxVal / ySteps) * s);
+      const yPos = padT + chartH - (val / maxVal) * chartH;
+      gridHtml += `
+        <line x1="${padL}" y1="${yPos.toFixed(1)}" x2="${(padL + chartW).toFixed(1)}" y2="${yPos.toFixed(1)}" class="graph-gridline" />
+        <text x="${(padL - 8).toFixed(1)}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" class="graph-axis-text">${val}</text>
+      `;
+    }
+
+    // Points Coordinates
+    const N = daysData.length;
+    const points = daysData.map((d, i) => {
+      const x = N === 1 ? padL + chartW / 2 : padL + (i / (N - 1)) * chartW;
+      const y = padT + chartH - (d.count / maxVal) * chartH;
+      return { x, y, ...d };
+    });
+
+    // Spline curve
+    let curvePath = '';
+    if (points.length === 1) {
+      curvePath = `M ${points[0].x} ${points[0].y}`;
+    } else {
+      curvePath = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i === 0 ? 0 : i - 1];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[i + 2] || p2;
+
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+        curvePath += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+      }
+    }
+
+    const bottomY = padT + chartH;
+    const areaPath = `${curvePath} L ${points[points.length - 1].x.toFixed(1)} ${bottomY} L ${points[0].x.toFixed(1)} ${bottomY} Z`;
+
+    // X-Axis labels
+    const stepInterval = N > 20 ? 4 : (N > 10 ? 2 : 1);
+    let xLabelsHtml = '';
+    points.forEach((p, i) => {
+      if (i % stepInterval === 0 || i === N - 1) {
+        xLabelsHtml += `
+          <text x="${p.x.toFixed(1)}" y="${bottomY + 18}" text-anchor="middle" class="graph-axis-text">
+            ${p.label}
+          </text>
+        `;
+      }
+    });
+
+    // Dots and hit rectangles
+    const colWidth = N > 1 ? chartW / (N - 1) : chartW;
+    let interactiveHtml = '';
+    points.forEach((p, i) => {
+      const colX = Math.max(0, p.x - colWidth / 2);
+      const isToday = p.dateStr === todayStr;
+      const dotR = p.count > 0 ? (isToday ? 6 : 4.5) : 3;
+      const dotFill = p.count > 0 ? '#38bdf8' : 'rgba(255,255,255,0.2)';
+      const dotStroke = p.count > 0 ? '#ffffff' : 'rgba(255,255,255,0.4)';
+
+      interactiveHtml += `
+        <rect class="graph-col-rect" x="${colX.toFixed(1)}" y="${padT}" width="${colWidth.toFixed(1)}" height="${(chartH + 16).toFixed(1)}" data-idx="${i}" />
+        <circle class="graph-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dotR}" fill="${dotFill}" stroke="${dotStroke}" stroke-width="${p.count > 0 ? 2 : 1}" data-idx="${i}" />
+      `;
+    });
+
+    const gradId = `graphArea_${Math.random().toString(36).substr(2, 6)}`;
+    const lineGradId = `graphLine_${Math.random().toString(36).substr(2, 6)}`;
+
+    const svgInnerHtml = `
+      <defs>
+        <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.32" />
+          <stop offset="60%" stop-color="#6366f1" stop-opacity="0.08" />
+          <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0" />
+        </linearGradient>
+        <linearGradient id="${lineGradId}" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#38bdf8" />
+          <stop offset="50%" stop-color="#818cf8" />
+          <stop offset="100%" stop-color="#c084fc" />
+        </linearGradient>
+      </defs>
+      ${gridHtml}
+      <path d="${areaPath}" fill="url(#${gradId})" />
+      <path d="${curvePath}" fill="none" stroke="url(#${lineGradId})" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+      ${xLabelsHtml}
+      ${interactiveHtml}
+    `;
+
+    // Filter applications in this range for display
+    const appsInRange = [];
+    daysData.forEach(d => {
+      d.apps.forEach(a => appsInRange.push(a));
+    });
+    appsInRange.reverse(); // newest first
+
+    let appsListHtml = '';
+    if (appsInRange.length > 0) {
+      const shownApps = appsInRange.slice(0, 5);
+      const remaining = appsInRange.length - 5;
+      appsListHtml = `
+        <div class="graph-apps-list-wrap">
+          <div class="graph-apps-list-title">Applications in this period (${appsInRange.length}):</div>
+          <div class="graph-apps-mini-grid">
+            ${shownApps.map(a => `
+              <div class="graph-mini-item">
+                <span class="graph-mini-co"><strong>${this.escapeHtml(a.companyName || 'Company')}</strong></span>
+                <span class="graph-mini-role">${this.escapeHtml(a.roleTitle || 'Role')}</span>
+                <span class="graph-mini-date">📅 ${this.escapeHtml(a.appliedDate || 'Recent')}</span>
+                <span class="status-pill status-${(a.status || 'applied').toLowerCase()}">${this.escapeHtml(a.status || 'Applied')}</span>
+              </div>
+            `).join('')}
+          </div>
+          ${remaining > 0 ? `<div class="graph-more-apps">+ ${remaining} more application${remaining === 1 ? '' : 's'} recorded in this window</div>` : ''}
+        </div>
+      `;
+    } else {
+      appsListHtml = `
+        <div class="graph-no-apps-note">
+          <span>ℹ️ No applications recorded for this timeframe yet.</span>
+        </div>
+      `;
+    }
+
+    const bodyHtml = `
+      <div class="graph-metrics-summary">
+        <div class="graph-metric-pill">
+          <span class="metric-label">📊 Total Applied</span>
+          <span class="metric-val graph-total-val">${totalInRange} apps</span>
+        </div>
+        <div class="graph-metric-pill">
+          <span class="metric-label">🔥 Peak Day</span>
+          <span class="metric-val graph-peak-val">${peakCount} apps</span>
+        </div>
+        <div class="graph-metric-pill">
+          <span class="metric-label">⚡ Daily Avg</span>
+          <span class="metric-val graph-avg-val">${avgDaily} / day</span>
+        </div>
+        <div class="graph-metric-pill">
+          <span class="metric-label">📅 Most Active</span>
+          <span class="metric-val graph-most-val">${this.escapeHtml(mostActiveDay)}</span>
+        </div>
+      </div>
+
+      <div class="graph-chart-wrap">
+        <div class="graph-tooltip" style="display: none;"></div>
+        <svg class="graph-svg" viewBox="0 0 ${svgW} ${svgH}" preserveAspectRatio="none">
+          ${svgInnerHtml}
+        </svg>
+      </div>
+
+      ${appsListHtml}
+    `;
+
+    return {
+      rangeLabel,
+      bodyHtml,
+      points
+    };
+  }
+
+  bindWidgetCardEvents(msgDiv, specialCard) {
+    if (!specialCard) return;
+
+    // Live Time Card ticker
+    if (specialCard.type === 'time_date') {
+      const liveTimeEl = msgDiv.querySelector('[data-live-time]');
+      if (liveTimeEl) {
+        const intervalId = setInterval(() => {
+          if (!document.body.contains(liveTimeEl)) {
+            clearInterval(intervalId);
+            return;
+          }
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+          liveTimeEl.textContent = timeStr;
+        }, 1000);
+      }
+    }
+
+    // Dashboard navigation button on all widget cards
+    const dashBtns = msgDiv.querySelectorAll('.btn-widget-dash');
+    dashBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.switchView('dashboard');
+      });
+    });
+
+    // Graph Card range switcher and hover tooltips
+    if (specialCard.type === 'graph') {
+      const graphCard = msgDiv.querySelector('.zuno-graph-card');
+      if (graphCard) {
+        const innerContent = graphCard.querySelector('.graph-card-inner-content');
+        const subtitleEl = graphCard.querySelector('.graph-subtitle-text');
+        const rangeBtns = graphCard.querySelectorAll('.graph-pill-btn');
+
+        const bindSvgTooltips = () => {
+          const tooltip = graphCard.querySelector('.graph-tooltip');
+          const svg = graphCard.querySelector('.graph-svg');
+          if (!tooltip || !svg) return;
+
+          const currentRange = graphCard.getAttribute('data-card-range') || '7';
+          const r = currentRange === 'all' ? 'all' : parseInt(currentRange, 10);
+          const { points } = this.buildGraphCardContent(r, this.applications);
+
+          const hideTooltip = () => { tooltip.style.display = 'none'; };
+
+          const hitEls = graphCard.querySelectorAll('.graph-col-rect, .graph-dot');
+          hitEls.forEach(el => {
+            el.addEventListener('mouseenter', () => {
+              const idx = parseInt(el.getAttribute('data-idx'), 10);
+              const p = points && points[idx];
+              if (!p) return;
+
+              let appListStr = '';
+              if (p.apps && p.apps.length > 0) {
+                const names = p.apps.map(a => `• ${a.companyName || 'Company'} (${a.roleTitle || 'Role'})`).slice(0, 3);
+                if (p.apps.length > 3) names.push(`+ ${p.apps.length - 3} more`);
+                appListStr = `<div class="tooltip-companies">${names.join('<br>')}</div>`;
+              } else {
+                appListStr = `<div class="tooltip-empty">0 applications</div>`;
+              }
+
+              tooltip.innerHTML = `
+                <div class="tooltip-date">${p.label} (${p.dateStr})</div>
+                <div class="tooltip-count">${p.count} ${p.count === 1 ? 'application' : 'applications'}</div>
+                ${appListStr}
+              `;
+              tooltip.style.display = 'block';
+
+              const svgRect = svg.getBoundingClientRect();
+              const wrapRect = svg.parentElement.getBoundingClientRect();
+              const scaleX = svgRect.width / 700;
+              const scaleY = svgRect.height / 190;
+              const tipX = (p.x * scaleX);
+              const tipY = (p.y * scaleY) - 10;
+
+              tooltip.style.left = `${Math.min(wrapRect.width - 160, Math.max(10, tipX))}px`;
+              tooltip.style.top = `${Math.max(10, tipY)}px`;
+            });
+          });
+
+          svg.addEventListener('mouseleave', hideTooltip);
+        };
+
+        rangeBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const rangeVal = btn.getAttribute('data-range');
+            rangeBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            graphCard.setAttribute('data-card-range', rangeVal);
+            const r = rangeVal === 'all' ? 'all' : parseInt(rangeVal, 10);
+            const content = this.buildGraphCardContent(r, this.applications);
+
+            if (subtitleEl) subtitleEl.textContent = content.rangeLabel;
+            if (innerContent) innerContent.innerHTML = content.bodyHtml;
+
+            bindSvgTooltips();
+          });
+        });
+
+        bindSvgTooltips();
+      }
+    }
+
+    // Search Results Card events
+    if (specialCard.type === 'search_results') {
+      const searchCard = msgDiv.querySelector('.zuno-search-card');
+      if (searchCard) {
+        // 1. View in Dashboard button for individual job item
+        const viewJobBtns = searchCard.querySelectorAll('.btn-search-view-job');
+        viewJobBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const jobId = btn.getAttribute('data-job-id');
+            const targetApp = (this.applications || []).find(a => String(a.id) === String(jobId));
+            if (targetApp) {
+              this.activeApplication = targetApp;
+              this.switchView('dashboard');
+              if (this.dashSearchInput) {
+                this.dashSearchInput.value = targetApp.companyName || '';
+                this.searchQuery = (targetApp.companyName || '').toLowerCase().trim();
+                this.renderApplicationsGrid();
+              }
+              this.showToast(`Viewing ${targetApp.companyName || 'application'} in Dashboard`, 'info');
+            } else {
+              this.switchView('dashboard');
+            }
+          });
+        });
+
+        // 2. Open in Tracker Dashboard filter button
+        const filterDashBtn = searchCard.querySelector('.btn-filter-dashboard-query');
+        if (filterDashBtn) {
+          filterDashBtn.addEventListener('click', () => {
+            const query = filterDashBtn.getAttribute('data-query') || '';
+            this.switchView('dashboard');
+            if (this.dashSearchInput && query) {
+              this.dashSearchInput.value = query;
+              this.searchQuery = query.toLowerCase().trim();
+              this.renderApplicationsGrid();
+              this.showToast(`Filtered Tracker by "${query}"`, 'info');
+            }
+          });
+        }
+
+        // 3. Quick suggestion pills
+        const suggestionPills = searchCard.querySelectorAll('.suggestion-pill');
+        suggestionPills.forEach(pill => {
+          pill.addEventListener('click', () => {
+            const q = pill.getAttribute('data-query');
+            if (q) {
+              this.handleSearchCommand(`/search ${q}`);
+            }
+          });
+        });
+      }
     }
   }
 
@@ -2492,6 +3377,7 @@ class JobTrackerApp {
     const isMobile = window.innerWidth <= 768;
     if (isMobile) {
       if (this.sidebar) this.sidebar.classList.remove('open');
+      if (this.sidebarBackdrop) this.sidebarBackdrop.classList.remove('active');
     } else {
       if (this.sidebar) this.sidebar.classList.add('collapsed');
       const app = document.getElementById('app');
@@ -2503,6 +3389,7 @@ class JobTrackerApp {
     const isMobile = window.innerWidth <= 768;
     if (isMobile) {
       if (this.sidebar) this.sidebar.classList.add('open');
+      if (this.sidebarBackdrop) this.sidebarBackdrop.classList.add('active');
     } else {
       if (this.sidebar) this.sidebar.classList.remove('collapsed');
       const app = document.getElementById('app');
@@ -2513,7 +3400,9 @@ class JobTrackerApp {
   toggleSidebar() {
     const isMobile = window.innerWidth <= 768;
     if (isMobile) {
-      if (this.sidebar) this.sidebar.classList.toggle('open');
+      if (!this.sidebar) return;
+      const isOpen = this.sidebar.classList.toggle('open');
+      if (this.sidebarBackdrop) this.sidebarBackdrop.classList.toggle('active', isOpen);
     } else {
       if (!this.sidebar) return;
       const isCollapsed = this.sidebar.classList.toggle('collapsed');
