@@ -200,6 +200,18 @@ class JobTrackerApp {
     this.dashEmptyState = document.getElementById('dashEmptyState');
     this.btnEmptyGoChat = document.getElementById('btnEmptyGoChat');
 
+    // Daily Applications Line Chart
+    this.dashChartSection = document.getElementById('dashChartSection');
+    this.dailyAppsSvg = document.getElementById('dailyAppsSvg');
+    this.dashChartCanvasWrap = document.getElementById('dashChartCanvasWrap');
+    this.chartHoverTooltip = document.getElementById('chartHoverTooltip');
+    this.chartRangeButtons = document.querySelectorAll('.chart-range-btn');
+    this.chartPeakDayVal = document.getElementById('chartPeakDayVal');
+    this.chartAvgDailyVal = document.getElementById('chartAvgDailyVal');
+    this.chartTodayCountVal = document.getElementById('chartTodayCountVal');
+    this.chartMostActiveDayVal = document.getElementById('chartMostActiveDayVal');
+    this.currentChartRange = '7';
+
     // Stats
     this.statTotalCount = document.getElementById('statTotalCount');
     this.statAppliedCount = document.getElementById('statAppliedCount');
@@ -599,6 +611,18 @@ class JobTrackerApp {
       });
     }
 
+    // Chart Range Selector
+    if (this.chartRangeButtons && this.chartRangeButtons.length > 0) {
+      this.chartRangeButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          this.chartRangeButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.currentChartRange = btn.getAttribute('data-range') || '7';
+          this.renderDailyLineChart();
+        });
+      });
+    }
+
     // Interactive card clicks to navigate and filter
     const resetActiveMetricCards = () => {
       [this.sStatCardApplied, this.sStatCardCalls, this.sStatCardPending, this.sStatCardRejected].forEach(c => {
@@ -989,6 +1013,297 @@ class JobTrackerApp {
     if (this.sStatRejectedCount) this.sStatRejectedCount.textContent = rejected;
     if (this.sStatCallRate) this.sStatCallRate.textContent = `${rate}%`;
     if (this.sStatCallProgress) this.sStatCallProgress.style.width = `${rate}%`;
+
+    // Render Daily Applications Line Chart
+    this.renderDailyLineChart();
+  }
+
+  // ==========================================
+  // Daily Applications Velocity Line Chart
+  // ==========================================
+  renderDailyLineChart() {
+    if (!this.dailyAppsSvg) return;
+
+    const apps = this.applications || [];
+
+    // 1. Group applications by date (YYYY-MM-DD)
+    const dateAppsMap = {};
+    for (const a of apps) {
+      const dateKey = a.appliedDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
+      if (dateKey) {
+        if (!dateAppsMap[dateKey]) dateAppsMap[dateKey] = [];
+        dateAppsMap[dateKey].push(a);
+      }
+    }
+
+    // 2. Build continuous timeline based on currentChartRange ('7', '14', '30', 'all')
+    const daysData = [];
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (this.currentChartRange === 'all') {
+      const recordedDates = Object.keys(dateAppsMap).sort();
+      let startDate = null;
+      const endDate = new Date(now);
+
+      if (recordedDates.length > 0) {
+        const parts = recordedDates[0].split('-');
+        if (parts.length === 3) {
+          startDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        } else {
+          startDate = new Date(now);
+          startDate.setDate(startDate.getDate() - 13);
+        }
+      } else {
+        startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 6);
+      }
+
+      // Cap at 60 days to prevent excessive clutter
+      const dayDiff = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24));
+      if (dayDiff > 60) {
+        startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - 60);
+      }
+
+      const cur = new Date(startDate);
+      while (cur <= endDate) {
+        const dStr = cur.toISOString().split('T')[0];
+        const dayApps = dateAppsMap[dStr] || [];
+        daysData.push({
+          dateStr: dStr,
+          label: cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          count: dayApps.length,
+          apps: dayApps
+        });
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else {
+      const numDays = parseInt(this.currentChartRange, 10) || 7;
+      for (let i = numDays - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().split('T')[0];
+        const dayApps = dateAppsMap[dStr] || [];
+        daysData.push({
+          dateStr: dStr,
+          label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          count: dayApps.length,
+          apps: dayApps
+        });
+      }
+    }
+
+    if (daysData.length === 0) {
+      this.dailyAppsSvg.innerHTML = `
+        <text x="400" y="120" text-anchor="middle" fill="var(--text-subtle)" font-size="13">
+          No application timeline data available.
+        </text>
+      `;
+      return;
+    }
+
+    // Compute metrics
+    let peakCount = 0;
+    let peakDateLabel = '-';
+    let totalInRange = 0;
+    let todayCount = 0;
+
+    daysData.forEach(d => {
+      totalInRange += d.count;
+      if (d.count > peakCount) {
+        peakCount = d.count;
+        peakDateLabel = d.label;
+      }
+      if (d.dateStr === todayStr) {
+        todayCount = d.count;
+      }
+    });
+
+    const avgDaily = (totalInRange / daysData.length).toFixed(1);
+
+    if (this.chartPeakDayVal) this.chartPeakDayVal.textContent = `${peakCount} ${peakCount === 1 ? 'app' : 'apps'}`;
+    if (this.chartAvgDailyVal) this.chartAvgDailyVal.textContent = `${avgDaily} / day`;
+    if (this.chartTodayCountVal) this.chartTodayCountVal.textContent = `${todayCount} ${todayCount === 1 ? 'app' : 'apps'}`;
+    if (this.chartMostActiveDayVal) this.chartMostActiveDayVal.textContent = peakCount > 0 ? `${peakDateLabel} (${peakCount})` : 'None';
+
+    // SVG Layout parameters
+    const svgW = 800;
+    const svgH = 240;
+    const padL = 46;
+    const padR = 36;
+    const padT = 30;
+    const padB = 44;
+    const chartW = svgW - padL - padR;
+    const chartH = svgH - padT - padB;
+
+    const maxVal = Math.max(3, peakCount);
+
+    // Y-Axis Gridlines
+    const ySteps = 3;
+    let gridHtml = '';
+    for (let s = 0; s <= ySteps; s++) {
+      const val = Math.round((maxVal / ySteps) * s);
+      const yPos = padT + chartH - (val / maxVal) * chartH;
+      gridHtml += `
+        <line x1="${padL}" y1="${yPos.toFixed(1)}" x2="${(padL + chartW).toFixed(1)}" y2="${yPos.toFixed(1)}" class="chart-gridline" />
+        <text x="${(padL - 10).toFixed(1)}" y="${(yPos + 4).toFixed(1)}" text-anchor="end" class="chart-axis-text">${val}</text>
+      `;
+    }
+
+    // Points Coordinates
+    const N = daysData.length;
+    const points = daysData.map((d, i) => {
+      const x = N === 1 ? padL + chartW / 2 : padL + (i / (N - 1)) * chartW;
+      const y = padT + chartH - (d.count / maxVal) * chartH;
+      return { x, y, ...d };
+    });
+
+    // Bézier Spline
+    let curvePath = '';
+    if (points.length === 1) {
+      curvePath = `M ${points[0].x} ${points[0].y}`;
+    } else {
+      curvePath = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i === 0 ? 0 : i - 1];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[i + 2] || p2;
+
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+        curvePath += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+      }
+    }
+
+    const bottomY = padT + chartH;
+    const areaPath = `${curvePath} L ${points[points.length - 1].x.toFixed(1)} ${bottomY} L ${points[0].x.toFixed(1)} ${bottomY} Z`;
+
+    // X-Axis Labels
+    const stepInterval = N > 18 ? (N > 30 ? 4 : 2) : 1;
+    let xLabelsHtml = '';
+    points.forEach((p, i) => {
+      if (i % stepInterval === 0 || i === N - 1) {
+        xLabelsHtml += `
+          <text x="${p.x.toFixed(1)}" y="${bottomY + 22}" text-anchor="middle" class="chart-axis-text">
+            ${p.label}
+          </text>
+        `;
+      }
+    });
+
+    // Dots and interactive column hit areas
+    const colWidth = N > 1 ? chartW / (N - 1) : chartW;
+    let interactiveHtml = '';
+
+    points.forEach((p, i) => {
+      const colX = Math.max(0, p.x - colWidth / 2);
+      const isToday = p.dateStr === todayStr;
+      const dotR = p.count > 0 ? (isToday ? 7 : 5.5) : 3.5;
+      const dotFill = p.count > 0 ? '#38bdf8' : 'rgba(255,255,255,0.2)';
+      const dotStroke = p.count > 0 ? '#ffffff' : 'rgba(255,255,255,0.4)';
+
+      interactiveHtml += `
+        <rect class="chart-col-rect" x="${colX.toFixed(1)}" y="${padT}" width="${colWidth.toFixed(1)}" height="${(chartH + 20).toFixed(1)}" data-idx="${i}" />
+        <circle class="chart-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dotR}" fill="${dotFill}" stroke="${dotStroke}" stroke-width="${p.count > 0 ? 2.5 : 1.5}" data-idx="${i}" />
+      `;
+    });
+
+    // Assemble SVG
+    this.dailyAppsSvg.innerHTML = `
+      <defs>
+        <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.32" />
+          <stop offset="60%" stop-color="#6366f1" stop-opacity="0.08" />
+          <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0" />
+        </linearGradient>
+        <linearGradient id="lineStrokeGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#38bdf8" />
+          <stop offset="50%" stop-color="#818cf8" />
+          <stop offset="100%" stop-color="#c084fc" />
+        </linearGradient>
+      </defs>
+      ${gridHtml}
+      <path d="${areaPath}" fill="url(#areaGradient)" />
+      <path d="${curvePath}" fill="none" stroke="url(#lineStrokeGradient)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+      ${xLabelsHtml}
+      ${interactiveHtml}
+    `;
+
+    this.bindChartInteractions(points);
+  }
+
+  bindChartInteractions(points) {
+    if (!this.dailyAppsSvg || !this.chartHoverTooltip || !this.dashChartCanvasWrap) return;
+
+    const tooltip = this.chartHoverTooltip;
+
+    const showTooltipForIndex = (idx, clientX, clientY) => {
+      const p = points[idx];
+      if (!p) return;
+
+      const companyList = p.apps && p.apps.length > 0
+        ? p.apps.map(a => a.companyName || 'Company').slice(0, 3).join(', ') + (p.apps.length > 3 ? ` +${p.apps.length - 3} more` : '')
+        : 'None';
+
+      tooltip.innerHTML = `
+        <div class="tooltip-date">📅 ${p.label} (${p.dateStr})</div>
+        <div class="tooltip-count">🚀 ${p.count} ${p.count === 1 ? 'application' : 'applications'}</div>
+        <div class="tooltip-companies">🏢 ${this.escapeHtml(companyList)}</div>
+        <div class="tooltip-action">👆 Click to filter table</div>
+      `;
+
+      tooltip.style.display = 'flex';
+
+      const containerRect = this.dashChartCanvasWrap.getBoundingClientRect();
+      const left = clientX - containerRect.left;
+      const top = clientY - containerRect.top;
+
+      tooltip.style.left = `${Math.max(70, Math.min(containerRect.width - 70, left))}px`;
+      tooltip.style.top = `${Math.max(10, top)}px`;
+    };
+
+    const hideTooltip = () => {
+      tooltip.style.display = 'none';
+    };
+
+    const handleSelectDate = (idx) => {
+      const p = points[idx];
+      if (!p) return;
+      this.activeSidebarDate = p.dateStr;
+      if (this.sidebarDateFilter) this.sidebarDateFilter.value = p.dateStr;
+      this.updateSidebarDatePresetUi();
+      this.updateSidebarDashboard();
+      this.renderApplicationsGrid();
+
+      if (this.applicationsGrid) {
+        this.applicationsGrid.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      this.showToast(`Filtered applications for ${p.label} (${p.count} jobs)`, 'info');
+    };
+
+    const hitElements = this.dailyAppsSvg.querySelectorAll('.chart-col-rect, .chart-dot');
+    hitElements.forEach(el => {
+      el.addEventListener('mouseenter', (e) => {
+        const idx = parseInt(el.getAttribute('data-idx'), 10);
+        showTooltipForIndex(idx, e.clientX, e.clientY);
+      });
+      el.addEventListener('mousemove', (e) => {
+        const idx = parseInt(el.getAttribute('data-idx'), 10);
+        showTooltipForIndex(idx, e.clientX, e.clientY);
+      });
+      el.addEventListener('mouseleave', hideTooltip);
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.getAttribute('data-idx'), 10);
+        handleSelectDate(idx);
+      });
+    });
+
+    this.dailyAppsSvg.addEventListener('mouseleave', hideTooltip);
   }
 
   // ==========================================
