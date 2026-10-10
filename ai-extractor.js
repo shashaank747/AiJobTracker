@@ -278,6 +278,125 @@ const COMPANY_DATABASE = {
 
 export const AiExtractor = {
   /**
+   * Detect if an incoming user prompt is a Job Description or Job Posting
+   */
+  isJobDescription(text) {
+    if (!text || typeof text !== 'string') return false;
+    const trimmed = text.trim();
+    const lower = trimmed.toLowerCase();
+
+    // Explicit job markers
+    const explicitMarkers = [
+      /\b(?:job\s+description|about\s+the\s+(?:role|job)|role\s+overview|job\s+summary|position\s+summary)\b/i,
+      /\b(?:responsibilities|key\s+responsibilities|duties|what\s+you(?:'ll|\s+will)\s+do)\b/i,
+      /\b(?:requirements|qualifications|basic\s+qualifications|preferred\s+qualifications|what\s+you\s+need|must\s+have)\b/i,
+      /\b(?:years\s+of\s+experience|yoe|\d+\+?\s*years?\s+(?:of\s+)?exp)\b/i,
+      /\b(?:employment\s+type|work\s+mode|workplace\s+type|job\s+type)\s*[:\-]/i,
+      /\b(?:role|position|job\s+title)\s*[:\-]/i,
+      /\b(?:apply\s+(?:here|now|before|link|url)|how\s+to\s+apply)\b/i,
+      /\b(?:salary|compensation|benefits|stipend|ctc|package)\s*[:\-]/i,
+      /\b(?:here\s+is\s+(?:the\s+|a\s+)?jd|analyze\s+this\s+jd|parse\s+this\s+jd|track\s+this\s+job|save\s+this\s+job)\b/i
+    ];
+
+    if (explicitMarkers.some(re => re.test(text))) {
+      return true;
+    }
+
+    // Long multi-line text with structural job indicators
+    const lines = trimmed.split('\n').filter(l => l.trim().length > 0);
+    if (lines.length >= 3 && trimmed.length > 120) {
+      const jobSignals = /\b(software|developer|engineer|designer|manager|analyst|full-time|part-time|remote|hybrid|on-site|skills|experience|technologies|apply|company)\b/i;
+      if (jobSignals.test(lower)) {
+        return true;
+      }
+    }
+
+    return false;
+  },
+
+  /**
+   * Accurately detect if the user is asking for current time or date
+   */
+  checkTimeOrDateQuery(text) {
+    if (!text || typeof text !== 'string') return { isTime: false, isDate: false };
+    const trimmed = text.trim();
+    // A time or date question is NEVER a long text or a job description
+    if (trimmed.length > 100 || trimmed.includes('\n\n') || this.isJobDescription(trimmed)) {
+      return { isTime: false, isDate: false };
+    }
+
+    const clean = trimmed.toLowerCase()
+      .replace(/^[!?. ,;]+|[!?. ,;]+$/g, '')
+      .replace(/\s+/g, ' ');
+
+    const timePatterns = [
+      /^(?:what(?:'s|\s+is)\s+(?:the\s+)?time(?:\s+now|\s+right\s+now)?)$/i,
+      /^(?:what\s+time\s+is\s+it(?:\s+now|\s+right\s+now)?)$/i,
+      /^(?:(?:can\s+you\s+|please\s+)?tell\s+me\s+(?:the\s+)?time)$/i,
+      /^(?:current\s+time)$/i,
+      /^(?:time\s+now)$/i,
+      /^(?:what\s+is\s+time)$/i,
+      /^time$/i
+    ];
+
+    const datePatterns = [
+      /^(?:what(?:'s|\s+is)\s+today(?:'s)?\s+date)$/i,
+      /^(?:what(?:'s|\s+is)\s+the\s+date(?:\s+today)?)$/i,
+      /^(?:today(?:'s)?\s+date)$/i,
+      /^(?:current\s+date)$/i,
+      /^(?:what\s+day\s+is\s+(?:it|today))$/i,
+      /^(?:which\s+day\s+is\s+(?:it|today))$/i,
+      /^(?:date\s+today)$/i,
+      /^(?:today\s+date)$/i,
+      /^(?:what\s+is\s+(?:the\s+)?date)$/i,
+      /^date$/i,
+      /^(?:what\s+(?:is\s+)?(?:the\s+)?(?:time\s+and\s+date|date\s+and\s+time))$/i,
+      /^(?:time\s+and\s+date|date\s+and\s+time)$/i
+    ];
+
+    return {
+      isTime: timePatterns.some(re => re.test(clean)),
+      isDate: datePatterns.some(re => re.test(clean))
+    };
+  },
+
+  /**
+   * Accurately detect if the user is asking for today's application count
+   */
+  checkTodayCountQuery(text) {
+    if (!text || typeof text !== 'string') return false;
+    const trimmed = text.trim();
+    if (trimmed.length > 100 || trimmed.includes('\n\n') || this.isJobDescription(trimmed)) {
+      return false;
+    }
+    const clean = trimmed.toLowerCase()
+      .replace(/^[!?. ,;]+|[!?. ,;]+$/g, '')
+      .replace(/\s+/g, ' ');
+
+    return /^(?:how\s+many\s+(?:applications?|jobs?|roles?)?(?:\s+(?:did\s+i\s+apply(?:\s+to)?|applied))?\s+today|today(?:'s)?\s+(?:applications?|jobs?|count)|(?:applied|applications?|jobs?)\s+today|count\s+today)$/i.test(clean) ||
+      /^(?:applied\s+today|today\s+applied|today\s+count|jobs\s+today|applications\s+today)\??$/i.test(trimmed);
+  },
+
+  /**
+   * Accurately detect if the user is asking for a graph/velocity chart
+   */
+  checkGraphQuery(text) {
+    if (!text || typeof text !== 'string') return false;
+    const trimmed = text.trim();
+    if (trimmed.length > 100 || trimmed.includes('\n\n') || this.isJobDescription(trimmed)) {
+      return false;
+    }
+    const lower = trimmed.toLowerCase();
+    const isGraphWord = /\b(?:graph|chart|velocity|visualiz(?:e|ation)|trend|curve)\b/i.test(lower);
+    const isWeekOrMonth = /\b(?:(?:last|past)\s+(?:week|month|7\s*days|30\s*days)|this\s+(?:week|month))\b/i.test(lower);
+    const isAppQuery = /\b(?:applications?|jobs?|applied|how\s+many)\b/i.test(lower);
+
+    return (isGraphWord && (isAppQuery || trimmed.length < 30)) ||
+      (isWeekOrMonth && isAppQuery && /\b(?:graph|chart|velocity|trend|curve|show|list)\b/i.test(lower)) ||
+      /^\/(?:graph|chart|velocity)\b/i.test(trimmed);
+  },
+
+  /**
    * Main entry point to parse a raw JD or a conversational follow-up
    */
   async processInput(text, existingJob = null, history = [], allApplications = [], userProfile = null) {
@@ -289,36 +408,30 @@ export const AiExtractor = {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
+    const isJD = this.isJobDescription(text);
+
     // Fast-path 1: Real-time Clock / Date Queries -> INSTANT (< 5ms)
-    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now|the\s+time|what\s+is\s+time|time\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?time\??$/i.test(trimmed);
-    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today)|date\s+today|today\s+date|what\s+is\s+date|date\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?date\??$/i.test(trimmed);
+    const { isTime: isTimeQuery, isDate: isDateQuery } = !isJD ? this.checkTimeOrDateQuery(text) : { isTime: false, isDate: false };
 
     // Fast-path 1b: Today applications count query -> INSTANT (< 5ms)
-    const isTodayCountQuery = /\b(?:(?:how\s+many|show|list|count|what)\s+(?:applications?|jobs?|applied)?.*?\btoday\b|\b(?:applied|applications?|jobs?)\s+(?:for\s+|in\s+)?today\b|\btoday(?:'s)?\s+(?:applications?|jobs?|applied)\b)\b/i.test(lower) ||
-      /^(?:applied\s+today|today\s+applied|today\s+count|jobs\s+today|applications\s+today)\??$/i.test(trimmed);
+    const isTodayCountQuery = !isJD && this.checkTodayCountQuery(text);
 
     // Fast-path 1c: Graph / Last week / Last month velocity queries -> INSTANT (< 5ms)
-    const isGraphWord = /\b(?:graph|chart|velocity|visualiz(?:e|ation)|trend|curve)\b/i.test(lower);
-    const isWeekWord = /\b(?:(?:last|past)\s+(?:week|7\s*days)|7\s*days|this\s+week)\b/i.test(lower);
-    const isMonthWord = /\b(?:(?:last|past)\s+(?:month|30\s*days)|30\s*days|this\s+month)\b/i.test(lower);
-    const isAppQuery = /\b(?:how\s+many|applications?|jobs?|applied|show|list|count|tell\s+me)\b/i.test(lower);
-    const isGraphQuery = isGraphWord ||
-      ((isWeekWord || isMonthWord) && isAppQuery) ||
-      /^(?:applications?\s+(?:last\s+week|last\s+month)|jobs?\s+(?:last\s+week|last\s+month))\??$/i.test(trimmed);
+    const isGraphQuery = !isJD && this.checkGraphQuery(text);
 
     // Fast-path 1d: Search query in applications database (/search or search keywords) -> INSTANT (< 5ms)
-    const isSearchCmd = /^\/(?:search|find)\b/i.test(trimmed) ||
-      /\b(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\b/i.test(lower);
+    const isSearchCmd = !isJD && (/^\/(?:search|find)\b/i.test(trimmed) ||
+      /\b(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\b/i.test(lower));
 
     // Fast-path 2: Direct Greetings & Simple Identity -> INSTANT (< 5ms)
-    const isGreeting = /^(?:hi|hello|hey|hiya|howdy|good\s*(?:morning|afternoon|evening)|sup|yo|hola)(?:\s+zuno)?\b[!?. ]*$/i.test(trimmed);
-    const isIdentity = /^(who are you|what is your name|what's your name|your name)\b[!?. ]*$/i.test(lower);
-    const isHowAreYou = /^(how are you|how's it going|how are you doing)\b[!?. ]*$/i.test(lower);
-    const isCasualThanks = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
+    const isGreeting = !isJD && /^(?:hi|hello|hey|hiya|howdy|good\s*(?:morning|afternoon|evening)|sup|yo|hola)(?:\s+zuno)?\b[!?. ]*$/i.test(trimmed);
+    const isIdentity = !isJD && /^(who are you|what is your name|what's your name|your name)\b[!?. ]*$/i.test(lower);
+    const isHowAreYou = !isJD && /^(how are you|how's it going|how are you doing)\b[!?. ]*$/i.test(lower);
+    const isCasualThanks = !isJD && /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
 
     // Fast-path 3: Direct Profile commands (e.g. "add skill: ...", "add project: ...", "add sem 5 marks: ...") -> INSTANT (< 5ms)
-    const isDirectProfileCmd = /^(?:add\s+project|new\s+project|project\s*:|add\s+cert|add\s+certification|add\s+skill|add\s+technical\s+skill|remove\s+skill|add\s+sem\s+[1-8]\s+marks|update\s+college|my\s+college\s+is)\b/i.test(lower);
-    const isSimpleCountQuery = /^(?:how\s+many\s+(?:jobs|applications|interviews|offers)|show\s+(?:my\s+)?applications|list\s+(?:my\s+)?applications)\b/i.test(lower);
+    const isDirectProfileCmd = !isJD && /^(?:add\s+project|new\s+project|project\s*:|add\s+cert|add\s+certification|add\s+skill|add\s+technical\s+skill|remove\s+skill|add\s+sem\s+[1-8]\s+marks|update\s+college|my\s+college\s+is)\b/i.test(lower);
+    const isSimpleCountQuery = !isJD && /^(?:how\s+many\s+(?:jobs|applications|interviews|offers)|show\s+(?:my\s+)?applications|list\s+(?:my\s+)?applications)\b/i.test(lower);
 
     // If matches fast-path OR provider is explicitly set to offline heuristic
     if (provider === 'heuristic' || isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery || isSearchCmd || isGreeting || isIdentity || isHowAreYou || isCasualThanks || isDirectProfileCmd || isSimpleCountQuery) {
@@ -365,13 +478,30 @@ export const AiExtractor = {
         console.warn('Serverless endpoint exceeded budget (4.2s) or failed, switching instantly to heuristics:', serverErr.name || serverErr.message);
       }
 
+      // Fallback: If serverless failed, try direct client-side AI if user configured API keys in Settings
+      if (!result) {
+        if (provider === 'gemini' && settings.geminiKey) {
+          try {
+            result = await this.extractWithGemini(text, existingJob, history, settings, allApplications, userProfile);
+          } catch (e) {
+            console.warn('Client-side Gemini extraction fallback failed, switching to heuristics:', e.message);
+          }
+        } else if (provider === 'openai' && settings.openaiKey) {
+          try {
+            result = await this.extractWithOpenAI(text, existingJob, history, settings, allApplications, userProfile);
+          } catch (e) {
+            console.warn('Client-side OpenAI extraction fallback failed, switching to heuristics:', e.message);
+          }
+        }
+      }
+
       // 3. Fallback: Ultra-fast offline Smart Career Advisor & Heuristic Extractor (< 5ms)
       if (!result) {
         result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
       }
     }
 
-    if (result && !result.cardType) {
+    if (result && !result.data && !result.cardType) {
       if (isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery) {
         const widgetRes = this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
         if (widgetRes && widgetRes.cardType) {
@@ -729,86 +859,89 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
   extractWithHeuristics(text, existingJob = null, allApplications = [], userProfile = null) {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
+    const isJD = this.isJobDescription(text);
 
-    // 0. Check for /compare command
-    const isCompareCommand = /^\/(?:compare|cmp)\b/i.test(trimmed) || /^(?:compare\s+(?:me|my\s+profile|profile)\b)/i.test(lower);
-    if (isCompareCommand) {
-      const queryTarget = trimmed.replace(/^\/(?:compare|cmp)\s*/i, '').replace(/^(?:compare\s+(?:me|my\s+profile|profile)(?:\s+(?:with|to|against))?\s*)/i, '').trim();
-      return this.generateProfileJobComparison(userProfile, existingJob, queryTarget, allApplications);
-    }
+    // If NOT a job description, check for conversational shortcuts, greetings, and utility widgets
+    if (!isJD) {
+      // 0. Check for /compare command
+      const isCompareCommand = /^\/(?:compare|cmp)\b/i.test(trimmed) || /^(?:compare\s+(?:me|my\s+profile|profile)\b)/i.test(lower);
+      if (isCompareCommand) {
+        const queryTarget = trimmed.replace(/^\/(?:compare|cmp)\s*/i, '').replace(/^(?:compare\s+(?:me|my\s+profile|profile)(?:\s+(?:with|to|against))?\s*)/i, '').trim();
+        return this.generateProfileJobComparison(userProfile, existingJob, queryTarget, allApplications);
+      }
 
-    // 1. Check for greetings
-    const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
-    if (isGreeting) {
-      return {
-        message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Track Applications**: Paste any Job Description to extract and track.\n- **About Me Profile**: Tell me your projects (*\"Add project: JobTracker with React, link github.com...\"*), semester marks (*\"Add sem 5 marks: 8.9\"*), or certifications!\n- **Query Applications**: Ask *\"How many jobs have I applied to?\"*, *\"Show my applications\"*, or *\"Did I apply to Stripe?\"*\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
-        data: null
-      };
-    }
+      // 1. Check for greetings
+      const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
+      if (isGreeting) {
+        return {
+          message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Track Applications**: Paste any Job Description to extract and track.\n- **About Me Profile**: Tell me your projects (*\"Add project: JobTracker with React, link github.com...\"*), semester marks (*\"Add sem 5 marks: 8.9\"*), or certifications!\n- **Query Applications**: Ask *\"How many jobs have I applied to?\"*, *\"Show my applications\"*, or *\"Did I apply to Stripe?\"*\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
+          data: null
+        };
+      }
 
-    // 2. Check for "Who are you" / "What's your name"
-    if (/^(who are you|what is your name|what's your name|your name)\b/i.test(lower)) {
-      return {
-        message: "👋 I'm **Zuno**, your intelligent AI career assistant and job application tracker at **JobTrackerAI**!\n\nI can help you parse job descriptions, organize your applications, manage your personal profile & project portfolio, and prepare for interviews.",
-        data: null
-      };
-    }
+      // 2. Check for "Who are you" / "What's your name"
+      if (/^(who are you|what is your name|what's your name|your name)\b/i.test(lower)) {
+        return {
+          message: "👋 I'm **Zuno**, your intelligent AI career assistant and job application tracker at **JobTrackerAI**!\n\nI can help you parse job descriptions, organize your applications, manage your personal profile & project portfolio, and prepare for interviews.",
+          data: null
+        };
+      }
 
-    // 3. Check for "How are you"
-    if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
-      return {
-        message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Tell me about your **projects, certifications, or semester marks** to update your profile.\n- Ask me about your **saved applications** (*\"Show my applications\"* or *\"How many jobs did I apply to?\"*).\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
-        data: null
-      };
-    }
+      // 3. Check for "How are you"
+      if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
+        return {
+          message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Tell me about your **projects, certifications, or semester marks** to update your profile.\n- Ask me about your **saved applications** (*\"Show my applications\"* or *\"How many jobs did I apply to?\"*).\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
+          data: null
+        };
+      }
 
-    // 3b. Real-Time Clock & Date Queries
-    const isTimeQuery = /\b(what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|current\s+time|tell\s+(?:me\s+)?(?:the\s+)?time|time\s+now|the\s+time|what\s+is\s+time|time\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?time\??$/i.test(trimmed);
-    const isDateQuery = /\b(what(?:'s|\s+is)\s+today(?:'s)?\s+date|what(?:'s|\s+is)\s+the\s+date|today(?:'s)?\s+date|current\s+date|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+(?:it|today)|date\s+today|today\s+date|what\s+is\s+date|date\s*[\?!.]*$)\b/i.test(lower) || /^(?:what\s+)?date\??$/i.test(trimmed);
+      // 3b. Real-Time Clock & Date Queries
+      const { isTime: isTimeQuery, isDate: isDateQuery } = this.checkTimeOrDateQuery(text);
 
-    if (isTimeQuery || isDateQuery) {
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-      const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      const dayStr = now.toLocaleDateString('en-US', { weekday: 'long' });
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
-      const isoDateStr = new Intl.DateTimeFormat('en-CA').format(now);
+      if (isTimeQuery || isDateQuery) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const dayStr = now.toLocaleDateString('en-US', { weekday: 'long' });
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+        const isoDateStr = new Intl.DateTimeFormat('en-CA').format(now);
 
-      return {
-        message: `🕒 **Real-Time Clock & Date**:\n\n` +
-          `- **Current Time**: **${timeStr}** (${tz})\n` +
-          `- **Today's Date**: **${dateStr}**\n` +
-          `- **Day of the Week**: **${dayStr}**\n\n` +
-          `*Real-time active clock synchronized for accurate job application tracking, deadlines, and relative dates.*`,
-        data: null,
-        cardType: 'time_date',
-        cardData: {
-          time: timeStr,
-          date: dateStr,
-          day: dayStr,
-          timeZone: tz,
-          isoDate: isoDateStr,
-          timestamp: now.toISOString()
-        }
-      };
-    }
+        return {
+          message: `🕒 **Real-Time Clock & Date**:\n\n` +
+            `- **Current Time**: **${timeStr}** (${tz})\n` +
+            `- **Today's Date**: **${dateStr}**\n` +
+            `- **Day of the Week**: **${dayStr}**\n\n` +
+            `*Real-time active clock synchronized for accurate job application tracking, deadlines, and relative dates.*`,
+          data: null,
+          cardType: 'time_date',
+          cardData: {
+            time: timeStr,
+            date: dateStr,
+            day: dayStr,
+            timeZone: tz,
+            isoDate: isoDateStr,
+            timestamp: now.toISOString()
+          }
+        };
+      }
 
-    // 4. Check for Help / Capabilities
-    const isHelp = /^(help|what can you do|how does this work|commands|instructions)\b/i.test(lower);
-    if (isHelp) {
-      return {
-        message: "💡 **How Zuno & JobTrackerAI Work:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Candidate Profile (About Me)**: You can tell me *\"Add project: JobTrackerAI with React & Node, finished yesterday, link https://...\"* or *\"Add sem 4 marks: 8.9\"* and I will automatically update your profile!\n3. **Query Your Database**: Ask me *\"How many applications do I have?\"*, *\"Show all applications\"*, or *\"Did I apply to Stripe?\"* anytime.\n4. **Store in Database**: Type **/store** to permanently save your drafted application to Supabase and your dashboard.\n5. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n6. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.",
-        data: null
-      };
-    }
+      // 4. Check for Help / Capabilities
+      const isHelp = /^(help|what can you do|how does this work|commands|instructions)\b/i.test(lower);
+      if (isHelp) {
+        return {
+          message: "💡 **How Zuno & JobTrackerAI Work:**\n\n1. **Track Applications**: Paste raw text from LinkedIn, Indeed, Glassdoor, or careers pages. I will parse company, role, salary, work mode, and URLs.\n2. **Candidate Profile (About Me)**: You can tell me *\"Add project: JobTrackerAI with React & Node, finished yesterday, link https://...\"* or *\"Add sem 4 marks: 8.9\"* and I will automatically update your profile!\n3. **Query Your Database**: Ask me *\"How many applications do I have?\"*, *\"Show all applications\"*, or *\"Did I apply to Stripe?\"* anytime.\n4. **Store in Database**: Type **/store** to permanently save your drafted application to Supabase and your dashboard.\n5. **Company Intelligence**: Ask about any company (e.g., *'Can you tell about Samsung company?'*) for an overview, open roles, culture, and interview rounds.\n6. **Interview Preparation**: Ask *'What interview questions will they ask?'* for customized questions based on your tracked roles.",
+          data: null
+        };
+      }
 
-    // 5. Check for Casual affirmations
-    const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
-    if (isCasual) {
-      return {
-        message: "You're welcome! Whenever you have another job to track or want to update your projects and profile, feel free to ask.",
-        data: null
-      };
+      // 5. Check for Casual affirmations
+      const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
+      if (isCasual) {
+        return {
+          message: "You're welcome! Whenever you have another job to track or want to update your projects and profile, feel free to ask.",
+          data: null
+        };
+      }
     }
 
     // ==========================================
@@ -1218,8 +1351,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 7a. Check for Applications Applied Today -> Card Format
-    const isTodayCountQuery = /\b(?:(?:how\s+many|show|list|count|what)\s+(?:applications?|jobs?|applied)?.*?\btoday\b|\b(?:applied|applications?|jobs?)\s+(?:for\s+|in\s+)?today\b|\btoday(?:'s)?\s+(?:applications?|jobs?|applied)\b)\b/i.test(lower) ||
-      /^(?:applied\s+today|today\s+applied|today\s+count|jobs\s+today|applications\s+today)\??$/i.test(trimmed);
+    const isTodayCountQuery = !isJD && this.checkTodayCountQuery(text);
 
     if (isTodayCountQuery) {
       const now = new Date();
@@ -1260,15 +1392,10 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 7b. Check for Applications Graph & Weekly / Monthly Velocity -> Graph Card
-    const isGraphWord = /\b(?:graph|chart|velocity|visualiz(?:e|ation)|trend|curve)\b/i.test(lower);
-    const isWeekWord = /\b(?:(?:last|past)\s+(?:week|7\s*days)|7\s*days|this\s+week)\b/i.test(lower);
-    const isMonthWord = /\b(?:(?:last|past)\s+(?:month|30\s*days)|30\s*days|this\s+month)\b/i.test(lower);
-    const isAppQuery = /\b(?:how\s+many|applications?|jobs?|applied|show|list|count|tell\s+me)\b/i.test(lower);
-    const isGraphQuery = isGraphWord ||
-      ((isWeekWord || isMonthWord) && isAppQuery) ||
-      /^(?:applications?\s+(?:last\s+week|last\s+month)|jobs?\s+(?:last\s+week|last\s+month))\??$/i.test(trimmed);
+    const isGraphQuery = !isJD && this.checkGraphQuery(text);
 
     if (isGraphQuery) {
+      const isMonthWord = /\b(?:(?:last|past)\s+(?:month|30\s*days)|30\s*days|this\s+month)\b/i.test(lower);
       const isMonth = isMonthWord;
       const range = isMonth ? 30 : 7;
       const rangeLabel = isMonth ? 'Last 30 Days (Month)' : 'Last 7 Days (Week)';
@@ -1287,7 +1414,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
 
     // 7c. Check for Database Search (/search or natural search in applications)
     const isSearchExplicit = /^\/(?:search|find)\b/i.test(trimmed);
-    const isSearchNatural = /\b(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\b/i.test(lower);
+    const isSearchNatural = !isJD && /\b(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\b/i.test(lower);
     if (isSearchExplicit || isSearchNatural) {
       const searchArg = trimmed.replace(/^\/(?:search|find)\s*/i, '')
         .replace(/^(?:search(?:\s+(?:for|in|all))?|find(?:\s+(?:my|all))?|lookup)\s+(?:applications?|jobs?|in\s+database|database)\s*(?:for|about|with)?\s*/i, '')
@@ -1338,7 +1465,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 7d. Check for Database Application Statistics & Counts
-    const isStatsQuery = /\b(how\s+many\s+(?:jobs|applications)|application\s+stats|stats|summary\s+of\s+(?:my\s+)?applications|overview\s+of\s+(?:my\s+)?applications|how\s+is\s+my\s+job\s+search\s+going)\b/i.test(lower) || lower === '/stats';
+    const isStatsQuery = !isJD && (/\b(how\s+many\s+(?:jobs|applications)|application\s+stats|stats|summary\s+of\s+(?:my\s+)?applications|overview\s+of\s+(?:my\s+)?applications|how\s+is\s+my\s+job\s+search\s+going)\b/i.test(lower) || lower === '/stats');
     if (isStatsQuery) {
       if (!allApplications || allApplications.length === 0) {
         return {
@@ -1365,9 +1492,9 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 8. Check for "Show all applications" / "List applications"
-    const isListQuery = /\b(?:show|list|display|view|get)\s+(?:all\s+)?(?:past\s+|stored\s+|my\s+)?(?:jobs|applications)\b/i.test(lower) ||
+    const isListQuery = !isJD && (/\b(?:show|list|display|view|get)\s+(?:all\s+)?(?:past\s+|stored\s+|my\s+)?(?:jobs|applications)\b/i.test(lower) ||
                         /\bwhat\s+(?:jobs|applications)\s+(?:did\s+i|have\s+i)\s+(?:apply|applied|stored|saved)\b/i.test(lower) ||
-                        lower === '/list';
+                        lower === '/list');
     if (isListQuery) {
       if (!allApplications || allApplications.length === 0) {
         return {
@@ -1396,7 +1523,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 9. Status-Specific Filter Queries (Interviewing / Offers / Rejected)
-    const isInterviewFilter = /\b(?:interviews?|interviewing)\b/i.test(lower) && /\b(?:which|what|show|list|any|my|do\s+i\s+have)\b/i.test(lower);
+    const isInterviewFilter = !isJD && (/\b(?:interviews?|interviewing)\b/i.test(lower) && /\b(?:which|what|show|list|any|my|do\s+i\s+have)\b/i.test(lower));
     if (isInterviewFilter) {
       const matches = (allApplications || []).filter(a => (a.status || '').toLowerCase() === 'interviewing');
       if (matches.length === 0) {
@@ -1412,7 +1539,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       return { message: msg, data: null };
     }
 
-    const isOfferFilter = /\b(?:offers?)\b/i.test(lower) && /\b(?:which|what|show|list|any|my|do\s+i\s+have|got)\b/i.test(lower);
+    const isOfferFilter = !isJD && (/\b(?:offers?)\b/i.test(lower) && /\b(?:which|what|show|list|any|my|do\s+i\s+have|got)\b/i.test(lower));
     if (isOfferFilter) {
       const matches = (allApplications || []).filter(a => (a.status || '').toLowerCase() === 'offer');
       if (matches.length === 0) {

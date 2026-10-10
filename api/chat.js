@@ -286,7 +286,8 @@ Respond with a JSON object with:
   "cardData": { ... } or null
 }
 Special Card rules:
-- If asked for time or date: set "cardType": "time_date", "cardData": { "time": "${fullTimeStr}", "date": "${fullDateStr}", "day": "${dayOfWeek}", "timeZone": "${effectiveTimeZone}", "isoDate": "${today}" }
+- CRITICAL PRIORITY: If user provides a Job Description (JD), job vacancy, company role details, or email snippet, ALWAYS extract the job details into "data" and set "cardType": null. NEVER set "cardType": "time_date" for job descriptions, even if they mention work hours, employment type (Full-time/Part-time), or application dates!
+- ONLY set "cardType": "time_date" when the user is specifically asking for the current clock time, date, or day of the week (e.g., "what time is it?", "today's date", "what day is today"): set "cardType": "time_date", "cardData": { "time": "${fullTimeStr}", "date": "${fullDateStr}", "day": "${dayOfWeek}", "timeZone": "${effectiveTimeZone}", "isoDate": "${today}" }
 - If asked how many applications applied today: set "cardType": "today_count", "cardData": { "count": <number applied today>, "date": "${fullDateStr}", "isoDate": "${today}" }
 - If asked how many applied last week/month or for a graph/chart: set "cardType": "graph", "cardData": { "range": 7 or 30 }
 - If asked to search applications or query /search: set "cardType": "search_results", "cardData": { "query": "<search keyword>", "results": <matching applications from database>, "totalCount": <total applications count> }
