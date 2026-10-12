@@ -1635,6 +1635,48 @@ body {
   flex-shrink: 0;
 }
 
+.msg-assistant-text .md-table-wrapper {
+  overflow-x: auto;
+  margin: 10px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.msg-assistant-text .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.msg-assistant-text .md-table th {
+  background: rgba(30, 41, 59, 0.85);
+  color: #94a3b8;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.msg-assistant-text .md-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+  vertical-align: middle;
+}
+
+.msg-assistant-text .md-table tr:last-child td {
+  border-bottom: none;
+}
+
+.msg-assistant-text .md-table tr:hover td {
+  background: rgba(56, 189, 248, 0.04);
+}
+
 .msg-timestamp {
   font-size: 0.72rem;
   color: var(--text-subtle);

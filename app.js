@@ -2349,12 +2349,51 @@ class JobTrackerApp {
     // 10. Callout hints starting with 💡
     str = str.replace(/^💡\s*(.*$)/gim, '<div class="md-hint-chip"><span class="md-hint-icon">💡</span><span>$1</span></div>');
 
+    // 10b. Markdown Tables
+    str = str.replace(/((?:^[ \t]*\|.+?\|[ \t]*(?:\r?\n|$))+)/gm, (tableBlock) => {
+      const rows = tableBlock.trim().split('\n').map(r => r.trim()).filter(Boolean);
+      if (rows.length < 2) return tableBlock;
+
+      let html = '<div class="md-table-wrapper"><table class="md-table">';
+      let isHeader = true;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        // Check for separator row like |---|---|
+        if (/^\|(?:[ \t]*:?-+:?[ \t]*\|)+$/.test(row)) {
+          isHeader = false;
+          continue;
+        }
+
+        const cells = row.split('|').slice(1, -1).map(c => c.trim());
+        if (isHeader) {
+          html += '<thead><tr>';
+          cells.forEach(c => {
+            html += `<th>${c}</th>`;
+          });
+          html += '</tr></thead><tbody>';
+        } else {
+          html += '<tr>';
+          cells.forEach(c => {
+            html += `<td>${c}</td>`;
+          });
+          html += '</tr>';
+        }
+      }
+
+      if (!html.includes('<tbody>')) {
+        html += '<tbody>';
+      }
+      html += '</tbody></table></div>';
+      return '\n\n' + html + '\n\n';
+    });
+
     // 11. Paragraph formatting with clean spacing
     const paragraphs = str.split(/\n\n+/);
     const html = paragraphs.map(p => {
       p = p.trim();
       if (!p) return '';
-      if (p.startsWith('<h') || p.startsWith('<div class="md-bullet-line"') || p.startsWith('<div class="md-hint-chip"')) {
+      if (p.startsWith('<h') || p.startsWith('<div class="md-bullet-line"') || p.startsWith('<div class="md-hint-chip"') || p.startsWith('<div class="md-table-wrapper"')) {
         return p.replace(/\n/g, '');
       }
       return `<p class="md-p">${p.replace(/\n/g, '<br/>')}</p>`;

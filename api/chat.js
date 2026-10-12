@@ -103,8 +103,22 @@ ${projs.length > 0 ? projs.map((p, i) => `  [Project #${i + 1}] Title: "${p.titl
 ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" | Issuer: ${c.issuer || 'N/A'} | Date: ${c.issueDate || 'N/A'} | Link: ${c.credentialUrl || 'N/A'}`).join('\n') : '  None recorded yet'}`;
     };
 
+    const formatConversationHistory = (hist) => {
+      if (!Array.isArray(hist) || hist.length === 0) {
+        return "CONVERSATION HISTORY (Previous turns in this chat session): None (Fresh conversation start).";
+      }
+      const recent = hist.slice(-8);
+      const turns = recent.map(m => {
+        const roleName = m.role === 'user' ? 'User' : 'Zuno (AI Assistant)';
+        const textPreview = (m.text || '').replace(/\s+/g, ' ').slice(0, 350);
+        return `[${roleName}]: ${textPreview}`;
+      }).join('\n');
+      return `CONVERSATION HISTORY (Previous turns in this chat session):\n${turns}`;
+    };
+
     const databaseContext = formatDatabaseContext(allApplications);
     const profileContext = formatProfileContext(userProfile);
+    const historyContext = formatConversationHistory(history);
 
     const systemPrompt = `You are Zuno, an intelligent conversational AI career assistant and job application tracker at JobTrackerAI.
 Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your name or identity.
@@ -301,6 +315,14 @@ CRITICAL INSTRUCTION FOR APPLIED DATE:
 - ONLY set "appliedDate" to ${today} if the user does NOT specify any past application date or timeframe.
 - If updating an existing job, and the user specifies an applied date, update "appliedDate" accordingly.
 
+CONVERSATIONAL CONTEXT & NATURAL VARIATIONS (CRITICAL):
+- You are a fully conversational AI career companion and MUST maintain conversational continuity using the "CONVERSATION HISTORY" above!
+- Users will speak naturally with short phrasing, slang, or follow-ups (e.g. "show all", "list them", "how many", "which ones?", "tell me more", "where did i apply?", "show details", "all of them", "what companies?"):
+  * When the previous turn discussed application counts or stats (e.g. "how many applications are there" -> 15 applications), and user follows up with "show all", "list all", "show them", "list them", "show", "tell me", "display them", "all of them", or "which ones":
+    UNDERSTAND THIS AS A REQUEST TO LIST OR DISPLAY ALL THEIR STORED APPLICATIONS FROM THE "PERSISTENT BACKEND DATABASE"!
+  * Output a clean, beautiful Markdown table or list of all stored applications (with Company, Role, Status, Salary, Applied Date).
+  * NEVER reply with "I didn't detect any job details in that message" to conversational questions or follow-ups!
+
 OUTPUT FORMAT:
 Respond with a JSON object with:
 {
@@ -333,7 +355,7 @@ Ensure output is valid JSON.`;
               { role: 'system', content: systemPrompt },
               {
                 role: 'user',
-                content: `${databaseContext}\n\n${profileContext}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message: "${text}"`
+                content: `${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message: "${text}"`
               }
             ],
             response_format: { type: "json_object" },
@@ -386,7 +408,7 @@ Ensure output is valid JSON.`;
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
+              text: `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
             }
           ]
         }

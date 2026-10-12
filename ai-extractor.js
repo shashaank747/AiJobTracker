@@ -447,7 +447,10 @@ export const AiExtractor = {
 
     // Fast-path 3: Direct Profile commands (e.g. "add skill: ...", "add project: ...", "add sem 5 marks: ...") -> INSTANT (< 5ms)
     const isDirectProfileCmd = !isJD && /^(?:add\s+project|new\s+project|project\s*:|add\s+cert|add\s+certification|add\s+skill|add\s+technical\s+skill|remove\s+skill|add\s+sem\s+[1-8]\s+marks|update\s+college|my\s+college\s+is)\b/i.test(lower);
-    const isSimpleCountQuery = !isJD && /^(?:how\s+many\s+(?:jobs|applications|interviews|offers)|show\s+(?:my\s+)?applications|list\s+(?:my\s+)?applications)\b/i.test(lower);
+    const isSimpleCountQuery = !isJD && (
+      /^(?:how\s+many\s+(?:jobs|applications|interviews|offers|did\s+i\s+apply)|show\s+(?:my\s+|all\s+)?applications|list\s+(?:my\s+|all\s+)?applications|show\s+all|list\s+all|show\s+them|list\s+them|view\s+all|display\s+all|all\s+applications)\b/i.test(lower) ||
+      lower === 'show all' || lower === 'list all' || lower === 'show them' || lower === 'list them' || lower === '/list' || lower === '/stats'
+    );
 
     // If matches fast-path OR provider is explicitly set to offline heuristic
     if (provider === 'heuristic' || isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery || isSearchCmd || isGreeting || isIdentity || isHowAreYou || isCasualThanks || isDirectProfileCmd || isSimpleCountQuery) {
@@ -705,6 +708,11 @@ Your capabilities:
      * If no company was mentioned and multiple applications exist, list the recent applications and ask which company it belongs to, setting "data": null.
      * In "message", congratulate them on engagement, explain the screening milestone, and provide proactive advice.
 
+7. CONVERSATION CONTINUITY & CONTEXTUAL FOLLOW-UPS:
+   - Always maintain conversational continuity using CONVERSATION HISTORY.
+   - If the user sends follow-up requests (e.g. "show all", "list them", "show them", "where did i apply", "what are they", "yes", "tell me more"), understand their intent in context with prior messages!
+   - For example, if you or the user previously discussed total application counts/stats and the user follows up with "show all", list their stored applications from the database in a clean markdown table.
+
 Return ONLY valid JSON matching this schema:
 {
   "message": "Your rich, formatted markdown answer to the user",
@@ -712,13 +720,19 @@ Return ONLY valid JSON matching this schema:
   "profileUpdate": { ... } or null
 }`;
 
+    const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
+    const historyContext = recentHistory.length > 0
+      ? `CONVERSATION HISTORY (Last ${recentHistory.length} turns):\n` +
+        recentHistory.map(m => `${m.role === 'user' ? 'User' : 'Zuno'}: ${m.text || m.content || ''}`).join('\n')
+      : 'CONVERSATION HISTORY: (None - start of conversation)';
+
     const requestBody = {
       contents: [
         {
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\nPERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nUSER PROFILE:\n${profileSummary}\n\nCurrent Active Job in Session (if any):\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}\n\nUser Message:\n"${text}"`
+              text: `${systemPrompt}\n\n${historyContext}\n\nPERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nUSER PROFILE:\n${profileSummary}\n\nCurrent Active Job in Session (if any):\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None (Fresh Session)'}\n\nUser Message:\n"${text}"`
             }
           ]
         }
@@ -836,7 +850,14 @@ When user asks you to add projects, certifications, semester marks, or update pr
 When user asks to compare profile vs company requirements using "/compare": provide a comprehensive comparative analysis (Match score %, skills match vs missing, projects alignment, sem marks & education review, strengths, gap plan) and set "data": null.
 When user pastes a job description (JD) or update: extract the job details in "data" including companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes. (If user saw on Indeed/LinkedIn but applied on company portal, capture discovery link in sourceUrl and form link in applicationUrl and portal name in portalName).
 When user pastes an email or update that a recruiter viewed/seen their application: match with existing database applications, keep status as "Applied", record viewedAt and append "[Recruiter viewed application on ${today} at ${fullTimeStr}]" to notes, return data, and provide proactive advice in "message".
+Maintain conversational continuity using CONVERSATION HISTORY. If user gives follow-up instructions (e.g. "show all", "list them", "where did i apply"), understand context from previous turns and list applications from PERSISTENT BACKEND DATABASE.
 Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
+
+    const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
+    const historyContext = recentHistory.length > 0
+      ? `CONVERSATION HISTORY (Last ${recentHistory.length} turns):\n` +
+        recentHistory.map(m => `${m.role === 'user' ? 'User' : 'Zuno'}: ${m.text || m.content || ''}`).join('\n')
+      : 'CONVERSATION HISTORY: (None - start of conversation)';
 
     const response = await fetch(url, {
       method: 'POST',
@@ -851,7 +872,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `PERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nUSER PROFILE:\n${userProfile ? JSON.stringify(userProfile) : 'None'}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
+            content: `${historyContext}\n\nPERSISTENT BACKEND DATABASE:\n${databaseSummary}\n\nUSER PROFILE:\n${userProfile ? JSON.stringify(userProfile) : 'None'}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob) : 'None'}\n\nUser Input: ${text}`
           }
         ],
         temperature: 0.2
@@ -1491,7 +1512,10 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 7d. Check for Database Application Statistics & Counts
-    const isStatsQuery = !isJD && (/\b(how\s+many\s+(?:jobs|applications)|application\s+stats|stats|summary\s+of\s+(?:my\s+)?applications|overview\s+of\s+(?:my\s+)?applications|how\s+is\s+my\s+job\s+search\s+going)\b/i.test(lower) || lower === '/stats');
+    const isStatsQuery = !isJD && (
+      /\b(?:how\s+many\s+(?:jobs|applications|interviews|offers|did\s+i\s+apply)|application\s+stats|total\s+(?:applications?|jobs?)|job\s+stats|stats|summary\s+of\s+(?:my\s+)?applications?|overview\s+of\s+(?:my\s+)?applications?|how\s+is\s+my\s+job\s+search\s+going)\b/i.test(lower) ||
+      lower === '/stats'
+    );
     if (isStatsQuery) {
       if (!allApplications || allApplications.length === 0) {
         return {
@@ -1518,9 +1542,18 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // 8. Check for "Show all applications" / "List applications"
-    const isListQuery = !isJD && (/\b(?:show|list|display|view|get)\s+(?:all\s+)?(?:past\s+|stored\s+|my\s+)?(?:jobs|applications)\b/i.test(lower) ||
-                        /\bwhat\s+(?:jobs|applications)\s+(?:did\s+i|have\s+i)\s+(?:apply|applied|stored|saved)\b/i.test(lower) ||
-                        lower === '/list');
+    const lastAssistantMsg = Array.isArray(history) && history.length > 0 ?
+      (history.filter(m => m.role === 'assistant').slice(-1)[0]?.text || '') : '';
+    const isFollowUpToStats = /(?:Your Persistent Job Tracker Stats|Total Tracked Applications|Show all applications)/i.test(lastAssistantMsg);
+
+    const isListQuery = !isJD && (
+      (isFollowUpToStats && /^(?:show\s+all|list\s+all|show\s+them|list\s+them|show|list|yes|yes\s+please|all|view\s+all|view\s+them|all\s+of\s+them|give\s+me\s+the\s+list)\b/i.test(lower)) ||
+      /\b(?:show|list|display|view|get|see)\s+(?:all\s+)?(?:past\s+|stored\s+|my\s+|the\s+)?(?:jobs?|applications?)\b/i.test(lower) ||
+      /\b(?:show\s+all|list\s+all|show\s+them|list\s+them|view\s+all|display\s+all)\b/i.test(lower) ||
+      /\bwhat\s+(?:jobs|applications)\s+(?:did\s+i|have\s+i)\s+(?:apply|applied|stored|saved)\b/i.test(lower) ||
+      /\b(?:where\s+did\s+i\s+apply|what\s+did\s+i\s+apply\s+to|what\s+companies\s+did\s+i\s+apply\s+to|companies\s+i\s+applied\s+to)\b/i.test(lower) ||
+      lower === '/list' || lower === 'show all' || lower === 'list all' || lower === 'show them' || lower === 'list them'
+    );
     if (isListQuery) {
       if (!allApplications || allApplications.length === 0) {
         return {
