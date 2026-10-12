@@ -443,7 +443,12 @@ export const AiExtractor = {
     const isGreeting = !isJD && /^(?:hi|hello|hey|hiya|howdy|good\s*(?:morning|afternoon|evening)|sup|yo|hola)(?:\s+zuno)?\b[!?. ]*$/i.test(trimmed);
     const isIdentity = !isJD && /^(who are you|what is your name|what's your name|your name)\b[!?. ]*$/i.test(lower);
     const isHowAreYou = !isJD && /^(how are you|how's it going|how are you doing)\b[!?. ]*$/i.test(lower);
-    const isCasualThanks = !isJD && /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
+    const isSmallTalkOrAffirmation = !isJD && (
+      /^(?:nice(?:\s+(?:one|work|job|table|list))?|cool(?:\s+(?:thanks|one))?|great(?:\s+(?:job|work))?|awesome|sweet|super|superb|amazing|neat|wonderful|fantastic|brilliant|perfect|good(?:\s+(?:job|work|one))?|very\s+good|looks\s+good|sounds\s+good|love\s+it|loved\s+it|wow|woah|appreciated|much\s+appreciated|thanks(?:\s+a\s+lot|\s+so\s+much|\s+zuno)?|thank\s+you(?:\s+so\s+much|\s+very\s+much|\s+zuno)?|thx|ty|tysm|ok|okay|alright|all\s+right|fine|fair\s+enough|understood|got\s+it|gotcha|noted|makes\s+sense|i\s+see|clear|yep|yeah|yes|sure|definitely|absolutely|yup|haha|lol|lmao|hehe|good\s+bot|you('re|\s+are)\s+(?:awesome|great|cool|the\s+best))\b[!?. ]*$/i.test(trimmed) ||
+      /^(?:bye|goodbye|see\s+you|cya|take\s+care|good\s*night)\b[!?. ]*$/i.test(trimmed) ||
+      /^(?:tell\s+me\s+a\s+joke|joke|make\s+me\s+laugh)\b/i.test(lower) ||
+      /^(?:what\s+(?:should|can)\s+(?:we|i)\s+do(?:\s+next)?|what\s+next|next\s+step[s]?)\b/i.test(lower)
+    );
 
     // Fast-path 3: Direct Profile commands (e.g. "add skill: ...", "add project: ...", "add sem 5 marks: ...") -> INSTANT (< 5ms)
     const isDirectProfileCmd = !isJD && /^(?:add\s+project|new\s+project|project\s*:|add\s+cert|add\s+certification|add\s+skill|add\s+technical\s+skill|remove\s+skill|add\s+sem\s+[1-8]\s+marks|update\s+college|my\s+college\s+is)\b/i.test(lower);
@@ -453,7 +458,7 @@ export const AiExtractor = {
     );
 
     // If matches fast-path OR provider is explicitly set to offline heuristic
-    if (provider === 'heuristic' || isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery || isSearchCmd || isGreeting || isIdentity || isHowAreYou || isCasualThanks || isDirectProfileCmd || isSimpleCountQuery) {
+    if (provider === 'heuristic' || isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery || isSearchCmd || isGreeting || isIdentity || isHowAreYou || isSmallTalkOrAffirmation || isDirectProfileCmd || isSimpleCountQuery) {
       result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile, history);
     } else {
       // 2. Try Vercel Serverless /api/chat with strict 4.2-second hard timeout
@@ -981,11 +986,62 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
         };
       }
 
-      // 5. Check for Casual affirmations
-      const isCasual = /^(ok|okay|cool|thanks|thank you|great|awesome|understood|got it)\b[!?. ]*$/i.test(trimmed);
-      if (isCasual) {
+      // 5. Check for Casual affirmations, compliments & small talk
+      const isAffirmation = /^(?:nice(?:\s+(?:one|work|job|table|list))?|cool(?:\s+(?:thanks|one))?|great(?:\s+(?:job|work))?|awesome|sweet|super|superb|amazing|neat|wonderful|fantastic|brilliant|perfect|good(?:\s+(?:job|work|one))?|very\s+good|looks\s+good|sounds\s+good|love\s+it|loved\s+it|wow|woah|appreciated|much\s+appreciated|thanks(?:\s+a\s+lot|\s+so\s+much|\s+zuno)?|thank\s+you(?:\s+so\s+much|\s+very\s+much|\s+zuno)?|thx|ty|tysm|ok|okay|alright|all\s+right|fine|fair\s+enough|understood|got\s+it|gotcha|noted|makes\s+sense|i\s+see|clear|yep|yeah|yes|sure|definitely|absolutely|yup|haha|lol|lmao|hehe|good\s+bot|you('re|\s+are)\s+(?:awesome|great|cool|the\s+best))\b[!?. ]*$/i.test(trimmed);
+
+      if (isAffirmation) {
+        const lastAssistantMsg = Array.isArray(history) && history.length > 0
+          ? (history.filter(m => m.role === 'assistant').slice(-1)[0]?.text || '')
+          : '';
+
+        const justShowedList = /(?:Stored Applications in Your Database|applications? in your (?:database|tracker)|Company.*Role.*Status)/i.test(lastAssistantMsg);
+        const justShowedStats = /(?:Your Persistent Job Tracker Stats|Total Tracked Applications)/i.test(lastAssistantMsg);
+        const justUpdatedProfile = /(?:Project Added|Academic Record|Semester Marks|Candidate Dossier)/i.test(lastAssistantMsg);
+        const justExtractedJob = /(?:Successfully extracted job details|Updated \*\*)/i.test(lastAssistantMsg);
+
+        let replyMsg = "Glad to help! 😊 Feel free to paste a Job Description to track, ask me about any company (*'Tell me about Samsung'*), or let me know what you'd like to do next.";
+
+        if (justShowedList) {
+          replyMsg = "Glad you liked the list! 🚀 Whenever you're ready, you can paste another Job Description to track it, ask about any specific company (*'Tell me about Stripe'*), or filter by interviews.";
+        } else if (justShowedStats) {
+          replyMsg = "Awesome! You're making steady progress in your job search. Type **'Show all'** to see the full list of roles, or let me know if you want interview tips!";
+        } else if (justUpdatedProfile) {
+          replyMsg = "You're very welcome! Your About Me profile is updated and ready. Let me know whenever you want to add more projects, certifications, or marks.";
+        } else if (justExtractedJob) {
+          replyMsg = "Glad to help! You can type **/store** to permanently save this application to your database, or paste another job description!";
+        }
+
         return {
-          message: "You're welcome! Whenever you have another job to track or want to update your projects and profile, feel free to ask.",
+          message: replyMsg,
+          data: null
+        };
+      }
+
+      // 5b. Jokes
+      if (/^(?:tell\s+me\s+a\s+joke|joke|make\s+me\s+laugh)\b/i.test(lower)) {
+        const jokes = [
+          "Why do programmers prefer dark mode? Because light attracts bugs! 🐛😄\n\nWhenever you're ready, paste a JD or ask about any company!",
+          "Why did the developer quit their job? Because they didn't get arrays! 😂\n\nLet me know if you want to track an application or prepare for interview rounds!",
+          "There are 10 types of people in the world: those who understand binary, and those who don't! 💻\n\nHow can I help with your job search today?"
+        ];
+        return {
+          message: jokes[Math.floor(Math.random() * jokes.length)],
+          data: null
+        };
+      }
+
+      // 5c. What next / guidance
+      if (/^(?:what\s+(?:should|can)\s+(?:we|i)\s+do(?:\s+next)?|what\s+next|next\s+step[s]?)\b/i.test(lower)) {
+        return {
+          message: "Here are great next steps we can take:\n\n1. **Track a Job**: Paste any job description or application email.\n2. **Inspect Applications**: Ask *'Show all applications'* or *'Did I apply to Stripe?'*.\n3. **Interview Preparation**: Ask *'What interview questions will they ask for [Company]?'*.\n4. **Update Profile**: Tell me your latest project, certification, or semester marks.\n\nWhat would you like to do?",
+          data: null
+        };
+      }
+
+      // 5d. Friendly sign-offs
+      if (/^(?:bye|goodbye|see\s+you|cya|take\s+care|good\s*night)\b[!?. ]*$/i.test(trimmed)) {
+        return {
+          message: "Goodbye for now! 👋 Best of luck with your job hunt and interview preparation. I'll be here whenever you need me!",
           data: null
         };
       }
@@ -2109,6 +2165,15 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       if (/[?]|^(what|how|why|can|could|tell|explain|give|describe|advice|tips|guide|suggest|prepare|interview|resume|portfolio|salary)/i.test(trimmed)) {
         return {
           message: `### 🤖 Career Advisor & Interview Assistant\n\nI'm here to help with your career questions and job search!\n\nHere are key recommendations regarding your query:\n- **Strategic Preparation**: Focus on high-frequency interview patterns (System Design, DSA, and behavioral STAR stories).\n- **Application Tracking**: Whenever you apply to a role or find an open vacancy, paste the **Job Description** or URL here to automatically track it on your board with interview status updates.\n- **Company Intelligence**: Ask about any company (e.g., *'Tell me about Paytm'*, *'Tell me about Samsung'*, *'Google'*) for detailed tech stacks and interview breakdowns.\n\n💡 *Tip: You can also connect your own Gemini API key or OpenAI key in **Settings (⚙️)** for unlimited live AI conversations!`,
+          data: null
+        };
+      }
+
+      // Check if it's general casual talk or conversational remarks
+      const isShortChitChat = trimmed.length < 90 && !/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(trimmed) && !/https?:\/\//i.test(trimmed);
+      if (isShortChitChat) {
+        return {
+          message: "I'm with you! 😊 Let me know how I can help with your job search—you can paste a **Job Description** to extract and track it, ask about any company (*'Tell me about Samsung'*), update your **About Me** profile, or type **/stats** to inspect your applications.",
           data: null
         };
       }
