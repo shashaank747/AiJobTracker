@@ -2368,6 +2368,7 @@ class JobTrackerApp {
     if (specialCard) {
       this.bindWidgetCardEvents(msgDiv, specialCard);
     }
+    return msgDiv;
   }
 
   createTimeDateCardHtml(cardData) {
@@ -4098,10 +4099,39 @@ class JobTrackerApp {
     this.chatViewport.addEventListener('drop', handleDrop);
   }
 
-  scrollToBottom() {
+  scrollToBottom(targetElement = null) {
     setTimeout(() => {
-      this.chatViewport.scrollTop = this.chatViewport.scrollHeight;
-    }, 50);
+      if (!this.chatViewport) return;
+
+      const target = targetElement || this.chatMessagesEl?.lastElementChild;
+      if (!target) {
+        this.chatViewport.scrollTop = this.chatViewport.scrollHeight;
+        return;
+      }
+
+      // Check if target is an assistant message (and not the temporary thinking spinner)
+      const isAssistant = target.classList?.contains('assistant') && !target.classList?.contains('thinking-wrapper');
+      const viewportHeight = this.chatViewport.clientHeight;
+      const targetHeight = target.offsetHeight;
+
+      // If the assistant message is big (takes > 45% of viewport height or exceeds it),
+      // scroll so the START of the reply is placed right at the top of the viewport!
+      if (isAssistant && targetHeight > viewportHeight * 0.45) {
+        const viewportRect = this.chatViewport.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const relativeTop = targetRect.top - viewportRect.top + this.chatViewport.scrollTop;
+
+        this.chatViewport.scrollTo({
+          top: Math.max(0, relativeTop - 16),
+          behavior: 'smooth'
+        });
+      } else {
+        this.chatViewport.scrollTo({
+          top: this.chatViewport.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    }, 60);
   }
 
   escapeHtml(str) {
