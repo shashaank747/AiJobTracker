@@ -65,59 +65,7 @@
   --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ==========================================================================
-   Dull Light Theme (Matte, restful, non-glare, eye-friendly)
-   ========================================================================== */
-body.theme-light {
-  --bg-main: #d8dde3;
-  --bg-sidebar: #cbd2dc;
-  --bg-card: rgba(235, 239, 245, 0.96);
-  --bg-card-hover: #ffffff;
-  --bg-input: #dfe4eb;
-  --border-subtle: rgba(15, 23, 42, 0.13);
-  --border-hover: rgba(15, 23, 42, 0.25);
-  --border-focus: #1e293b;
 
-  /* Accent Gradients & Colors */
-  --primary: #1e293b;
-  --primary-hover: #0f172a;
-  --primary-glow: rgba(30, 41, 59, 0.15);
-  --accent-cyan: #475569;
-  --accent-emerald: #059669;
-  --accent-amber: #d97706;
-  --accent-rose: #e11d48;
-  --accent-purple: #7c3aed;
-
-  /* Status Colors */
-  --status-applied-bg: rgba(15, 23, 42, 0.08);
-  --status-applied-text: #1e293b;
-  --status-applied-border: rgba(15, 23, 42, 0.18);
-
-  --status-interview-bg: rgba(217, 119, 6, 0.12);
-  --status-interview-text: #b45309;
-  --status-interview-border: rgba(217, 119, 6, 0.28);
-
-  --status-offer-bg: rgba(5, 150, 105, 0.12);
-  --status-offer-text: #047857;
-  --status-offer-border: rgba(5, 150, 105, 0.28);
-
-  --status-rejected-bg: rgba(225, 29, 72, 0.12);
-  --status-rejected-text: #be123c;
-  --status-rejected-border: rgba(225, 29, 72, 0.28);
-
-  --status-bookmarked-bg: rgba(124, 58, 237, 0.12);
-  --status-bookmarked-text: #6d28d9;
-  --status-bookmarked-border: rgba(124, 58, 237, 0.28);
-
-  /* Typography & Text */
-  --text-main: #0f172a;
-  --text-muted: #334155;
-  --text-subtle: #64748b;
-
-  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.12);
-  --shadow-glow: 0 0 24px rgba(15, 23, 42, 0.15);
-}
 
 * {
   margin: 0;
@@ -1020,95 +968,7 @@ body {
   flex-shrink: 0;
 }
 
-/* Animated Day/Night SVG Theme Toggle */
-#theme-toggle-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 28px;
-  cursor: pointer;
-  margin: 0 4px 0 0;
-  flex-shrink: 0;
-  user-select: none;
-  border-radius: 999px;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  vertical-align: middle;
-}
 
-#theme-toggle-button:hover {
-  transform: scale(1.06);
-}
-
-#theme-toggle-button svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/* Hide default HTML checkbox */
-#toggle {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  position: absolute;
-  pointer-events: none;
-}
-
-#container,
-#patches,
-#stars,
-#button,
-#sun,
-#moon,
-#cloud {
-  transition-property: all;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 0.3s;
-}
-
-/* Day / Dull Light state (unchecked) */
-#sun {
-  opacity: 1;
-}
-
-#moon {
-  opacity: 0;
-}
-
-#cloud {
-  opacity: 1;
-}
-
-#stars {
-  opacity: 0;
-}
-
-/* Night / Dark state (checked) */
-#toggle:checked + svg #container {
-  fill: #2b4360;
-}
-
-#toggle:checked + svg #button {
-  transform: translate(28px, 2.333px);
-}
-
-#toggle:checked + svg #sun {
-  opacity: 0;
-}
-
-#toggle:checked + svg #moon {
-  opacity: 1;
-}
-
-#toggle:checked + svg #cloud {
-  opacity: 0;
-}
-
-#toggle:checked + svg #stars {
-  opacity: 1;
-}
 
 .topbar-right {
   display: flex;
@@ -3432,12 +3292,7 @@ body {
     height: 18px;
   }
 
-  #theme-toggle-button {
-    transform: scale(0.72);
-    transform-origin: center right;
-    margin: 0 2px 0 0;
-    flex-shrink: 0;
-  }
+
 
   .topbar-right {
     gap: 6px;

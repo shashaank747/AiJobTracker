@@ -249,6 +249,31 @@ CRITICAL INSTRUCTION FOR RECRUITER & INTERVIEW CALL LOGGING ("I got a call from.
      - Summarize what you logged (status updated to Interviewing, recruiter name, and questions recorded).
      - Provide tailored tips or preparation guidance for the questions they were asked or for their upcoming interview rounds.
 
+CRITICAL INSTRUCTION FOR APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Recruiter has seen my application", "Your application was viewed", "Resume downloaded", etc.):
+- When the user pastes an email snippet, notification, or message stating that a recruiter or employer has viewed, seen, opened, or reviewed their application or downloaded their resume (e.g., "Your application was viewed by recruiter at Razorpay", "Recruiter from Google has seen my application", "Your application was viewed", "Good news, your application for SDE at Microsoft was viewed"):
+  1. IDENTIFY THE APPLICATION:
+     - Check if the company or role exists in "Active Job in Session" or in "PERSISTENT BACKEND DATABASE".
+     - Match against companyName or roleTitle.
+     - If matched, update that existing application. PRESERVE its existing roleTitle, salary, URLs, and details.
+     - If the company name is not mentioned in the email snippet, check "Active Job in Session" first. If not present, check "PERSISTENT BACKEND DATABASE" for pending applications. If multiple exist, list the recent ones in "message" and ask which company it belongs to, setting "data": null. If only 1 exists, match it automatically!
+     - If it's a new company mentioned in the email not yet in the database, create a new record for it with status "Applied".
+  2. STATUS HANDLING:
+     - Keep status as "Applied" (do NOT change to Interviewing unless an actual interview or call is scheduled).
+  3. TIMELINE & NOTES LOGGING:
+     - Set "viewedAt": "${today} at ${fullTimeStr}"
+     - Format and append a clean timestamped entry into "notes":
+       "[Recruiter viewed application on YYYY-MM-DD at HH:MM AM/PM]: Recruiter reviewed application / resume"
+       (Preserve any previous notes and append this entry).
+  4. RETURN STRUCTURED DATA:
+     - Return the updated application object in "data".
+  5. CONVERSATIONAL RESPONSE ("message"):
+     - Warmly congratulate the user on profile engagement!
+     - Clearly explain what happened: application notes updated with the timestamped recruiter view event.
+     - Share actionable career advisory:
+       * Explain that a viewed notification means the resume passed initial filters and was inspected by a human recruiter or hiring manager.
+       * Recommend reviewing the company's tech stack and preparing for an initial phone screen.
+       * Provide a polite follow-up suggestion (e.g. wait 5-7 business days before reaching out on LinkedIn if no response).
+
 5. CANDIDATE PROFILE VS COMPANY REQUIREMENTS COMPARISON ("/compare" COMMAND):
 - STRICT REQUIREMENT: Only provide this in-depth comparative audit when the user explicitly triggers the "/compare" command (e.g., "/compare", "/compare <company>", "/compare me"). Do NOT output this comparison during standard job logging or casual questions unless "/compare" is requested.
 - When "/compare" is triggered:
@@ -343,14 +368,12 @@ Ensure output is valid JSON.`;
       });
     }
 
-    // Modern ultra-fast, low-latency Gemini models
+    // Reliable official Gemini models
     const candidateModels = [
-      'gemini-2.5-flash-lite',
-      'gemini-flash-lite-latest',
-      'gemini-2.5-flash',
-      'gemini-flash-latest',
-      'gemini-3.1-flash-lite',
-      'gemini-3.8-flash'
+      'gemini-1.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash-8b',
+      'gemini-1.5-pro'
     ];
 
     let lastError = null;
@@ -371,15 +394,15 @@ Ensure output is valid JSON.`;
     };
 
     const serverStartTime = Date.now();
-    const MAX_SERVER_BUDGET_MS = 3800; // Keep entire backend processing strictly under 3.8s
+    const MAX_SERVER_BUDGET_MS = 9200; // Keep processing within standard serverless budget
 
     for (const model of candidateModels) {
       const elapsed = Date.now() - serverStartTime;
       const remainingTime = MAX_SERVER_BUDGET_MS - elapsed;
-      if (remainingTime <= 600) break; // Don't initiate if budget exhausted
+      if (remainingTime <= 1000) break; // Don't initiate if budget exhausted
 
       const controller = new AbortController();
-      const perModelTimeout = Math.min(remainingTime, 3000);
+      const perModelTimeout = Math.min(remainingTime, 7000);
       const timer = setTimeout(() => controller.abort(), perModelTimeout);
 
       try {
@@ -399,8 +422,11 @@ Ensure output is valid JSON.`;
         } else {
           const errData = await response.json().catch(() => ({}));
           const errMsg = errData.error?.message || response.statusText;
+          const is429 = response.status === 429;
           modelErrors[model] = `HTTP ${response.status}: ${errMsg}`;
-          lastError = errMsg;
+          lastError = is429
+            ? 'Gemini API quota or rate limit exceeded (HTTP 429). Free tier allows up to 15 requests/minute.'
+            : errMsg;
         }
       } catch (err) {
         clearTimeout(timer);
@@ -410,8 +436,10 @@ Ensure output is valid JSON.`;
     }
 
     if (!candidateText) {
-      return res.status(500).json({
+      const isRateLimited = Object.values(modelErrors).some(e => e.includes('429'));
+      return res.status(isRateLimited ? 429 : 500).json({
         error: lastError || 'No response generated by Gemini models.',
+        isRateLimited,
         details: modelErrors
       });
     }

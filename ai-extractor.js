@@ -295,7 +295,8 @@ export const AiExtractor = {
       /\b(?:role|position|job\s+title)\s*[:\-]/i,
       /\b(?:apply\s+(?:here|now|before|link|url)|how\s+to\s+apply)\b/i,
       /\b(?:salary|compensation|benefits|stipend|ctc|package)\s*[:\-]/i,
-      /\b(?:here\s+is\s+(?:the\s+|a\s+)?jd|analyze\s+this\s+jd|parse\s+this\s+jd|track\s+this\s+job|save\s+this\s+job)\b/i
+      /\b(?:here\s+is\s+(?:the\s+|a\s+)?jd|analyze\s+this\s+jd|parse\s+this\s+jd|track\s+this\s+job|save\s+this\s+job)\b/i,
+      /\b(?:application\s+(?:viewed|seen|reviewed|opened|received|status)|recruiter\s+(?:viewed|seen|reviewed|called|reached\s+out)|resume\s+(?:viewed|downloaded))\b/i
     ];
 
     if (explicitMarkers.some(re => re.test(text))) {
@@ -312,6 +313,21 @@ export const AiExtractor = {
     }
 
     return false;
+  },
+
+  /**
+   * Accurately detect if the user message is an email or status update about a recruiter viewing/seeing an application
+   */
+  isApplicationNotification(text) {
+    if (!text || typeof text !== 'string') return false;
+    const lower = text.toLowerCase();
+    return /(?:recruiter|hiring\s+team|employer|company)?\s*(?:has\s+)?(?:seen|viewed|reviewed|opened|checked|looked\s+at)\s+(?:your|my)\s+application/i.test(lower) ||
+      /(?:your|my)\s+application\s+(?:was|has\s+been|is)\s+(?:viewed|reviewed|seen|opened|checked)/i.test(lower) ||
+      /(?:recruiter|employer)\s+(?:downloaded|viewed|seen|opened)\s+(?:your|my)\s+resume/i.test(lower) ||
+      /(?:your|my)?\s*resume\s+(?:was\s+)?(?:downloaded|viewed|seen|opened|reviewed)/i.test(lower) ||
+      /\b(?:application\s+(?:viewed|seen|reviewed|opened)|resume\s+(?:viewed|downloaded))\b/i.test(lower) ||
+      /(?:status\s+update|good\s+news|update\s+on\s+your\s+application).*?(?:viewed|seen|reviewed|opened)/i.test(lower) ||
+      /\b(?:recruiter\s+(?:has\s+)?seen|recruiter\s+viewed|application\s+was\s+viewed|employer\s+viewed)\b/i.test(lower);
   },
 
   /**
@@ -435,7 +451,7 @@ export const AiExtractor = {
 
     // If matches fast-path OR provider is explicitly set to offline heuristic
     if (provider === 'heuristic' || isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery || isSearchCmd || isGreeting || isIdentity || isHowAreYou || isCasualThanks || isDirectProfileCmd || isSimpleCountQuery) {
-      result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
+      result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile, history);
     } else {
       // 2. Try Vercel Serverless /api/chat with strict 4.2-second hard timeout
       const requestStart = Date.now();
@@ -497,7 +513,7 @@ export const AiExtractor = {
 
       // 3. Fallback: Ultra-fast offline Smart Career Advisor & Heuristic Extractor (< 5ms)
       if (!result) {
-        result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile);
+        result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile, history);
       }
     }
 
@@ -682,6 +698,12 @@ Your capabilities:
      * Compare candidate's About Me data (education, sem 1-8 marks, projects with tech and finish dates, certs, skills) against company requirements.
      * Format a rich Markdown report with Match Score %, Skills alignment table (matched vs missing), Projects fit, Academic review, Strengths, and Gap preparation.
      * Set "data": null and "profileUpdate": null.
+6. APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Recruiter has seen my application", "Your application was viewed", "Resume downloaded", etc.):
+   - When user pastes an email snippet or update that a recruiter or employer viewed or saw their application:
+     * Match with "Current Active Job in Session" or "PERSISTENT BACKEND DATABASE" (matching companyName or roleTitle).
+     * If matched or company is extracted, update that application, keep status as "Applied", set "viewedAt": "${today} at ${fullTimeStr}", and append "[Recruiter viewed application on ${today} at ${fullTimeStr}]: Recruiter reviewed application" to "notes". Return this application in "data".
+     * If no company was mentioned and multiple applications exist, list the recent applications and ask which company it belongs to, setting "data": null.
+     * In "message", congratulate them on engagement, explain the screening milestone, and provide proactive advice.
 
 Return ONLY valid JSON matching this schema:
 {
@@ -813,6 +835,7 @@ When user asks about past applications, statistics, interview status, specific a
 When user asks you to add projects, certifications, semester marks, or update profile: return structured "profileUpdate" in JSON and set "data": null.
 When user asks to compare profile vs company requirements using "/compare": provide a comprehensive comparative analysis (Match score %, skills match vs missing, projects alignment, sem marks & education review, strengths, gap plan) and set "data": null.
 When user pastes a job description (JD) or update: extract the job details in "data" including companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes. (If user saw on Indeed/LinkedIn but applied on company portal, capture discovery link in sourceUrl and form link in applicationUrl and portal name in portalName).
+When user pastes an email or update that a recruiter viewed/seen their application: match with existing database applications, keep status as "Applied", record viewedAt and append "[Recruiter viewed application on ${today} at ${fullTimeStr}]" to notes, return data, and provide proactive advice in "message".
 Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
 
     const response = await fetch(url, {
@@ -856,13 +879,16 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
    * Smart Offline NLP Heuristic & Career Advisor
    * Handles company research, interview prep, greetings, AND job parsing offline
    */
-  extractWithHeuristics(text, existingJob = null, allApplications = [], userProfile = null) {
+  extractWithHeuristics(text, existingJob = null, allApplications = [], userProfile = null, history = []) {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
     const isJD = this.isJobDescription(text);
+    const isViewedNotification = this.isApplicationNotification(text);
+    const isFollowUpToViewed = Array.isArray(history) && history.length > 0 &&
+      history.slice(-2).some(m => m.role === 'assistant' && /(?:recruiter\s+(?:viewed|seen)\s+notification|which\s+of\s+your\s+(?:recent\s+|tracked\s+)?applications\s+was\s+this\s+for)/i.test(m.text || ''));
 
-    // If NOT a job description, check for conversational shortcuts, greetings, and utility widgets
-    if (!isJD) {
+    // If NOT a job description AND not an application viewed notification, check for conversational shortcuts, greetings, and utility widgets
+    if (!isJD && !isViewedNotification && !isFollowUpToViewed) {
       // 0. Check for /compare command
       const isCompareCommand = /^\/(?:compare|cmp)\b/i.test(trimmed) || /^(?:compare\s+(?:me|my\s+profile|profile)\b)/i.test(lower);
       if (isCompareCommand) {
@@ -1673,6 +1699,149 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
           `5. *Tell me about a time you had to deliver a critical feature under tight deadlines.*\n\n` +
           `💡 **Tip:** Need to update the status of this application? You can say *"Update status to Interviewing"* or click the status badge!`,
         data: null
+      };
+    }
+
+    // ==========================================
+    // 6b. Recruiter Viewed / Seen Application Notification Flow
+    // ==========================================
+    if (isViewedNotification || isFollowUpToViewed) {
+      const today = new Date().toISOString().split('T')[0];
+      const currentTimeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      // 1. Try to find company name in text
+      let targetApp = null;
+      let extractedCompany = '';
+      let extractedRole = '';
+
+      // Check against allApplications first (direct match of companyName within user text)
+      if (Array.isArray(allApplications) && allApplications.length > 0) {
+        for (const app of allApplications) {
+          const co = (app.companyName || '').trim();
+          if (co.length >= 2) {
+            const coRegex = new RegExp(`\\b${co.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            if (coRegex.test(text)) {
+              targetApp = app;
+              extractedCompany = co;
+              break;
+            }
+          }
+        }
+      }
+
+      // Check regex patterns for company name in notification text
+      if (!targetApp) {
+        const prepMatch = text.match(/\b(?:at|from|by|with)\s+([A-Z][a-zA-Z0-9&.\-]*)/);
+        const subjectMatch = text.match(/\b([A-Z][a-zA-Z0-9&.\-]*)\s+(?:has\s+)?(?:viewed|reviewed|seen|opened)\s+(?:your|my)\s+application/);
+        const appToMatch = text.match(/\b(?:application\s+(?:to|at|for))\s+([A-Z][a-zA-Z0-9&.\-]*)/);
+
+        const cand = (prepMatch && prepMatch[1]) || (subjectMatch && subjectMatch[1]) || (appToMatch && appToMatch[1]);
+        if (cand) {
+          const stopWords = ['the', 'this', 'a', 'an', 'my', 'your', 'recruiter', 'employer', 'hiring', 'team', 'linkedin', 'indeed', 'glassdoor', 'naukri', 'wellfound'];
+          if (cand.length >= 2 && !stopWords.includes(cand.toLowerCase())) {
+            extractedCompany = cand.trim();
+            if (Array.isArray(allApplications)) {
+              targetApp = allApplications.find(a =>
+                (a.companyName || '').toLowerCase().includes(extractedCompany.toLowerCase()) ||
+                extractedCompany.toLowerCase().includes((a.companyName || '').toLowerCase())
+              ) || null;
+            }
+          }
+        }
+      }
+
+      // If user is directly answering the follow-up prompt with a company name
+      if (!targetApp && isFollowUpToViewed && Array.isArray(allApplications)) {
+        const cleanReply = trimmed.toLowerCase().replace(/^(?:it\s+is\s+|it's\s+|for\s+|at\s+)/i, '').trim();
+        targetApp = allApplications.find(a =>
+          cleanReply.includes((a.companyName || '').toLowerCase()) ||
+          (a.companyName || '').toLowerCase().includes(cleanReply)
+        ) || null;
+      }
+
+      // Extract potential role title if mentioned (e.g. "for Software Engineer at Google")
+      const roleMatch = text.match(/(?:for\s+(?:the\s+)?([A-Za-z0-9&.\- /]{2,40})\s+(?:role|position)?\s+at)/i) ||
+                        text.match(/\b(Software Engineer|Frontend Engineer|Backend Engineer|Full Stack Developer|Data Scientist|Product Manager|DevOps Engineer|UI\/UX Designer|Machine Learning Engineer|AI Engineer|QA Engineer|Systems Architect|Solutions Architect|Cloud Engineer|Intern)\b/i);
+      if (roleMatch) {
+        extractedRole = roleMatch[1].trim();
+      }
+
+      // If still no targetApp, check if there is an active session job
+      if (!targetApp && existingJob && (existingJob.companyName || existingJob.roleTitle)) {
+        targetApp = existingJob;
+      }
+
+      // If still no targetApp and allApplications has exactly 1 application
+      if (!targetApp && Array.isArray(allApplications) && allApplications.length === 1 && !extractedCompany) {
+        targetApp = allApplications[0];
+      }
+
+      // If still no targetApp:
+      if (!targetApp) {
+        if (!extractedCompany) {
+          if (!Array.isArray(allApplications) || allApplications.length === 0) {
+            return {
+              message: `### 👀 Recruiter Viewed Notification Detected!\n\nI noticed a recruiter has seen your application!\n\nHowever, you don't have any applications stored in your database yet, and no company name was mentioned in your message.\n\nTo track this, tell me the company name (e.g. *"Recruiter viewed my application for Google"*) or paste the Job Description!`,
+              data: null
+            };
+          } else {
+            const recentList = allApplications.slice(-5).reverse().map((a, i) => `${i + 1}. **${a.companyName}** — *${a.roleTitle}* (Applied: ${a.appliedDate || 'N/A'})`).join('\n');
+            return {
+              message: `### 👀 Recruiter Viewed Notification Detected!\n\nGreat news! A recruiter or hiring team has opened and viewed your application.\n\nHowever, the notification snippet didn't specify the company name. **Which of your recent applications was this for?**\n\n${recentList}\n\n*Simply reply with the company name (e.g. \"${allApplications[allApplications.length - 1].companyName}\") to log this event!*`,
+              data: null
+            };
+          }
+        } else {
+          // Company was extracted from notification, but not in allApplications -> create new application!
+          targetApp = {
+            companyName: extractedCompany,
+            roleTitle: extractedRole || 'Software Professional',
+            jobType: 'Full-time',
+            workMode: 'On-site',
+            location: 'Not specified',
+            salary: 'Not disclosed',
+            source: parseJobSource(text) || 'Portal',
+            portalName: parsePortalName(text) || '',
+            applicationUrl: '',
+            sourceUrl: '',
+            status: 'Applied',
+            appliedDate: parseAppliedDate(text, null) || today,
+            appliedTime: currentTimeStr,
+            skills: [],
+            notes: ''
+          };
+        }
+      }
+
+      // Prepare updated targetData
+      const targetData = { ...targetApp };
+      targetData.status = targetData.status || 'Applied';
+      targetData.viewedAt = `${today} at ${currentTimeStr}`;
+
+      const viewLogEntry = `[Recruiter viewed application on ${today} at ${currentTimeStr}]`;
+      if (!targetData.notes || !targetData.notes.includes(`[Recruiter viewed application on ${today}`)) {
+        targetData.notes = targetData.notes ? `${targetData.notes}\n${viewLogEntry}` : viewLogEntry;
+      }
+
+      const isExistingDbRecord = Array.isArray(allApplications) && allApplications.some(a => a.id === targetData.id);
+      const coName = targetData.companyName || 'Target Company';
+      const rTitle = targetData.roleTitle || 'Role';
+
+      const respMsg = `### 👀 Application Viewed by Recruiter: **${coName}** (${rTitle})\n\n` +
+        `🎉 **Great news!** A recruiter or hiring team has opened and reviewed your application for **${coName}**.\n\n` +
+        `📌 **Tracker Updates:**\n` +
+        `- **Status:** Kept as \`${targetData.status}\` (Application Viewed)\n` +
+        `- **Timeline Log:** Added \`${viewLogEntry}\` to notes\n` +
+        `- **Database:** ${isExistingDbRecord ? 'Synced with your existing database record' : 'Drafted new tracked application in session'}\n\n` +
+        `💡 **What This Means & Proactive Next Steps:**\n` +
+        `- **Resume Passed Initial Screening:** A recruiter opening your application means your profile successfully surfaced through initial screening or ATS filters.\n` +
+        `- **Prepare for Initial Contact:** Keep your phone, email, and LinkedIn active. Review the key requirements for **${coName}** in case they reach out for an initial phone screen.\n` +
+        `- **Follow-up Window:** If you don't hear back within **5 to 7 business days**, consider sending a brief, polite follow-up message to a recruiter or hiring manager at **${coName}** on LinkedIn!`;
+
+      return {
+        message: respMsg,
+        data: targetData,
+        provider: 'heuristic'
       };
     }
 

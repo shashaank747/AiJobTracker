@@ -70,7 +70,7 @@ export const Config = {
       geminiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '',
       geminiModel: localStorage.getItem(STORAGE_KEYS.GEMINI_MODEL) || 'gemini-1.5-flash',
       openaiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || '',
-      theme: localStorage.getItem(STORAGE_KEYS.THEME) || 'dark'
+      theme: 'dark'
     };
   },
 
@@ -82,15 +82,15 @@ export const Config = {
     if (settings.geminiKey !== undefined) localStorage.setItem(STORAGE_KEYS.GEMINI_KEY, settings.geminiKey.trim());
     if (settings.geminiModel !== undefined) localStorage.setItem(STORAGE_KEYS.GEMINI_MODEL, settings.geminiModel);
     if (settings.openaiKey !== undefined) localStorage.setItem(STORAGE_KEYS.OPENAI_KEY, settings.openaiKey.trim());
-    if (settings.theme !== undefined) localStorage.setItem(STORAGE_KEYS.THEME, settings.theme);
+    localStorage.setItem(STORAGE_KEYS.THEME, 'dark');
   },
 
   getTheme() {
-    return localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
+    return 'dark';
   },
 
-  setTheme(theme) {
-    localStorage.setItem(STORAGE_KEYS.THEME, theme);
+  setTheme() {
+    localStorage.setItem(STORAGE_KEYS.THEME, 'dark');
   },
 
   getLocalApplications() {

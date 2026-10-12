@@ -20,6 +20,13 @@ const SLASH_COMMANDS = [
     action: 'store'
   },
   {
+    cmd: '/delete',
+    label: 'Delete Application',
+    desc: 'Delete the active application or remove by company name (e.g. /delete Google)',
+    icon: '🗑️',
+    action: 'delete'
+  },
+  {
     cmd: '/compare',
     label: 'Compare Profile vs Company Requirements',
     desc: 'Compare your About Me profile (education, sem marks, projects, certs) against company requirements',
@@ -142,10 +149,8 @@ class JobTrackerApp {
     this.navTabDashboard = document.getElementById('navTabDashboard');
     this.totalAppsBadge = document.getElementById('totalAppsBadge');
 
-    // Theme Switcher (Animated Day/Night Switch)
-    this.themeToggleInput = document.getElementById('toggle');
-    this.themeToggleButton = document.getElementById('theme-toggle-button');
-    this.currentTheme = Config.getTheme();
+    // Active Theme (Dark Mode only)
+    this.currentTheme = 'dark';
 
     // Sidebar
     this.sidebar = document.getElementById('sidebar');
@@ -368,13 +373,8 @@ class JobTrackerApp {
     await this.loadUserProfile();
     await this.checkSupabaseConnectionStatus();
 
-    const savedSessionId = Config.getActiveSessionId();
-    if (savedSessionId) {
-      const found = this.applications.find(a => a.id === savedSessionId);
-      if (found) {
-        this.selectApplication(found);
-      }
-    }
+    // Always open a fresh new chat session on app load
+    this.startNewChatSession();
   }
 
   startLiveClock() {
@@ -429,14 +429,7 @@ class JobTrackerApp {
       this.btnEmptyGoChat.addEventListener('click', () => this.switchView('chat'));
     }
 
-    // Theme Toggle
-    if (this.themeToggleInput) {
-      this.themeToggleInput.addEventListener('change', (e) => {
-        const nextTheme = e.target.checked ? 'dark' : 'light';
-        this.applyTheme(nextTheme);
-        this.showToast(`Switched to ${nextTheme === 'light' ? 'Dull Light' : 'Dark'} theme`, 'info');
-      });
-    }
+
 
     // Profile Actions
     if (this.btnSaveProfile) {
@@ -698,7 +691,7 @@ class JobTrackerApp {
 
       // Slash command auto-suggestions
       const val = this.chatInput.value;
-      if (val.startsWith('/')) {
+      if (val.startsWith('/') && !val.includes(' ')) {
         this.showSlashCommandMenu(val);
       } else {
         this.hideSlashCommandMenu();
@@ -868,28 +861,13 @@ class JobTrackerApp {
   }
 
   // ==========================================
-  // Theme Switching (Dark & Dull Light)
+  // Theme Management (Pure Dark Mode)
   // ==========================================
-  applyTheme(theme) {
-    this.currentTheme = theme === 'light' ? 'light' : 'dark';
-    if (this.currentTheme === 'light') {
-      document.body.classList.remove('theme-dark');
-      document.body.classList.add('theme-light');
-      if (this.themeToggleInput) this.themeToggleInput.checked = false;
-      if (this.themeToggleButton) this.themeToggleButton.setAttribute('title', 'Switch to Dark Theme');
-    } else {
-      document.body.classList.remove('theme-light');
-      document.body.classList.add('theme-dark');
-      if (this.themeToggleInput) this.themeToggleInput.checked = true;
-      if (this.themeToggleButton) this.themeToggleButton.setAttribute('title', 'Switch to Dull Light Theme');
-    }
-    Config.setTheme(this.currentTheme);
-  }
-
-  toggleTheme() {
-    const nextTheme = this.currentTheme === 'light' ? 'dark' : 'light';
-    this.applyTheme(nextTheme);
-    this.showToast(`Switched to ${nextTheme === 'light' ? 'Dull Light' : 'Dark'} theme`, 'info');
+  applyTheme() {
+    this.currentTheme = 'dark';
+    document.body.classList.remove('theme-light');
+    document.body.classList.add('theme-dark');
+    Config.setTheme('dark');
   }
 
   // ==========================================
@@ -935,7 +913,10 @@ class JobTrackerApp {
   // ==========================================
   async loadApplications() {
     const res = await SupabaseService.getAllApplications();
-    this.applications = res.data || [];
+    const apps = res.data || [];
+    // Ensure applications are always sorted recent-first
+    apps.sort((a, b) => this.getAppLatestTimestamp(b) - this.getAppLatestTimestamp(a));
+    this.applications = apps;
     this.updateStats();
     this.renderHistoryList();
     this.renderApplicationsGrid();
@@ -1405,17 +1386,44 @@ class JobTrackerApp {
   showSlashCommandMenu(inputText) {
     if (!this.slashCommandMenu) return;
 
+    // If input contains spaces, user is typing arguments (e.g. /search google), dismiss menu
+    if (inputText.includes(' ')) {
+      this.hideSlashCommandMenu();
+      return;
+    }
+
     // Filter query without the leading slash
-    const query = inputText.slice(1).trim().toLowerCase();
+    const query = (inputText.startsWith('/') ? inputText.slice(1) : inputText).trim().toLowerCase();
 
     if (!query) {
       this.currentFilteredCommands = [...SLASH_COMMANDS];
     } else {
-      this.currentFilteredCommands = SLASH_COMMANDS.filter(cmd =>
-        cmd.cmd.toLowerCase().includes(query) ||
-        cmd.label.toLowerCase().includes(query) ||
-        cmd.desc.toLowerCase().includes(query)
-      );
+      // 1. Primary match: command prefix (e.g. /s -> /store, /search, /salary; /se -> /search)
+      const cmdPrefixMatches = SLASH_COMMANDS.filter(cmd => {
+        const cleanCmd = cmd.cmd.slice(1).toLowerCase();
+        return cleanCmd.startsWith(query);
+      });
+
+      if (cmdPrefixMatches.length > 0) {
+        this.currentFilteredCommands = cmdPrefixMatches;
+      } else {
+        // 2. Secondary match: command name substring
+        const cmdSubstringMatches = SLASH_COMMANDS.filter(cmd => {
+          const cleanCmd = cmd.cmd.slice(1).toLowerCase();
+          return cleanCmd.includes(query);
+        });
+
+        if (cmdSubstringMatches.length > 0) {
+          this.currentFilteredCommands = cmdSubstringMatches;
+        } else {
+          // 3. Fallback: match words in label (e.g. /chat -> /new, /clear)
+          this.currentFilteredCommands = SLASH_COMMANDS.filter(cmd => {
+            const cleanLabel = cmd.label.toLowerCase();
+            const words = cleanLabel.split(/\s+/);
+            return words.some(w => w.startsWith(query));
+          });
+        }
+      }
     }
 
     if (this.currentFilteredCommands.length === 0) {
@@ -1496,6 +1504,13 @@ class JobTrackerApp {
       this.startNewChatSession();
     } else if (selected.action === 'store') {
       await this.handleStoreCommand();
+    } else if (selected.action === 'delete') {
+      if (this.activeApplication) {
+        await this.handleDeleteCommand('/delete');
+      } else {
+        this.chatInput.value = '/delete ';
+        this.chatInput.focus();
+      }
     } else if (selected.action === 'compare') {
       await this.handleCompareCommand('/compare');
     } else if (selected.action === 'search') {
@@ -1526,6 +1541,7 @@ class JobTrackerApp {
       `You can use slash commands anytime in the input box to rapidly manage your jobs:\n\n` +
       `• **/new** — Start a fresh new chat session & clear active drafted job\n` +
       `• **/store** — Save the current drafted application to your Supabase Cloud database & Tracker\n` +
+      `• **/delete [company]** — Delete the active application or remove by company name (e.g. \`/delete Google\`)\n` +
       `• **/compare [company]** — Compare your About Me profile (skills, projects, marks, certs) against company requirements\n` +
       `• **/search [query]** — Search across all applications stored in your database (e.g. \`/search Google\` or \`/search React\`)\n` +
       `• **/interview** — Set status to **Interviewing** and get tailored interview prep checklists\n` +
@@ -1627,6 +1643,158 @@ class JobTrackerApp {
     this.appendAssistantMessage(salaryMsg, this.activeApplication);
     this.scrollToBottom();
     this.showToast(`Salary updated to ${cleanAmount}`, 'success');
+  }
+
+  async handleDeleteCommand(rawText = '/delete') {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+    this.chatInput.style.overflowY = 'hidden';
+    this.welcomeHero.style.display = 'none';
+
+    const arg = (rawText || '')
+      .replace(/^\/(?:delete|del|remove)\s*/i, '')
+      .trim();
+
+    // Check if user specified a contextual keyword referring to the active chat
+    const isTargetingCurrent = !arg || /^(?:this|this\s+app|this\s+application|this\s+job|current|active)$/i.test(arg);
+
+    if (isTargetingCurrent) {
+      // 1. Deleting active application in current chat
+      const targetApp = this.activeApplication;
+
+      if (!targetApp || (!targetApp.companyName && !targetApp.roleTitle && !targetApp.id)) {
+        this.appendAssistantMessage(
+          `🗑️ **Delete Application**\n\nNo active application is currently open in this chat.\n\nTo delete an application:\n• Open the application from the sidebar chat history and type \`/delete\`\n• Or delete by company name from anywhere: \`/delete [company name]\` (e.g. \`/delete Google\` or \`/delete Stripe\`)`,
+          null
+        );
+        this.scrollToBottom();
+        return;
+      }
+
+      const coName = targetApp.companyName || 'Application';
+      const roleStr = targetApp.roleTitle ? ` (${targetApp.roleTitle})` : '';
+
+      try {
+        if (targetApp.id) {
+          await SupabaseService.deleteApplication(targetApp.id);
+          this.applications = (this.applications || []).filter(a => a.id !== targetApp.id);
+        }
+
+        this.startNewChatSession();
+        await this.loadApplications();
+        this.showToast(`Deleted ${coName}`, 'info');
+
+        this.appendAssistantMessage(
+          `🗑️ **Application Deleted**\n\nSuccessfully removed **${coName}**${roleStr} from your records.\nA clean new chat session has been started for you.`,
+          null
+        );
+        this.scrollToBottom();
+      } catch (err) {
+        console.error('Error deleting application:', err);
+        this.showToast(`Failed to delete ${coName}: ${err.message}`, 'error');
+        this.appendAssistantMessage(`❌ **Error Deleting Application:** ${err.message}`, this.activeApplication);
+        this.scrollToBottom();
+      }
+      return;
+    }
+
+    // 2. Deleting by company name or query from new/any chat (e.g. /delete Google)
+    const q = arg.toLowerCase();
+    const stored = this.applications || [];
+
+    if (stored.length === 0) {
+      this.appendAssistantMessage(
+        `🔍 **No Applications Stored**\n\nYour application vault is currently empty.`,
+        this.activeApplication
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    // A. Exact company match
+    const exactCompany = stored.filter(a => a.companyName && a.companyName.toLowerCase() === q);
+    // B. Partial company match
+    const partialCompany = stored.filter(a => a.companyName && a.companyName.toLowerCase().includes(q));
+    // C. Matches across role title or company
+    const allMatches = stored.filter(a =>
+      (a.companyName && a.companyName.toLowerCase().includes(q)) ||
+      (a.roleTitle && a.roleTitle.toLowerCase().includes(q))
+    );
+
+    let targetApp = null;
+    if (exactCompany.length === 1) {
+      targetApp = exactCompany[0];
+    } else if (partialCompany.length === 1) {
+      targetApp = partialCompany[0];
+    } else if (exactCompany.length > 1 || partialCompany.length > 1) {
+      const candidates = exactCompany.length > 1 ? exactCompany : partialCompany;
+      // If user also provided role in the query (e.g. /delete google software engineer)
+      const refined = candidates.filter(a => a.roleTitle && q.includes(a.roleTitle.toLowerCase()));
+      if (refined.length === 1) {
+        targetApp = refined[0];
+      } else {
+        const listStr = candidates.map((a, i) =>
+          `${i + 1}. **${a.companyName}** — ${a.roleTitle || 'Position'} *(Status: ${a.status || 'Applied'} | Applied: ${a.appliedDate || 'N/A'})*`
+        ).join('\n');
+
+        this.appendAssistantMessage(
+          `⚠️ **Multiple Applications Found for "${arg}":**\n\n${listStr}\n\n*Please specify the role or company name more specifically, or open the specific chat session from the sidebar and type \`/delete\`.*`,
+          this.activeApplication
+        );
+        this.scrollToBottom();
+        return;
+      }
+    } else if (allMatches.length === 1) {
+      targetApp = allMatches[0];
+    } else if (allMatches.length > 1) {
+      const listStr = allMatches.map((a, i) =>
+        `${i + 1}. **${a.companyName}** — ${a.roleTitle || 'Position'} *(Status: ${a.status || 'Applied'})*`
+      ).join('\n');
+
+      this.appendAssistantMessage(
+        `⚠️ **Multiple Applications Matched "${arg}":**\n\n${listStr}\n\n*Please specify the exact company or open its chat session and type \`/delete\`.*`,
+        this.activeApplication
+      );
+      this.scrollToBottom();
+      return;
+    } else {
+      this.appendAssistantMessage(
+        `🔍 **Application Not Found**\n\nNo stored application was found matching "**${arg}**".\n\nTip: You can use \`/search\` to view all saved applications, or check the sidebar chat history.`,
+        this.activeApplication
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    if (targetApp) {
+      const coName = targetApp.companyName || 'Application';
+      const roleStr = targetApp.roleTitle ? ` (${targetApp.roleTitle})` : '';
+
+      try {
+        if (targetApp.id) {
+          await SupabaseService.deleteApplication(targetApp.id);
+          this.applications = (this.applications || []).filter(a => a.id !== targetApp.id);
+        }
+
+        if (this.activeApplication?.id === targetApp.id) {
+          this.startNewChatSession();
+        }
+
+        await this.loadApplications();
+        this.showToast(`Deleted ${coName}`, 'info');
+
+        this.appendAssistantMessage(
+          `🗑️ **Application Deleted**\n\nSuccessfully deleted **${coName}**${roleStr} from your tracker and database.`,
+          this.activeApplication
+        );
+        this.scrollToBottom();
+      } catch (err) {
+        console.error('Error deleting application:', err);
+        this.showToast(`Failed to delete ${coName}: ${err.message}`, 'error');
+        this.appendAssistantMessage(`❌ **Error Deleting Application:** ${err.message}`, this.activeApplication);
+        this.scrollToBottom();
+      }
+    }
   }
 
   async handleCompareCommand(rawText = '/compare') {
@@ -1876,6 +2044,12 @@ class JobTrackerApp {
       return;
     }
 
+    // Slash command to delete application
+    if (lower === '/delete' || lower === '/del' || lower.startsWith('/delete ') || lower.startsWith('/del ') || lower === '/remove' || lower.startsWith('/remove ')) {
+      await this.handleDeleteCommand(text);
+      return;
+    }
+
     // Slash command to compare candidate profile vs company requirements
     if (lower === '/compare' || lower.startsWith('/compare ') || lower === '/cmp' || lower.startsWith('/cmp ')) {
       await this.handleCompareCommand(text);
@@ -1980,6 +2154,7 @@ class JobTrackerApp {
         const mergedQuestions = (result.data.interviewQuestions && result.data.interviewQuestions.length)
           ? result.data.interviewQuestions
           : (prevApp.interviewQuestions || []);
+        const mergedViewedAt = result.data.viewedAt || prevApp.viewedAt || '';
 
         const appData = {
           ...(existingApp || {}),
@@ -1996,6 +2171,7 @@ class JobTrackerApp {
           recruiterPhone: mergedRecruiterPhone,
           callNotes: mergedCallNotes,
           interviewQuestions: mergedQuestions,
+          viewedAt: mergedViewedAt,
           appliedTime: result.data.appliedTime || (this.activeApplication?.appliedTime || existingApp?.appliedTime || this.formatTimeOnly(new Date())),
           isStored: isStored
         };
@@ -3046,6 +3222,9 @@ class JobTrackerApp {
           ${data.portalName ? `<span class="meta-chip chip-portal">📝 Filled at: <strong>${this.escapeHtml(data.portalName)}</strong></span>` : ''}
           <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
           <span class="meta-chip chip-time">🕒 Time: <strong>${this.escapeHtml(data.appliedTime || this.formatTimeOnly(data.createdAt || new Date()))}</strong></span>
+          ${(data.viewedAt || (data.notes && data.notes.includes('Recruiter viewed application'))) ? `
+            <span class="meta-chip chip-viewed" style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">👀 Recruiter Viewed: <strong>${this.escapeHtml(data.viewedAt || 'Yes')}</strong></span>
+          ` : ''}
         </div>
 
         ${skillsHtml}
@@ -3306,12 +3485,73 @@ class JobTrackerApp {
   }
 
   // ==========================================
-  // Sidebar History List
+  // Timestamp Helpers & Sidebar Chat History
   // ==========================================
+  getAppLatestTimestamp(app) {
+    if (!app) return 0;
+    // 1. Check last message timestamp in chatHistory
+    if (Array.isArray(app.chatHistory) && app.chatHistory.length > 0) {
+      for (let i = app.chatHistory.length - 1; i >= 0; i--) {
+        const msg = app.chatHistory[i];
+        if (msg && msg.timestamp) {
+          const t = new Date(msg.timestamp).getTime();
+          if (!isNaN(t) && t > 0) return t;
+        }
+      }
+    }
+    // 2. Check updatedAt
+    if (app.updatedAt) {
+      const t = new Date(app.updatedAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    // 3. Check createdAt
+    if (app.createdAt) {
+      const t = new Date(app.createdAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    // 4. Check appliedDate (YYYY-MM-DD)
+    if (app.appliedDate) {
+      const t = new Date(app.appliedDate).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+    return 0;
+  }
+
+  formatRelativeHistoryTime(isoOrTimestamp) {
+    if (!isoOrTimestamp) return '';
+    const date = new Date(isoOrTimestamp);
+    if (isNaN(date.getTime())) return '';
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHours = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
   renderHistoryList() {
     this.historyList.innerHTML = '';
 
-    for (const app of this.applications) {
+    // Always sort recent-first by latest message or activity timestamp
+    const sortedApps = [...this.applications].sort((a, b) => this.getAppLatestTimestamp(b) - this.getAppLatestTimestamp(a));
+
+    if (sortedApps.length === 0) {
+      this.historyList.innerHTML = `
+        <div class="history-empty" style="padding: 18px 12px; font-size: 0.8rem; color: var(--text-subtle); text-align: center; line-height: 1.4;">
+          No saved chats yet.<br>Start chatting to track one!
+        </div>
+      `;
+      return;
+    }
+
+    for (const app of sortedApps) {
       const item = document.createElement('div');
       item.className = 'history-item';
       item.setAttribute('data-id', app.id);
@@ -3319,10 +3559,16 @@ class JobTrackerApp {
         item.classList.add('active');
       }
 
+      const latestTime = this.getAppLatestTimestamp(app);
+      const timeLabel = latestTime ? this.formatRelativeHistoryTime(latestTime) : '';
+
       item.innerHTML = `
         <div class="history-item-content">
-          <span class="history-company">${this.escapeHtml(app.companyName)}</span>
-          <span class="history-role">${this.escapeHtml(app.roleTitle)} • ${this.escapeHtml(app.status)}</span>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+            <span class="history-company">${this.escapeHtml(app.companyName || 'Target Company')}</span>
+            ${timeLabel ? `<span class="history-time" style="font-size: 0.68rem; color: var(--text-subtle); opacity: 0.85; flex-shrink: 0;">${timeLabel}</span>` : ''}
+          </div>
+          <span class="history-role">${this.escapeHtml(app.roleTitle || 'Role')} • ${this.escapeHtml(app.status || 'Applied')}</span>
         </div>
         <button class="history-del-btn" title="Delete">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>

@@ -175,6 +175,7 @@ export const SupabaseService = {
       interviewQuestions: Array.isArray(appData.interviewQuestions) ? appData.interviewQuestions : [],
       skills: appData.skills || [],
       notes: appData.notes || '',
+      viewedAt: appData.viewedAt || '',
       chatHistory: safeChatHistory,
       isStored: true
     };
