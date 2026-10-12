@@ -2356,6 +2356,7 @@ class JobTrackerApp {
 
       let html = '<div class="md-table-wrapper"><table class="md-table">';
       let isHeader = true;
+      let colClasses = [];
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -2367,15 +2368,43 @@ class JobTrackerApp {
 
         const cells = row.split('|').slice(1, -1).map(c => c.trim());
         if (isHeader) {
+          colClasses = cells.map(c => {
+            const hClean = c.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]/g, '');
+            if (hClean === 'num' || hClean === '' || c.trim() === '#') return 'md-col-num';
+            if (hClean.includes('company') || hClean.includes('org')) return 'md-col-company';
+            if (hClean.includes('role') || hClean.includes('title') || hClean.includes('position')) return 'md-col-role';
+            if (hClean.includes('status')) return 'md-col-status';
+            if (hClean.includes('salary') || hClean.includes('ctc') || hClean.includes('pay') || hClean.includes('comp')) return 'md-col-salary';
+            if (hClean.includes('date') || hClean.includes('applied') || hClean.includes('time')) return 'md-col-date';
+            return 'md-col-general';
+          });
+
           html += '<thead><tr>';
-          cells.forEach(c => {
-            html += `<th>${c}</th>`;
+          cells.forEach((c, idx) => {
+            const cls = colClasses[idx] || 'md-col-general';
+            html += `<th class="${cls}">${c}</th>`;
           });
           html += '</tr></thead><tbody>';
         } else {
           html += '<tr>';
-          cells.forEach(c => {
-            html += `<td>${c}</td>`;
+          cells.forEach((cellContent, idx) => {
+            const cls = colClasses[idx] || 'md-col-general';
+            let formatted = cellContent;
+
+            // Enhance status cells into pill badges
+            if (cls === 'md-col-status') {
+              const rawStatus = cellContent.replace(/<[^>]+>/g, '').trim();
+              const stLower = rawStatus.toLowerCase();
+              if (['applied', 'interviewing', 'offer', 'rejected', 'bookmarked'].includes(stLower)) {
+                formatted = `<span class="app-status-badge status-${stLower}">${rawStatus}</span>`;
+              }
+            } else {
+              formatted = formatted.replace(/<code class="md-inline-code">(Applied|Interviewing|Offer|Rejected|Bookmarked)<\/code>/gi, (m, st) => {
+                return `<span class="app-status-badge status-${st.toLowerCase()}">${st}</span>`;
+              });
+            }
+
+            html += `<td class="${cls}">${formatted}</td>`;
           });
           html += '</tr>';
         }
