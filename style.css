@@ -2492,7 +2492,66 @@ body {
   box-shadow: 0 0 0 2px var(--primary-glow);
 }
 
+.chat-input-field-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.chat-input-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  font-family: inherit;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  padding: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  user-select: none;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+}
+
+.chat-input-ghost .ghost-prefix {
+  visibility: hidden;
+  white-space: pre;
+}
+
+.chat-input-ghost .ghost-suffix {
+  color: rgba(148, 163, 184, 0.45);
+  font-style: normal;
+  white-space: pre;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-input-ghost .ghost-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  background: rgba(99, 102, 241, 0.16);
+  border: 1px solid rgba(99, 102, 241, 0.32);
+  color: #a5b4fc;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  line-height: 1.2;
+}
+
 .chat-input-box textarea {
+  position: relative;
+  z-index: 2;
+  width: 100%;
   flex: 1;
   background: transparent;
   border: none;

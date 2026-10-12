@@ -190,6 +190,8 @@ class JobTrackerApp {
     this.chatMessagesEl = document.getElementById('chatMessages');
     this.welcomeHero = document.getElementById('welcomeHero');
     this.chatInput = document.getElementById('chatInput');
+    this.chatInputGhost = document.getElementById('chatInputGhost');
+    this.currentGhostSuggestion = '';
     this.btnSend = document.getElementById('btnSend');
     this.topbarSessionMeta = document.getElementById('topbarSessionMeta');
     this.topbarCompany = document.getElementById('topbarCompany');
@@ -682,12 +684,15 @@ class JobTrackerApp {
       });
     }
 
-    // Chat input auto-grow, slash commands, and submit
+    // Chat input auto-grow, slash commands, ghost suggestions, and submit
     this.chatInput.addEventListener('input', () => {
       this.chatInput.style.height = 'auto';
       const scrollH = this.chatInput.scrollHeight;
       this.chatInput.style.height = Math.min(scrollH, 180) + 'px';
       this.chatInput.style.overflowY = scrollH > 180 ? 'auto' : 'hidden';
+
+      // Inline ghost autocomplete suggestion
+      this.updateGhostSuggestion();
 
       // Slash command auto-suggestions
       const val = this.chatInput.value;
@@ -720,11 +725,29 @@ class JobTrackerApp {
         }
       }
 
+      // Accept inline ghost suggestion on Tab or ArrowRight (when cursor at end of input)
+      if (this.currentGhostSuggestion) {
+        const isAtEnd = this.chatInput.selectionStart === this.chatInput.value.length;
+        if (e.key === 'Tab' || (e.key === 'ArrowRight' && isAtEnd)) {
+          e.preventDefault();
+          this.acceptGhostSuggestion();
+          return;
+        } else if (e.key === 'Escape') {
+          this.clearGhostSuggestion();
+          return;
+        }
+      }
+
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         this.hideSlashCommandMenu();
+        this.clearGhostSuggestion();
         this.handleSendMessage();
       }
+    });
+
+    this.chatInput.addEventListener('blur', () => {
+      this.clearGhostSuggestion();
     });
 
     // Close slash command menu on click outside
@@ -2022,6 +2045,7 @@ class JobTrackerApp {
   }
 
   async handleSendMessage() {
+    this.clearGhostSuggestion();
     const text = this.chatInput.value.trim();
     if (!text) return;
 
@@ -4814,6 +4838,186 @@ class JobTrackerApp {
     this.userProfile.skills = (this.userProfile.skills || []).filter(s => s !== skill);
     await SupabaseService.saveUserProfile(this.userProfile);
     this.renderSkillsList();
+  }
+
+  // ==========================================
+  // Inline Ghost Autocomplete Suggestions
+  // ==========================================
+  getGhostSuggestion(input) {
+    if (!input || typeof input !== 'string') return '';
+    const trimmed = input.trim();
+    if (trimmed.length < 2 || trimmed.length > 60 || input.includes('\n')) return '';
+    const lower = trimmed.toLowerCase();
+
+    // 1. Slash commands matching
+    if (trimmed.startsWith('/')) {
+      const slashMatches = [
+        { prefix: '/co', completion: 'mpare' },
+        { prefix: '/com', completion: 'pare' },
+        { prefix: '/comp', completion: 'are' },
+        { prefix: '/compa', completion: 're' },
+        { prefix: '/compar', completion: 'e' },
+        { prefix: '/de', completion: 'lete' },
+        { prefix: '/del', completion: 'ete' },
+        { prefix: '/dele', completion: 'te' },
+        { prefix: '/delet', completion: 'e' },
+        { prefix: '/st', completion: 'ore' },
+        { prefix: '/sto', completion: 're' },
+        { prefix: '/stor', completion: 'e' },
+        { prefix: '/se', completion: 'arch ' },
+        { prefix: '/sea', completion: 'rch ' },
+        { prefix: '/sear', completion: 'ch ' },
+        { prefix: '/ne', completion: 'w' },
+        { prefix: '/cl', completion: 'ear' },
+        { prefix: '/in', completion: 'terview' },
+        { prefix: '/of', completion: 'fer' },
+        { prefix: '/re', completion: 'ject' },
+        { prefix: '/gr', completion: 'aph' }
+      ];
+      for (const m of slashMatches) {
+        if (lower === m.prefix) return m.completion;
+      }
+    }
+
+    // 2. High-frequency natural phrases
+    const naturalMatches = [
+      // Applications queries
+      { re: /^show\s*$/i, completion: ' all applications' },
+      { re: /^show\s+a(?:l|ll)?$/i, completion: ' applications' },
+      { re: /^show\s+all\s+a(?:p|pp)?$/i, completion: 'plications' },
+      { re: /^show\s+m(?:y)?$/i, completion: ' applications' },
+      { re: /^list\s*$/i, completion: ' all applications' },
+      { re: /^list\s+a(?:l|ll)?$/i, completion: ' applications' },
+      { re: /^how\s+m(?:a|an|any)?$/i, completion: ' applications are there?' },
+      { re: /^how\s+many\s+a(?:p|pp)?$/i, completion: 'plications are there?' },
+      { re: /^how\s+many\s+d(?:i|id)?$/i, completion: ' I apply to?' },
+      { re: /^how\s+many\s+j(?:o|ob|obs)?$/i, completion: ' did I apply to?' },
+      { re: /^where\s+d(?:i|id)?$/i, completion: ' I apply?' },
+      { re: /^what\s+j(?:o|ob|obs)?$/i, completion: ' did I apply to?' },
+      { re: /^what\s+c(?:o|om|omp)?$/i, completion: 'anies did I apply to?' },
+      { re: /^all\s+a(?:p|pp)?$/i, completion: 'plications' },
+
+      // Status and stats
+      { re: /^any\s+i(?:n|nt|nte|nter)?$/i, completion: 'rviews scheduled?' },
+      { re: /^any\s+o(?:f|ff|ffe|ffer)?$/i, completion: 'rs received?' },
+      { re: /^how\s+is\s+my\s+j(?:o|ob)?$/i, completion: ' search going?' },
+      { re: /^appl(?:i|ie|ied)?\s+t(?:o|od)?$/i, completion: 'day' },
+      { re: /^today(?:'s)?\s+a(?:p|pp)?$/i, completion: 'plications count' },
+
+      // Company Intelligence
+      { re: /^tell\s+me\s+a(?:b|bo|bou|bout)?$/i, completion: ' [Company name]' },
+      { re: /^can\s+you\s+tell\s+a(?:b|bout)?$/i, completion: ' [Company name]' },
+      { re: /^did\s+i\s+apply\s+t(?:o)?$/i, completion: ' [Company name]?' },
+
+      // Profile & Academics
+      { re: /^add\s+p(?:r|ro|roj|roject)?$/i, completion: ': [Title] with [TechStack], link [URL]' },
+      { re: /^add\s+s(?:e|em)?$/i, completion: ' 5 marks: 8.5' },
+      { re: /^add\s+c(?:e|er|ert)?$/i, completion: ': [Cert Name] from [Issuer]' },
+      { re: /^add\s+s(?:k|ki|kil|kill)?$/i, completion: ': React, Node.js, TypeScript' },
+      { re: /^my\s+c(?:o|ol|oll|ollege)?$/i, completion: ' is [College Name]' },
+      { re: /^what\s+is\s+my\s+c(?:o|ol|oll|ollege)?$/i, completion: ' name?' },
+      { re: /^what\s+are\s+my\s+s(?:e|em)?$/i, completion: ' marks?' },
+      { re: /^what\s+projects\s+h(?:a|av|ave)?$/i, completion: ' I built?' },
+      { re: /^what\s+skills\s+d(?:o)?$/i, completion: ' I have?' },
+
+      // Interview Prep
+      { re: /^interview\s+q(?:u|ue|ues|uestions)?$/i, completion: ' for [Role / Company]' },
+      { re: /^what\s+interview\s+q(?:u|ue)?$/i, completion: 'uestions will they ask?' },
+      { re: /^tips\s+f(?:o|or)?$/i, completion: ' technical interview' },
+
+      // Real-Time Clock & Utility
+      { re: /^what\s+t(?:i|im|ime)?$/i, completion: ' is it?' },
+      { re: /^current\s+t(?:i|im|ime)?$/i, completion: 'e' },
+      { re: /^what\s+is\s+t(?:o|od|oda|oday)?$/i, completion: "'s date?" },
+      { re: /^today(?:'s)?\s+d(?:a|at|ate)?$/i, completion: 'e' },
+      { re: /^what\s+day\s+i(?:s)?$/i, completion: ' today?' },
+      { re: /^tell\s+me\s+a\s+j(?:o|ok)?$/i, completion: 'e' }
+    ];
+
+    for (const m of naturalMatches) {
+      if (m.re.test(trimmed)) {
+        return m.completion;
+      }
+    }
+
+    // 3. Dynamic company matching from database
+    if (Array.isArray(this.applications) && this.applications.length > 0) {
+      const coMatch = trimmed.match(/^(?:did\s+i\s+apply\s+to|tell\s+me\s+about|what\s+about|info\s+on)\s+([a-zA-Z0-9\s]+)$/i);
+      if (coMatch) {
+        const typedCo = coMatch[1].toLowerCase().trim();
+        if (typedCo.length >= 1) {
+          const found = this.applications.find(a => (a.companyName || '').toLowerCase().startsWith(typedCo) && (a.companyName || '').length > typedCo.length);
+          if (found) {
+            return found.companyName.slice(typedCo.length);
+          }
+        }
+      }
+    }
+
+    // 4. Common full phrases prefix matching
+    const commonPrefixes = [
+      "how many applications are there?",
+      "show all applications",
+      "show my applications",
+      "tell me a joke",
+      "what interview questions will they ask?",
+      "what is today's date?",
+      "what time is it right now?",
+      "Can you review my profile and projects?",
+      "add project: MyProject with React & Node",
+      "add sem 5 marks: 8.5",
+      "/compare",
+      "/stats",
+      "/list",
+      "/delete",
+      "/store"
+    ];
+
+    for (const phrase of commonPrefixes) {
+      if (phrase.toLowerCase().startsWith(lower) && phrase.length > trimmed.length) {
+        return phrase.slice(trimmed.length);
+      }
+    }
+
+    return '';
+  }
+
+  updateGhostSuggestion() {
+    if (!this.chatInputGhost) return;
+    const val = this.chatInput.value;
+
+    // Only show ghost suggestions for single-line inputs under 60 chars
+    if (!val || val.includes('\n') || val.trim().length < 2 || val.length > 60) {
+      this.clearGhostSuggestion();
+      return;
+    }
+
+    const suggestion = this.getGhostSuggestion(val);
+    if (!suggestion) {
+      this.clearGhostSuggestion();
+      return;
+    }
+
+    this.currentGhostSuggestion = suggestion;
+    const safePrefix = this.escapeHtml(val);
+    const safeSuffix = this.escapeHtml(suggestion);
+    this.chatInputGhost.innerHTML = `<span class="ghost-prefix">${safePrefix}</span><span class="ghost-suffix">${safeSuffix}<span class="ghost-tab-badge">Tab ⇥</span></span>`;
+  }
+
+  acceptGhostSuggestion() {
+    if (!this.currentGhostSuggestion) return;
+    const suffix = this.currentGhostSuggestion;
+    this.chatInput.value += suffix;
+    this.clearGhostSuggestion();
+    // Dispatch input to auto-adjust height and slash menu
+    this.chatInput.dispatchEvent(new Event('input'));
+  }
+
+  clearGhostSuggestion() {
+    this.currentGhostSuggestion = '';
+    if (this.chatInputGhost) {
+      this.chatInputGhost.innerHTML = '';
+    }
   }
 }
 
