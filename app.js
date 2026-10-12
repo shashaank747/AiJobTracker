@@ -2185,14 +2185,15 @@ class JobTrackerApp {
           await this.loadApplications();
         }
 
-        const promptHint = !this.activeApplication.isStored
-          ? '\n\n💡 *Type `/store` or click **Store in DB** on the card to save this job to your database!*'
+        const alreadyHasStoreHint = /\/store|store\s+in\s+db/i.test(result.message || '');
+        const promptHint = (!this.activeApplication.isStored && !alreadyHasStoreHint)
+          ? '\n\n💡 Type `/store` or click **Store in DB** on the card to save this job to your database!'
           : '';
 
         const assistantTimestamp = new Date().toISOString();
         const assistantMsg = {
           role: 'assistant',
-          text: result.message + promptHint,
+          text: (result.message + promptHint).trim(),
           data: { ...this.activeApplication, chatHistory: [] },
           timestamp: assistantTimestamp
         };
@@ -2301,28 +2302,63 @@ class JobTrackerApp {
 
   renderMarkdown(text) {
     if (!text) return '';
-    let html = text;
+    let str = String(text).replace(/\r\n/g, '\n').trim();
 
-    // Headers
-    html = html.replace(/^### (.*$)/gim, '<h4 style="margin: 12px 0 6px 0; color: #f8fafc; font-size: 1.05rem; font-weight: 700;">$1</h4>');
-    html = html.replace(/^## (.*$)/gim, '<h3 style="margin: 14px 0 8px 0; color: #f8fafc; font-size: 1.15rem; font-weight: 700;">$1</h3>');
+    // 1. Deduplicate identical consecutive lines (e.g. repeated hints / notes)
+    const lines = str.split('\n');
+    const dedupedLines = [];
+    for (let i = 0; i < lines.length; i++) {
+      const cur = lines[i].trim();
+      const prev = dedupedLines.length > 0 ? dedupedLines[dedupedLines.length - 1].trim() : null;
+      if (cur && prev && cur.toLowerCase() === prev.toLowerCase()) {
+        continue;
+      }
+      if (cur.includes('/store') && prev && prev.includes('/store')) {
+        continue;
+      }
+      dedupedLines.push(lines[i]);
+    }
+    str = dedupedLines.join('\n');
 
-    // Bold & Italic
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    // 2. Collapse excessive newlines (max 2)
+    str = str.replace(/\n{3,}/g, '\n\n');
 
-    // Markdown Links [text](url)
-    html = html.replace(/\[(.*?)\]\((https?:\/\/.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; text-decoration: underline; font-weight: 600;">$1 ↗</a>');
+    // 3. Compact bullet lists: remove double newlines between list items
+    str = str.replace(/([•\-\*]\s+[^\n]+)\n\n(?=[•\-\*]\s+)/g, '$1\n');
 
-    // Unordered lists
-    html = html.replace(/^- (.*$)/gim, '<li style="margin-left: 18px; margin-bottom: 4px; line-height: 1.5;">$1</li>');
+    // 4. Headers
+    str = str.replace(/^### (.*$)/gim, '<h4 class="md-h4">$1</h4>');
+    str = str.replace(/^## (.*$)/gim, '<h3 class="md-h3">$1</h3>');
 
-    // Ordered lists
-    html = html.replace(/^(\d+)\. (.*$)/gim, '<li style="margin-left: 18px; margin-bottom: 4px; list-style-type: decimal; line-height: 1.5;">$2</li>');
+    // 5. Bold & Italic
+    str = str.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    str = str.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-    // Paragraph separation
-    html = html.replace(/\n\n/g, '<div style="height: 8px;"></div>');
-    html = html.replace(/\n/g, '<br/>');
+    // 6. Inline code
+    str = str.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+    // 7. Markdown Links
+    str = str.replace(/\[(.*?)\]\((https?:\/\/.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1 ↗</a>');
+
+    // 8. Bullet list items (support •, -, *)
+    str = str.replace(/^[•\-\*]\s+(.*$)/gim, '<div class="md-bullet-line"><span class="md-bullet">•</span><span class="md-bullet-text">$1</span></div>');
+
+    // 9. Numbered lists (1. , 2. )
+    str = str.replace(/^(\d+)\.\s+(.*$)/gim, '<div class="md-bullet-line"><span class="md-number">$1.</span><span class="md-bullet-text">$2</span></div>');
+
+    // 10. Callout hints starting with 💡
+    str = str.replace(/^💡\s*(.*$)/gim, '<div class="md-hint-chip"><span class="md-hint-icon">💡</span><span>$1</span></div>');
+
+    // 11. Paragraph formatting with clean spacing
+    const paragraphs = str.split(/\n\n+/);
+    const html = paragraphs.map(p => {
+      p = p.trim();
+      if (!p) return '';
+      if (p.startsWith('<h') || p.startsWith('<div class="md-bullet-line"') || p.startsWith('<div class="md-hint-chip"')) {
+        return p.replace(/\n/g, '');
+      }
+      return `<p class="md-p">${p.replace(/\n/g, '<br/>')}</p>`;
+    }).filter(Boolean).join('');
 
     return html;
   }
