@@ -71,9 +71,12 @@ Type `/` in the chat input to access quick commands:
 Run this SQL snippet in your [Supabase SQL Editor](https://app.supabase.com) to create the schema with Row Level Security:
 
 ```sql
+-- ============================================================
 -- 1. Job Applications Table
+-- ============================================================
 CREATE TABLE IF NOT EXISTS public.job_applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     company_name TEXT NOT NULL,
@@ -95,31 +98,52 @@ CREATE TABLE IF NOT EXISTS public.job_applications (
     chat_history JSONB DEFAULT '[]'::jsonb
 );
 
--- Enable Row Level Security (RLS) for job_applications
+-- Index for high-performance RLS filtering
+CREATE INDEX IF NOT EXISTS idx_job_applications_user_id ON public.job_applications(user_id);
+
+-- Enable Row Level Security (RLS)
 ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
 
--- Allow public read/write access (for anon API key)
-CREATE POLICY "Allow public full access" ON public.job_applications
+-- Production Authenticated Policy: Users only access their own records
+CREATE POLICY "Users can only access their own applications" ON public.job_applications
     FOR ALL
-    USING (true)
-    WITH CHECK (true);
+    TO authenticated
+    USING ((SELECT auth.uid()) = user_id)
+    WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- 2. Candidate Profiles Table (For sync across devices)
+-- ============================================================
+-- 2. Candidate Profiles Table (Multi-tenant profile sync)
+-- ============================================================
 CREATE TABLE IF NOT EXISTS public.user_profiles (
-    id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY DEFAULT auth.uid()::text,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     profile_data JSONB DEFAULT '{}'::jsonb
 );
 
--- Enable Row Level Security (RLS) for user_profiles
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON public.user_profiles(user_id);
+
+-- Enable Row Level Security (RLS)
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 
--- Allow public read/write access (for anon API key)
-CREATE POLICY "Allow public full access on user_profiles" ON public.user_profiles
+-- Production Authenticated Policy: Users only access their own profile
+CREATE POLICY "Users can only access their own profile" ON public.user_profiles
     FOR ALL
-    USING (true)
-    WITH CHECK (true);
+    TO authenticated
+    USING ((SELECT auth.uid()) = user_id OR (SELECT auth.uid())::text = id)
+    WITH CHECK ((SELECT auth.uid()) = user_id OR (SELECT auth.uid())::text = id);
 ```
+
+> 🔒 **Security & Access Control Best Practices**:
+> - **Production (Recommended)**: The policies above enforce database-level tenant isolation using `auth.uid()`. Unauthenticated requests or users trying to access another person's job records or profile data are rejected at the database engine level.
+> - **Personal Sandboxes (Standalone Anon Key)**: If you run a private, single-tenant instance without Supabase Auth user logins and wish to allow client access via the publishable anon key, you can scope access using:
+>   ```sql
+>   -- Single-tenant private sandbox only (DO NOT use in multi-user environments):
+>   CREATE POLICY "Sandbox anon access" ON public.job_applications
+>       FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+>   ```
+>   *Caution: Never expose your project credentials publicly when using unrestricted `USING (true)` policies.*
+
 
 ### 🗓️ How Interview Tracking & Schedules Work
 - **Conversational Status Pipeline**: When you tell Zuno *"I got an interview scheduled for Tuesday"* or type `/interview`, Zuno automatically updates the application's `status` to **`Interviewing`**, instantly recalculating your **Interview Rate (%)** and active call metrics in the Analytics Dashboard.
