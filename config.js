@@ -68,7 +68,7 @@ export const Config = {
       supabaseTable: localStorage.getItem(STORAGE_KEYS.SUPABASE_TABLE) || 'job_applications',
       aiProvider: localStorage.getItem(STORAGE_KEYS.AI_PROVIDER) || 'gemini',
       geminiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '',
-      geminiModel: localStorage.getItem(STORAGE_KEYS.GEMINI_MODEL) || 'gemini-1.5-flash',
+      geminiModel: localStorage.getItem(STORAGE_KEYS.GEMINI_MODEL) || 'gemini-3.5-flash-lite',
       openaiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || '',
       theme: 'dark'
     };

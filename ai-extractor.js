@@ -157,6 +157,212 @@ export function parsePortalName(text, url = '') {
   return null;
 }
 
+const EXTRACTION_BLACKLIST = new Set([
+  'full', 'time', 'part', 'job', 'role', 'title', 'location', 'work', 'work location',
+  'in person', 'remote', 'on-site', 'hybrid', 'full-time', 'part-time', 'contract',
+  'key responsibilities', 'full job description', 'job details', 'required skills',
+  'application question', 'application questions', 'provident fund', 'benefits',
+  'pay', 'salary', 'bengaluru', 'karnataka', 'india', 'target company', 'software professional',
+  'qualification', 'qualifications', 'experience', 'responsibilities'
+]);
+
+export function extractSalary(text) {
+  if (!text) return null;
+
+  // 1. Explicit labeled line: Pay:, Salary:, Compensation:, CTC:, Stipend:
+  const labeledMatch = text.match(/(?:Pay|Salary|Compensation|CTC|Stipend|Package)\s*[:\-]\s*([^\n\r;]+)/i);
+  if (labeledMatch) {
+    const raw = labeledMatch[1].trim();
+    if (/[\$€£₹]|(?:INR|USD|CAD|EUR|GBP|LPA)\b|\d+[,.\d]*/i.test(raw)) {
+      const cleaned = raw.replace(/[.]+$/, '').trim();
+      if (cleaned.length > 2 && cleaned.length < 60) {
+        return cleaned;
+      }
+    }
+  }
+
+  // 2. Comprehensive Currency Range Match:
+  const currSymbols = '[$€£₹]|(?:INR|USD|CAD|EUR|GBP|AUD)';
+  const numPattern = '\\d{1,3}(?:,\\d{2,3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?';
+  const unitPattern = '(?:k|lpa|lac|lacs|lakh|lakhs)?';
+  const periodPattern = '(?:\\s*(?:per\\s+(?:month|year|annum|hr|hour|day|week)|a\\s+(?:month|year|hr|hour|day|week)|\\/(?:mo|month|yr|year|hr|hour|day|wk)|p\\.a\\.|p\\.m\\.))?';
+  const rangeSeparator = '\\s*(?:-|–|—|to)\\s*';
+
+  const rangeRegex = new RegExp(
+    `(${currSymbols})\\s*(${numPattern})\\s*${unitPattern}${rangeSeparator}(?:(${currSymbols})\\s*)?(${numPattern})\\s*${unitPattern}${periodPattern}`,
+    'i'
+  );
+  const rangeMatch = text.match(rangeRegex);
+  if (rangeMatch) {
+    return rangeMatch[0].trim().replace(/[\s\-–—:]+$/, '');
+  }
+
+  const lpaRegex = /\b(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)\s*LPA\b/i;
+  const lpaMatch = text.match(lpaRegex);
+  if (lpaMatch) return lpaMatch[0].trim();
+
+  const singleLpa = /\b(\d+(?:\.\d+)?)\s*LPA\b/i;
+  const singleLpaMatch = text.match(singleLpa);
+  if (singleLpaMatch) return singleLpaMatch[0].trim();
+
+  const singleCurrRegex = new RegExp(
+    `(${currSymbols})\\s*(${numPattern})\\s*${unitPattern}${periodPattern}`,
+    'i'
+  );
+  const singleMatch = text.match(singleCurrRegex);
+  if (singleMatch) {
+    return singleMatch[0].trim().replace(/[\s\-–—:]+$/, '');
+  }
+
+  return null;
+}
+
+export function extractCompany(text) {
+  if (!text) return null;
+
+  // 1. Explicit labeled company
+  const labeled = text.match(/(?:Company(?:\s*Name)?|Employer|Organization|Hiring\s+Company)\s*[:\-]\s*([^\n\r,;|]+)/i);
+  if (labeled) {
+    const val = labeled[1].trim();
+    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 2 && val.length < 50) return val;
+  }
+
+  // 2. Corporate Entity suffix / keyword line match (e.g. HYDRO PNEUMATIC ENGINEERS (HYD) PVT LTD)
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const entityRegex = /\b(?:PVT\.?\s*LTD\.?|PRIVATE\s+LIMITED|LTD\.?|LIMITED|INC\.?|INCORPORATED|LLC|CORP\.?|CORPORATION|LLP|GMBH|TECHNOLOGIES|SOLUTIONS|ENGINEERS|SYSTEMS|SERVICES|LABS|HOLDINGS|ENTERPRISES)\b/i;
+  
+  for (const line of lines) {
+    if (entityRegex.test(line)) {
+      const clean = line.replace(/^(?:Company|Employer|At)\s*[:\-]?\s*/i, '').trim();
+      if (clean.length >= 3 && clean.length <= 60 && !EXTRACTION_BLACKLIST.has(clean.toLowerCase())) {
+        return clean;
+      }
+    }
+  }
+
+  // 3. Common intro phrases: e.g. "Careers at Google", "Join Stripe", "About Acme"
+  const introMatch = text.match(/(?:join|about|careers\s+at)\s+([A-Z][A-Za-z0-9&.,'()\- ]{1,35})/i);
+  if (introMatch) {
+    const val = introMatch[1].trim();
+    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 2) return val;
+  }
+
+  // 4. "Role at Company" pattern: stop at 'in', 'with', 'for', ',', etc.
+  const atMatch = text.match(/(?:for\s+)?([A-Za-z0-9 &.'\-/]{2,35})\s+at\s+([A-Z][A-Za-z0-9&.'\-]{1,35}?)(?:\s+(?:in|with|for|as|on|at)\b|[,.\n\r(]|$)/i);
+  if (atMatch) {
+    const co = atMatch[2].trim();
+    if (!EXTRACTION_BLACKLIST.has(co.toLowerCase()) && co.length > 2) return co;
+  }
+
+  // 5. Look for company line immediately preceding location line or salary line
+  for (let i = 0; i < lines.length - 1; i++) {
+    const nextLine = lines[i + 1];
+    const isLocationNext = /^[A-Z][a-zA-Z\s]{2,20},\s*[A-Z][a-zA-Z\s]{2,20}$/.test(nextLine) ||
+                           /\b(?:Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Chennai|Seattle|San Francisco|New York)\b/i.test(nextLine);
+    if (isLocationNext) {
+      const cur = lines[i];
+      if (cur.length >= 3 && cur.length <= 50 && !EXTRACTION_BLACKLIST.has(cur.toLowerCase()) && !/^(?:Job details|Full job description|Work Location|Key Responsibilities|Pay|Salary)/i.test(cur)) {
+        return cur;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function extractRoleTitle(text) {
+  if (!text) return null;
+
+  // 1. Explicit Role label
+  const labeled = text.match(/(?:Role(?:\s*Title)?|Job\s*Title|Position|Title|Designation|Post)\s*[:\-]\s*([^\n\r,;|]+)/i);
+  if (labeled) {
+    const val = labeled[1].trim().replace(/^(?:In person|Remote|On-site|Hybrid)\s+/i, '');
+    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 2 && val.length < 50) return val;
+  }
+
+  // 2. Lines like: "Work Location: In person Aircraft Maintenance Technician"
+  const workLocTitleMatch = text.match(/Work\s+Location\s*[:\-]\s*(?:In\s+person|Remote|On-site|Hybrid)?\s*([A-Z][A-Za-z0-9&/\- ]{2,50})/i);
+  if (workLocTitleMatch) {
+    const val = workLocTitleMatch[1].trim();
+    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 3 && val.length < 50) return val;
+  }
+
+  // 3. Professional role title suffix pattern
+  const roleRegex = /\b([A-Z][A-Za-z0-9&/\- ]{1,40}\s+(?:Technician|Engineer|Developer|Architect|Analyst|Specialist|Manager|Lead|Director|Designer|Administrator|Consultant|Associate|Executive|Officer|Coordinator|Mechanic|Operator|Intern|Scientist|Representative|Supervisor|Inspector|Foreman|Electrician|Fitter|Machinist))\b/;
+  const roleMatch = text.match(roleRegex);
+  if (roleMatch) {
+    const val = roleMatch[1].trim();
+    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 3) return val;
+  }
+
+  // 4. "Applied for [Role] at [Company]" pattern
+  const appliedForMatch = text.match(/(?:applied|applying|interview(?:ing)?|offer|role|job)?\s*(?:for|as)\s+(?:the\s+)?([A-Za-z0-9&/.\- ]{2,30})\s+at\s+([A-Z][A-Za-z0-9&.'\-]{1,30})/i);
+  if (appliedForMatch) {
+    let r = appliedForMatch[1].trim().replace(/^(?:applied|interviewing|offer)\s+(?:for|as)?\s+/i, '');
+    if (!EXTRACTION_BLACKLIST.has(r.toLowerCase()) && r.length > 1 && r.length < 40) return r;
+  }
+
+  // 5. Common acronyms & tech titles: SDE 1, SDE 2, SDE 3, SWE, Data Scientist, etc.
+  const techMatch = text.match(/\b(SDE[- ]?(?:[123]|I{1,3})|SWE[- ]?(?:[123]|I{1,3})?|Data Scientist|Product Manager|UI\/UX Designer|Full Stack Developer)\b/i);
+  if (techMatch) return techMatch[1].trim();
+
+  return null;
+}
+
+export function extractLocation(text) {
+  if (!text) return 'Not specified';
+
+  // 1. Standalone City, State line (e.g. Bengaluru, Karnataka)
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (/^[A-Z][a-zA-Z\s]{2,20},\s*[A-Z][a-zA-Z\s]{2,20}$/.test(line)) {
+      return line;
+    }
+  }
+
+  // 2. Explicit Location label
+  const locMatch = text.match(/(?:Location|Place|Office|Based in)\s*[:\-]\s*([^\n\r,;|]+)/i);
+  if (locMatch) {
+    let raw = locMatch[1].trim();
+    raw = raw.replace(/\b(?:In\s*person|Remote|On-site|Hybrid)\b/gi, '').trim();
+    if (raw.length > 2 && raw.length < 40) return raw;
+  }
+
+  // 3. Known cities list
+  const cityMatch = text.match(/\b(Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Gurgaon|Gurugram|Chennai|Kolkata|Ahmedabad|Jaipur|Kochi|Chandigarh|New York|San Francisco|London|Berlin|Toronto|Singapore|Seattle|Austin)\b/i);
+  if (cityMatch) return cityMatch[1];
+
+  return 'Not specified';
+}
+
+export function extractSkills(text) {
+  const skills = [];
+  // 1. Explicit Required Skills line
+  const skillsLineMatch = text.match(/(?:Required\s+Skills|Key\s+Skills|Skills(?:\s+Required)?|Technical\s+Skills|Core\s+Skills|Must\s+Have\s+Skills)\s*[:\-]\s*([^\n\r]+)/i);
+  if (skillsLineMatch) {
+    const raw = skillsLineMatch[1].trim();
+    const split = raw.split(/[,;•|]+/).map(s => s.trim().replace(/[.]+$/, '')).filter(s => s.length > 1 && s.length < 40);
+    skills.push(...split);
+  }
+
+  // 2. Tech dictionary matching
+  const techDictionary = [
+    'JavaScript', 'TypeScript', 'Python', 'Java', 'C++', 'C#', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift', 'Kotlin',
+    'React', 'Next.js', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'FastAPI', 'Spring Boot',
+    'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Supabase', 'Firebase', 'Redis',
+    'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Git', 'GraphQL', 'REST API', 'Tailwind', 'CSS', 'HTML'
+  ];
+  for (const tech of techDictionary) {
+    const escaped = tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(?:^|[^a-zA-Z0-9_+#])${escaped}(?=[^a-zA-Z0-9_+#]|$)`, 'i');
+    if (regex.test(text) && !skills.includes(tech)) {
+      skills.push(tech);
+    }
+  }
+
+  return [...new Set(skills)].slice(0, 10);
+}
+
 
 // Curated company intelligence database for offline mode
 const COMPANY_DATABASE = {
@@ -746,12 +952,9 @@ Return ONLY valid JSON matching this schema:
 
     const candidateModels = [
       settings.geminiModel,
-      'gemini-2.5-flash-lite',
-      'gemini-flash-lite-latest',
-      'gemini-2.5-flash',
-      'gemini-flash-latest',
-      'gemini-3.1-flash-lite',
-      'gemini-3.8-flash'
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-flash-latest'
     ].filter(Boolean);
 
     let lastError = null;
@@ -759,15 +962,18 @@ Return ONLY valid JSON matching this schema:
 
     const startTime = Date.now();
     for (const m of candidateModels) {
-      if (Date.now() - startTime > 3500) break;
+      if (Date.now() - startTime > 20000) break;
       const controller = new AbortController();
-      const perModelTimer = setTimeout(() => controller.abort(), 2800);
+      const perModelTimer = setTimeout(() => controller.abort(), 12000);
 
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
         const response = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
           body: JSON.stringify(requestBody),
           signal: controller.signal
         });
@@ -1941,43 +2147,60 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     const currentTimeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const detectedDate = parseAppliedDate(text, null);
     const detectedPortal = parsePortalName(text);
+    const detectedSource = parseJobSource(text);
 
-    const data = existingJob ? { ...existingJob } : {
-      companyName: '',
-      roleTitle: '',
+    const extractedCompany = extractCompany(text);
+    const extractedRole = extractRoleTitle(text);
+    const extractedSalary = extractSalary(text);
+    const extractedLocation = extractLocation(text);
+    const extractedSkills = extractSkills(text);
+
+    // Determine if this is a brand new application draft or updating an existing job
+    const isDifferentCompany = Boolean(
+      existingJob && extractedCompany &&
+      existingJob.companyName &&
+      existingJob.companyName.trim().toLowerCase() !== extractedCompany.trim().toLowerCase() &&
+      !['full', 'target company'].includes(existingJob.companyName.trim().toLowerCase())
+    );
+
+    const isNewJob = !existingJob || isDifferentCompany || (isJD && Boolean(extractedCompany || extractedRole));
+
+    let summaryNotes = [];
+
+    const data = isNewJob ? {
+      companyName: extractedCompany || '',
+      roleTitle: extractedRole || '',
       jobType: 'Full-time',
       workMode: 'On-site',
-      location: 'Not specified',
-      salary: 'Not disclosed',
-      source: 'Portal',
-      portalName: '',
+      location: (extractedLocation && extractedLocation !== 'Not specified') ? extractedLocation : 'Not specified',
+      salary: extractedSalary || 'Not disclosed',
+      source: detectedSource || 'Portal',
+      portalName: detectedPortal || '',
       applicationUrl: '',
       sourceUrl: '',
       status: 'Applied',
       appliedDate: detectedDate || today,
       appliedTime: currentTimeStr,
-      skills: [],
+      skills: extractedSkills || [],
       notes: ''
+    } : {
+      ...existingJob,
+      companyName: extractedCompany || existingJob.companyName || '',
+      roleTitle: extractedRole || existingJob.roleTitle || '',
+      salary: extractedSalary || existingJob.salary || 'Not disclosed',
+      location: (extractedLocation && extractedLocation !== 'Not specified') ? extractedLocation : (existingJob.location || 'Not specified'),
+      skills: (extractedSkills && extractedSkills.length > 0)
+        ? Array.from(new Set([...(existingJob.skills || []), ...extractedSkills])).slice(0, 10)
+        : (existingJob.skills || [])
     };
-    if (existingJob && !data.appliedTime) {
-      data.appliedTime = currentTimeStr;
+
+    if (existingJob && !isNewJob) {
+      if (detectedDate) data.appliedDate = detectedDate;
+      if (detectedSource) data.source = detectedSource;
+      if (detectedPortal) data.portalName = detectedPortal;
+      if (!data.appliedTime) data.appliedTime = currentTimeStr;
     }
 
-    const detectedSource = parseJobSource(text);
-
-    if (existingJob && detectedDate) {
-      data.appliedDate = detectedDate;
-    }
-    if (detectedSource) {
-      data.source = detectedSource;
-    }
-    if (detectedPortal) {
-      data.portalName = detectedPortal;
-    } else if (existingJob && existingJob.portalName) {
-      data.portalName = existingJob.portalName;
-    }
-
-    let summaryNotes = [];
     if (detectedDate) {
       summaryNotes.push(`Applied date set to ${detectedDate}.`);
     }
@@ -2010,16 +2233,13 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       summaryNotes.push('Identified application portal URL.');
     }
 
-    // If explicit patterns didn't match all found URLs, process them intelligently
+    // Process general found URLs
     if (foundUrls.length > 0) {
       for (const u of foundUrls) {
         const cleanUrl = u.replace(/[.,;!?)]+$/, '');
         const lowerUrl = cleanUrl.toLowerCase();
         
-        // Is this a known job discovery aggregator?
         const isAggregator = lowerUrl.includes('indeed.com') || lowerUrl.includes('linkedin.com') || lowerUrl.includes('glassdoor.com') || lowerUrl.includes('wellfound.com') || lowerUrl.includes('angel.co') || lowerUrl.includes('naukri.com') || lowerUrl.includes('instahyre.com');
-        
-        // Is this a known ATS / application portal?
         const isAtsPortal = lowerUrl.includes('greenhouse.io') || lowerUrl.includes('lever.co') || lowerUrl.includes('workday') || lowerUrl.includes('myworkdayjobs') || lowerUrl.includes('ashbyhq.com') || lowerUrl.includes('taleo.net') || lowerUrl.includes('icims.com') || lowerUrl.includes('smartrecruiters.com') || lowerUrl.includes('jobvite.com') || lowerUrl.includes('successfactors.com') || lowerUrl.includes('/apply') || lowerUrl.includes('/careers') || lowerUrl.includes('jobs.');
 
         if (isAggregator) {
@@ -2036,7 +2256,6 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
           if (detectedAts) data.portalName = detectedAts;
           else if (!data.portalName) data.portalName = 'Company Portal';
         } else {
-          // If we already have applicationUrl, assign to sourceUrl, and vice versa
           if (!data.applicationUrl) {
             data.applicationUrl = cleanUrl;
             if (!data.portalName) data.portalName = parsePortalName(text, cleanUrl) || 'Company Portal';
@@ -2048,8 +2267,8 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       summaryNotes.push(`Processed ${foundUrls.length} web link(s).`);
     }
 
-    // Preserve existing URLs if not overwritten
-    if (existingJob) {
+    // Preserve existing URLs if not overwritten (only when updating existing job)
+    if (existingJob && !isNewJob) {
       if (!data.sourceUrl && existingJob.sourceUrl) data.sourceUrl = existingJob.sourceUrl;
       if (!data.applicationUrl && existingJob.applicationUrl) data.applicationUrl = existingJob.applicationUrl;
       if (!data.portalName && existingJob.portalName) data.portalName = existingJob.portalName;
@@ -2071,7 +2290,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
         summaryNotes.push(`Logged recruiter: ${data.recruiterName}.`);
       }
 
-      // Question/topics extraction (handles dots in words like Node.js)
+      // Question/topics extraction
       const qMatch = text.match(/(?:asked|inquired|wanted to know|questions?|topics?)\s*(?:about|me|were)?\s*[:\-]?\s*(.+?)(?=(?:\n|\r|\.\s+[A-Z]|$))/i);
       if (qMatch && qMatch[1].trim()) {
         const rawTopics = qMatch[1].trim().replace(/^about\s+/i, '').replace(/[.]+$/, '');
@@ -2121,46 +2340,46 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       data.jobType = 'Full-time';
     }
 
-    // Salary extraction
-    const salaryRegex = /(?:(\$|€|£|₹|INR|USD|CAD|EUR|GBP)\s*[\d,]+(?:\.\d+)?\s*(?:k|lpa|k\/yr|per year|\/yr|\/year|\/mo|\/hr|\/month|-|\s*to\s*|\s*–\s*)+[\d,]*\s*(?:k|lpa|per year|\/yr|\/year|\/hr|\/month)?)|(?:\b[\d,]+(?:\.\d+)?\s*(?:LPA|k\/year|k per year|USD|EUR)\b)/i;
-    const salaryMatch = text.match(salaryRegex);
-    if (salaryMatch) {
-      data.salary = salaryMatch[0].trim();
+    // Salary compensation notes
+    if (extractedSalary) {
+      data.salary = extractedSalary;
       summaryNotes.push(`Captured salary compensation: ${data.salary}`);
     }
 
-    // Company Name extraction
-    if (!data.companyName) {
-      const companyMatch = text.match(/(?:Company|Organization|Employer)\s*[:\-]\s*([A-Za-z0-9&.\- ]{2,35})/i) ||
-                           text.match(/(?:Join|About|Welcome to)\s+([A-Z][A-Za-z0-9&.\- ]{1,25})/);
-      if (companyMatch) {
-        data.companyName = companyMatch[1].trim();
-      } else {
-        const atSplit = text.match(/([A-Za-z0-9 &.'\-/]{2,60})\s+at\s+([^,\n;]{2,50})/i);
-        const dashSplit = text.match(/([A-Za-z0-9 &.'\-]{2,35})\s*[-|–]\s*([A-Za-z0-9 &.'\-]{2,35})/);
-        if (atSplit) {
-          data.roleTitle = data.roleTitle || atSplit[1].trim();
-          data.companyName = atSplit[2].trim();
-        } else if (dashSplit) {
-          data.companyName = dashSplit[1].trim();
-          data.roleTitle = data.roleTitle || dashSplit[2].trim();
-        }
+    // Benefits extraction
+    let bText = '';
+    const benefitsInline = text.match(/Benefits\s*[:\-]\s*([^\n\r]+)/i);
+    if (benefitsInline && benefitsInline[1].trim()) {
+      bText = benefitsInline[1].trim();
+    } else if (/Benefits\s*[:\-]?/i.test(text)) {
+      const afterBenefits = text.split(/Benefits\s*[:\-]?/i)[1] || '';
+      const firstLine = afterBenefits.split(/\r?\n/).map(l => l.trim()).filter(Boolean)[0] || '';
+      if (firstLine && !/^(?:Application|Work|Location|Key|Required|Pay|Company)/i.test(firstLine)) {
+        bText = firstLine;
       }
     }
-
-    // Role Title extraction
-    if (!data.roleTitle) {
-      const roleMatch = text.match(/(?:Role|Title|Position|Job Title)\s*[:\-]\s*([A-Za-z0-9&.\- /]{2,45})/i) ||
-                        text.match(/\b(Software Engineer|Frontend Engineer|Backend Engineer|Full Stack Developer|Data Scientist|Product Manager|DevOps Engineer|UI\/UX Designer|Machine Learning Engineer|AI Engineer|QA Engineer|Systems Architect|Solutions Architect|Cloud Engineer|Intern)\b/i);
-      if (roleMatch) {
-        data.roleTitle = roleMatch[1].trim();
+    if (bText) {
+      const bLog = `[Benefits]: ${bText}`;
+      if (!data.notes || !data.notes.includes(bLog)) {
+        data.notes = data.notes ? `${data.notes}\n${bLog}` : bLog;
       }
+      summaryNotes.push(`Logged benefits (${bText}).`);
     }
 
-
+    // Application screening questions
+    const appQuestionsMatch = text.match(/Application\s+Question\(s\)?\s*[:\-]?\s*([\s\S]+?)(?=(?:\n\s*(?:Work\s+Location|HYDRO|Required|Key|Pay|Benefits|Company)|\n\s*\n\s*[A-Z]|$))/i);
+    if (appQuestionsMatch && appQuestionsMatch[1].trim()) {
+      const qLines = appQuestionsMatch[1].split(/\r?\n/)
+        .map(l => l.trim().replace(/^[•\-\d.)\s]+/, '').replace(/[.]+$/, ''))
+        .filter(l => l.length > 5 && (l.includes('?') || /^(?:what|how|why|where|do|can|are|years)/i.test(l)));
+      if (qLines.length > 0) {
+        data.interviewQuestions = Array.from(new Set([...(data.interviewQuestions || []), ...qLines]));
+        summaryNotes.push(`Captured ${qLines.length} screening question(s).`);
+      }
+    }
 
     // If no concrete job signals found and creating new job, do NOT create a dummy record
-    if (!existingJob && !data.companyName && !data.roleTitle && foundUrls.length === 0 && !salaryMatch) {
+    if (isNewJob && !data.companyName && !data.roleTitle && foundUrls.length === 0 && !extractedSalary) {
       // If it looks like a question or conversational prompt
       if (/[?]|^(what|how|why|can|could|tell|explain|give|describe|advice|tips|guide|suggest|prepare|interview|resume|portfolio|salary)/i.test(trimmed)) {
         return {
@@ -2189,40 +2408,17 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       data.companyName = existingJob?.companyName || 'Target Company';
     }
     if (!data.roleTitle) {
-      data.roleTitle = existingJob?.roleTitle || 'Software Professional';
+      data.roleTitle = existingJob?.roleTitle || 'Professional Role';
     }
 
-    // Location extraction
-    if (!data.location || data.location === 'Not specified') {
-      const locMatch = text.match(/(?:Location|Place|Office|Based in)\s*[:\-]\s*([A-Za-z0-9,.\- ]{2,35})/i);
-      if (locMatch) {
-        data.location = locMatch[1].trim();
-      } else if (data.workMode === 'Remote') {
-        data.location = 'Remote / Anywhere';
-      }
+    if (data.skills && data.skills.length > 0) {
+      summaryNotes.push(`Identified ${data.skills.length} skill(s).`);
     }
-
-    // Skills extraction
-    const techDictionary = [
-      'JavaScript', 'TypeScript', 'Python', 'Java', 'C++', 'C#', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift', 'Kotlin',
-      'React', 'Next.js', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'FastAPI', 'Spring Boot',
-      'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Supabase', 'Firebase', 'Redis',
-      'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Git', 'GraphQL', 'REST API', 'Tailwind', 'CSS', 'HTML'
-    ];
-    const foundSkills = new Set(data.skills || []);
-    for (const tech of techDictionary) {
-      const escaped = tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_+#])${escaped}(?=[^a-zA-Z0-9_+#]|$)`, 'i');
-      if (regex.test(text)) {
-        foundSkills.add(tech);
-      }
-    }
-    data.skills = Array.from(foundSkills).slice(0, 8);
 
     // Friendly commentary message
-    let message = existingJob
-      ? `Updated **${data.companyName}** (${data.roleTitle}) with the latest details.`
-      : `Successfully extracted job details for **${data.roleTitle}** at **${data.companyName}**!`;
+    let message = isNewJob
+      ? `Successfully extracted job details for **${data.roleTitle}** at **${data.companyName}**!`
+      : `Updated **${data.companyName}** (${data.roleTitle}) with the latest details.`;
 
     if (summaryNotes.length > 0) {
       message += ` ` + summaryNotes.join(' ');

@@ -396,10 +396,9 @@ Ensure output is valid JSON.`;
 
     // Reliable official Gemini models
     const candidateModels = [
-      'gemini-1.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash-8b',
-      'gemini-1.5-pro'
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-flash-latest'
     ];
 
     let lastError = null;
@@ -435,7 +434,10 @@ Ensure output is valid JSON.`;
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveGeminiKey}`;
         const response = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': effectiveGeminiKey
+          },
           body: JSON.stringify(requestBody),
           signal: controller.signal
         });

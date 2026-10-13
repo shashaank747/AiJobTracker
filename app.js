@@ -2148,23 +2148,32 @@ class JobTrackerApp {
       }
 
       if (result.data) {
+        const activeCo = (this.activeApplication?.companyName || '').trim().toLowerCase();
+        const newCo = (result.data?.companyName || '').trim().toLowerCase();
+        const isSameCompany = Boolean(
+          activeCo && newCo &&
+          (activeCo === newCo || activeCo.includes(newCo) || newCo.includes(activeCo)) &&
+          !['full', 'target company'].includes(activeCo)
+        );
+
         // Detect if matching job already exists in stored database applications
         const existingApp = this.applications.find(a => 
-          (this.activeApplication?.id && a.id === this.activeApplication.id) ||
           (result.data.companyName && result.data.roleTitle &&
            (a.companyName || '').trim().toLowerCase() === result.data.companyName.trim().toLowerCase() &&
-           (a.roleTitle || '').trim().toLowerCase() === result.data.roleTitle.trim().toLowerCase())
+           (a.roleTitle || '').trim().toLowerCase() === result.data.roleTitle.trim().toLowerCase()) ||
+          (isSameCompany && this.activeApplication?.id && a.id === this.activeApplication.id)
         );
+
+        const isNewDraft = !isSameCompany && !existingApp;
+        const prevApp = isNewDraft ? {} : (this.activeApplication || existingApp || {});
 
         const isStored = Boolean(
-          this.activeApplication?.isStored ||
-          (existingApp && existingApp.isStored !== false)
+          existingApp ? (existingApp.isStored !== false) : (isSameCompany && this.activeApplication?.isStored)
         );
 
-        const appId = this.activeApplication?.id || existingApp?.id || crypto.randomUUID();
-        const createdAt = this.activeApplication?.createdAt || existingApp?.createdAt || new Date().toISOString();
+        const appId = existingApp?.id || (isSameCompany ? this.activeApplication?.id : null) || crypto.randomUUID();
+        const createdAt = existingApp?.createdAt || (isSameCompany ? this.activeApplication?.createdAt : null) || new Date().toISOString();
 
-        const prevApp = this.activeApplication || existingApp || {};
         const mergedSourceUrl = result.data.sourceUrl || prevApp.sourceUrl || '';
         const mergedApplicationUrl = result.data.applicationUrl || prevApp.applicationUrl || '';
         const mergedPortalName = result.data.portalName || prevApp.portalName || '';
@@ -2181,8 +2190,8 @@ class JobTrackerApp {
         const mergedViewedAt = result.data.viewedAt || prevApp.viewedAt || '';
 
         const appData = {
-          ...(existingApp || {}),
-          ...(this.activeApplication || {}),
+          ...(isNewDraft ? {} : (existingApp || {})),
+          ...(isNewDraft ? {} : (this.activeApplication || {})),
           ...result.data,
           id: appId,
           createdAt: createdAt,
@@ -2196,7 +2205,7 @@ class JobTrackerApp {
           callNotes: mergedCallNotes,
           interviewQuestions: mergedQuestions,
           viewedAt: mergedViewedAt,
-          appliedTime: result.data.appliedTime || (this.activeApplication?.appliedTime || existingApp?.appliedTime || this.formatTimeOnly(new Date())),
+          appliedTime: result.data.appliedTime || (prevApp.appliedTime || this.formatTimeOnly(new Date())),
           isStored: isStored
         };
 
@@ -2222,6 +2231,9 @@ class JobTrackerApp {
           timestamp: assistantTimestamp
         };
 
+        if (isNewDraft) {
+          this.chatMessages = [];
+        }
         this.chatMessages.push({ role: 'user', text, timestamp: userTimestamp });
         this.chatMessages.push(assistantMsg);
         this.activeApplication.chatHistory = this.chatMessages.map(m => ({ role: m.role, text: m.text, timestamp: m.timestamp || userTimestamp }));
