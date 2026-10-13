@@ -11,11 +11,16 @@ export function parseAppliedDate(text, defaultDate = undefined) {
   const now = new Date();
   const lower = (text || '').toLowerCase();
 
-  // "yesterday"
-  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?yesterday\b/i.test(lower)) {
+  // "yesterday" (including common typos like yesturday, yesteday, yestday, yesterdy)
+  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied\s+)?(?:yesterday|yesturday|yesteday|yestday|yesterdy)\b/i.test(lower)) {
     const d = new Date(now);
     d.setDate(d.getDate() - 1);
     return d.toISOString().split('T')[0];
+  }
+
+  // "today"
+  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied\s+)?today\b/i.test(lower)) {
+    return now.toISOString().split('T')[0];
   }
 
   // "X days ago" or "X days back"
@@ -127,11 +132,29 @@ export function parsePortalName(text, url = '') {
   if (u.includes('successfactors.com')) return 'SAP SuccessFactors';
   if (u.includes('bamboohr.com')) return 'BambooHR';
 
+  const isDateOrTimeOrSource = (str) => {
+    if (!str) return true;
+    const lower = str.toLowerCase().trim();
+    if (/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|today|yesterday|yesturday|tomorrow|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|\d{1,2}(?:st|nd|rd|th)?|\d{1,2}:\d{2}|am|pm|days?\s+(?:ago|back)|weeks?\s+(?:ago|back)|months?\s+(?:ago|back))\b/i.test(lower)) {
+      return true;
+    }
+    if (/\b(?:indeed|linkedin|naukri|glassdoor|wellfound|instahyre|internshala|angellist)\b/i.test(lower)) {
+      return true;
+    }
+    if (/\b(?:rejected|reject|not\s+selected|applied|interviewing|offer)\b/i.test(lower)) {
+      return true;
+    }
+    if (/^\d+$/.test(lower) || lower.length < 3) {
+      return true;
+    }
+    return false;
+  };
+
   // 2. Explicit phrase: "filled (the application) on/at/in [Company Portal / Cisco Career Portal / etc.]"
   const filledOnMatch = text && text.match(/(?:filled|applied|submitted)(?:\s+the\s+application)?\s+(?:on|in|at)\s+([^:,\n\r]+)/i);
   if (filledOnMatch && filledOnMatch[1].trim()) {
     const val = filledOnMatch[1].trim().replace(/\s+(?:link|url|here)$/i, '');
-    if (val.length > 2 && val.length < 50 && !val.startsWith('http') && !val.includes('://')) {
+    if (val.length > 2 && val.length < 50 && !val.startsWith('http') && !val.includes('://') && !isDateOrTimeOrSource(val)) {
       return val;
     }
   }
@@ -140,7 +163,7 @@ export function parsePortalName(text, url = '') {
   const explicitPortalMatch = text && text.match(/(?:portal\s*(?:name|type)?|platform)\s*[:\-]\s*([a-zA-Z0-9\s\-]+)/i);
   if (explicitPortalMatch && explicitPortalMatch[1].trim()) {
     const val = explicitPortalMatch[1].trim();
-    if (val.length > 2 && val.length < 40 && !val.startsWith('http') && !val.includes('://')) {
+    if (val.length > 2 && val.length < 40 && !val.startsWith('http') && !val.includes('://') && !isDateOrTimeOrSource(val)) {
       return val;
     }
   }
@@ -742,26 +765,35 @@ export const AiExtractor = {
     }
 
     // Post-processing deterministic guarantee for follow-up edits:
-    const isQueryOrQuestion = /^(what|when|where|which|how|who|did|have|list|show|any|status|my|add|update)\b/i.test(text.trim());
+    const isQueryOrQuestion = /^(what|when|where|which|how|who|did|have|list|show|any)\b/i.test(text.trim());
+    const isRejectedSignal = /\b(?:not\s+selected(?:\s+by\s+employer)?|didn'?t\s+get\s+selected|did\s+not\s+get\s+selected|not\s+shortlisted|didn'?t\s+get\s+the\s+job|not\s+hired|turned\s+down|not\s+moving\s+forward|unsuccessful|declined|reject|rejected|rejection|got\s+rejected|was\s+rejected|application\s+rejected)\b/i.test(text);
     const detectedDate = !isQueryOrQuestion ? parseAppliedDate(text, null) : null;
     const detectedSource = !isQueryOrQuestion ? parseJobSource(text) : null;
 
-    if (!isQueryOrQuestion && existingJob && (detectedDate || detectedSource)) {
+    if (!isQueryOrQuestion && existingJob && (detectedDate || detectedSource || isRejectedSignal)) {
       if (!result || !result.data) {
         result = result || {};
         result.data = { ...existingJob };
-        result.message = result.message || `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`;
+        result.message = result.message || (isRejectedSignal
+          ? `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) status to **Rejected** (Not selected by employer).\n\nJob search rejections are completely normal and part of the journey—don't let it discourage you! You're one step closer to the right opportunity.`
+          : `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`);
       }
     }
 
     if (result && result.data) {
+      if (isRejectedSignal) {
+        result.data.status = 'Rejected';
+      }
       if (detectedDate) {
         result.data.appliedDate = detectedDate;
+        if (result.data.status === 'Saved') {
+          result.data.status = 'Applied';
+        }
       }
       if (detectedSource) {
         result.data.source = detectedSource;
       }
-      if (!result.data.appliedTime) {
+      if (!result.data.appliedTime && result.data.appliedDate) {
         result.data.appliedTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       }
     }
@@ -2213,14 +2245,23 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       if (!data.appliedTime && data.appliedDate) data.appliedTime = currentTimeStr;
     }
 
+    const cleanPortalName = (p) => {
+      if (!p) return '';
+      const isDateOrTime = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|today|yesterday|yesturday|tomorrow|\d{1,2}(?:st|nd|rd|th)?|\d{1,2}:\d{2}|am|pm)\b/i.test(p);
+      const isSource = /\b(?:indeed|linkedin|naukri|glassdoor|wellfound)\b/i.test(p);
+      const isStatus = /\b(?:rejected|not\s+selected|applied|interviewing|offer)\b/i.test(p);
+      return (isDateOrTime || isSource || isStatus) ? '' : p;
+    };
+    if (data.portalName) data.portalName = cleanPortalName(data.portalName);
+
     if (detectedDate) {
       summaryNotes.push(`Applied date set to ${detectedDate}.`);
     }
     if (detectedSource) {
       summaryNotes.push(`Discovery source set to ${detectedSource}.`);
     }
-    if (data.portalName) {
-      summaryNotes.push(`Application portal set to ${data.portalName}.`);
+    if (detectedPortal && cleanPortalName(detectedPortal)) {
+      summaryNotes.push(`Application portal set to ${detectedPortal}.`);
     }
 
     // Detect URLs
@@ -2241,7 +2282,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     if (appLinkMatch) {
       data.applicationUrl = appLinkMatch[1].replace(/[.,;!?)]+$/, '');
       const portal = parsePortalName(text, data.applicationUrl);
-      if (portal) data.portalName = portal;
+      if (portal && cleanPortalName(portal)) data.portalName = portal;
       summaryNotes.push('Identified application portal URL.');
     }
 
@@ -2265,7 +2306,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
         } else if (isAtsPortal) {
           data.applicationUrl = cleanUrl;
           const detectedAts = parsePortalName('', cleanUrl);
-          if (detectedAts) data.portalName = detectedAts;
+          if (detectedAts && cleanPortalName(detectedAts)) data.portalName = detectedAts;
           else if (!data.portalName) data.portalName = 'Company Portal';
         } else {
           if (!data.applicationUrl) {
@@ -2283,15 +2324,33 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     if (existingJob && !isNewJob) {
       if (!data.sourceUrl && existingJob.sourceUrl) data.sourceUrl = existingJob.sourceUrl;
       if (!data.applicationUrl && existingJob.applicationUrl) data.applicationUrl = existingJob.applicationUrl;
-      if (!data.portalName && existingJob.portalName) data.portalName = existingJob.portalName;
+      if (!data.portalName && existingJob.portalName) data.portalName = cleanPortalName(existingJob.portalName);
       if ((!data.source || data.source === 'Portal' || data.source === 'Direct Portal') && existingJob.source) {
         data.source = existingJob.source;
       }
     }
 
+    // Rejection / Not Selected detection
+    const isRejectedSignal = /\b(?:not\s+selected(?:\s+by\s+employer)?|didn'?t\s+get\s+selected|did\s+not\s+get\s+selected|not\s+shortlisted|didn'?t\s+get\s+the\s+job|did\s+not\s+get\s+the\s+job|not\s+hired|turned\s+down|not\s+moving\s+forward|unsuccessful|declined|reject|rejected|rejection|got\s+rejected|was\s+rejected|application\s+rejected|application\s+declined)\b/i.test(text);
+
+    const isOfferSignal = /\b(?:got\s+(?:an?\s+)?offer|received\s+(?:an?\s+)?offer|job\s+offer|offered(?:\s+the\s+role)?)\b/i.test(text) && !text.includes('offer letter requirements') && !isRejectedSignal;
+
+    const isInterviewSignal = /\b(?:interview|interviewing|round\s*\d|technical\s+round|managerial\s+round|hr\s+round|assessment|screening|scheduled\s+an?\s+interview)\b/i.test(text) && !isRejectedSignal;
+
     // Recruiter Call & Status updates
-    const isCallEvent = /(?:got\s+a\s+call|received\s+a\s+call|call\s+from|recruiter\s+called|had\s+a\s+call|screening\s+call|phone\s+screen|interview\s+call|called\s+me)/i.test(text);
-    if (isCallEvent) {
+    const isCallEvent = /(?:got\s+a\s+call|received\s+a\s+call|call\s+from|recruiter\s+called|had\s+a\s+call|screening\s+call|phone\s+screen|interview\s+call|called\s+me)/i.test(text) && !isRejectedSignal;
+
+    if (isRejectedSignal) {
+      data.status = 'Rejected';
+      summaryNotes.push('Updated status to Rejected (Not selected by employer).');
+      const rejLogEntry = `[Status Update on ${today}]: Application marked as Rejected (Not selected by employer).`;
+      if (!data.notes || !data.notes.includes(rejLogEntry)) {
+        data.notes = data.notes ? `${data.notes}\n${rejLogEntry}` : rejLogEntry;
+      }
+    } else if (isOfferSignal) {
+      data.status = 'Offer';
+      summaryNotes.push('Updated status to Offer! 🎉');
+    } else if (isCallEvent) {
       data.status = 'Interviewing';
       summaryNotes.push('Updated status to Interviewing based on recruiter call.');
 
@@ -2321,15 +2380,9 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       if (!data.notes || !data.notes.includes(callLogEntry)) {
         data.notes = data.notes ? `${data.notes}\n${callLogEntry}` : callLogEntry;
       }
-    } else if (/(?:offer|offered)/i.test(text) && !text.includes('offer letter requirements')) {
-      data.status = 'Offer';
-      summaryNotes.push('Updated status to Offer.');
-    } else if (/(?:interview|interviewing|round \d|screening)/i.test(text) && text.length < 100) {
+    } else if (isInterviewSignal) {
       data.status = 'Interviewing';
       summaryNotes.push('Updated status to Interviewing.');
-    } else if (/(?:reject|rejected|rejection)/i.test(text) && text.length < 100) {
-      data.status = 'Rejected';
-      summaryNotes.push('Updated status to Rejected.');
     }
 
     // Separate bookmark flag detection
@@ -2441,7 +2494,9 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       ? (data.status === 'Applied'
           ? `Successfully recorded application for **${data.roleTitle}** at **${data.companyName}**! (Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}).`
           : `Extracted job opportunity for **${data.roleTitle}** at **${data.companyName}**! Saved as **Saved Opportunity**. Whenever you submit your application, tell me *"Applied today"* or type **/apply** to mark it as Applied.`)
-      : `Updated **${data.companyName}** (${data.roleTitle}) with the latest details.`;
+      : (data.status === 'Rejected'
+          ? `Updated **${data.companyName}** (${data.roleTitle}) status to **Rejected** (Not selected by employer).\n\nJob search rejections are completely normal and part of the journey—don't let it discourage you! You're one step closer to the right opportunity.`
+          : `Updated **${data.companyName}** (${data.roleTitle}) with the latest details.`);
 
     if (summaryNotes.length > 0) {
       message += ` ` + summaryNotes.join(' ');

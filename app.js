@@ -2309,7 +2309,12 @@ class JobTrackerApp {
 
         const mergedSourceUrl = result.data.sourceUrl || prevApp.sourceUrl || '';
         const mergedApplicationUrl = result.data.applicationUrl || prevApp.applicationUrl || '';
-        const mergedPortalName = result.data.portalName || prevApp.portalName || '';
+        const cleanPortal = (p) => {
+          if (!p) return '';
+          const isDateOrTime = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|today|yesterday|yesturday|tomorrow|\d{1,2}(?:st|nd|rd|th)?|\d{1,2}:\d{2})\b/i.test(p);
+          return isDateOrTime ? '' : p;
+        };
+        const mergedPortalName = cleanPortal(result.data.portalName) || cleanPortal(prevApp.portalName) || '';
         const mergedSource = (result.data.source && result.data.source !== 'Portal' && result.data.source !== 'Direct Portal')
           ? result.data.source
           : (prevApp.source || result.data.source || 'Portal');
@@ -3493,7 +3498,7 @@ class JobTrackerApp {
           <span class="meta-chip">📍 ${this.escapeHtml(data.location || 'Not specified')}</span>
           <span class="meta-chip">💼 ${this.escapeHtml(data.jobType || 'Full-time')}</span>
           <span class="meta-chip chip-source">🌐 Found: <strong>${this.escapeHtml(data.source || 'Direct Portal')}</strong></span>
-          ${data.portalName ? `<span class="meta-chip chip-portal">📝 Filled at: <strong>${this.escapeHtml(data.portalName)}</strong></span>` : ''}
+          ${(data.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|yesturday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(data.portalName)) ? `<span class="meta-chip chip-portal">📝 Filled at: <strong>${this.escapeHtml(data.portalName)}</strong></span>` : ''}
           ${(data.status === 'Saved' || (!data.appliedDate && data.status !== 'Applied')) ? `
             <span class="meta-chip chip-opportunity" style="background: rgba(14, 165, 233, 0.15); color: var(--accent-primary); border: 1px solid rgba(14, 165, 233, 0.3);">📌 Status: <strong>Saved Opportunity (Not Applied)</strong></span>
           ` : `
@@ -3702,7 +3707,7 @@ class JobTrackerApp {
         ${app.salary && app.salary !== 'Not disclosed' ? `<span class="badge-salary">${this.escapeHtml(app.salary)}</span>` : ''}
         <span class="badge-location">📍 ${this.escapeHtml(app.location || 'Location')}</span>
         ${app.source && app.source !== 'Portal' && app.source !== 'Direct Portal' ? `<span class="badge-source" title="Discovered on ${this.escapeHtml(app.source)}">🌐 ${this.escapeHtml(app.source)}</span>` : ''}
-        ${app.portalName ? `<span class="badge-portal" title="Applied on ${this.escapeHtml(app.portalName)}">📝 ${this.escapeHtml(app.portalName)}</span>` : ''}
+        ${(app.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|yesturday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(app.portalName)) ? `<span class="badge-portal" title="Applied on ${this.escapeHtml(app.portalName)}">📝 ${this.escapeHtml(app.portalName)}</span>` : ''}
         ${app.recruiterName ? `<span class="badge-recruiter" title="Recruiter: ${this.escapeHtml(app.recruiterName)}">👤 ${this.escapeHtml(app.recruiterName)}</span>` : ''}
         ${(app.callNotes || (app.interviewQuestions && app.interviewQuestions.length > 0)) ? `<span class="badge-call" title="Has Recruiter & Interview Notes">📞 Call Log</span>` : ''}
       </div>

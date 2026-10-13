@@ -238,6 +238,18 @@ CRITICAL INSTRUCTION FOR DUAL LINKS (DISCOVERY / WHERE SEEN vs APPLICATION / WHE
 - If the user provides an application link as a follow-up to an existing job in session:
   * PRESERVE the existing sourceUrl and source from previous turns, and update applicationUrl and portalName. NEVER overwrite sourceUrl with applicationUrl or drop either link! Both URLs must be saved together.
 
+CRITICAL INSTRUCTION FOR APPLICATION OUTCOME & REJECTION ("Not selected by employer", "Rejected", etc.):
+- When the user tells you they were not selected, got rejected, application was rejected, not shortlisted, or turned down (e.g., "update ; Not selected by employer", "I was rejected", "employer rejected me", "didn't get selected", "not selected", "application declined", "not moving forward"):
+  1. IDENTIFY THE APPLICATION:
+     - Match against "Active Job in Session" or targeted company in "PERSISTENT BACKEND DATABASE".
+  2. AUTOMATICALLY UPDATE STATUS TO "Rejected":
+     - Set "status": "Rejected" in your "data" object!
+  3. PRESERVE APPLICATION DETAILS:
+     - Preserve existing companyName, roleTitle, appliedDate, URLs, recruiter details, and notes.
+     - Append a note to "notes": "[Outcome on ${today}]: Not selected by employer / Application rejected"
+  4. EMPATHETIC, ENCOURAGING RESPONSE ("message"):
+     - Acknowledge the rejection warmly with empathy and encouragement. Reassure the user that rejections are a normal part of every job hunt, encourage them to keep momentum, and offer to help prepare for their next application or interview!
+
 CRITICAL INSTRUCTION FOR RECRUITER & INTERVIEW CALL LOGGING ("I got a call from..."):
 - When the user tells you that they received a call from a company (e.g., "I got a call from Cisco today", "Recruiter called me", "In the call they asked me these questions...", "Screening call details"):
   1. IDENTIFY THE APPLICATION:
@@ -507,18 +519,24 @@ Ensure output is valid JSON.`;
       }
     }
 
-    const isQuestionOrProfile = /^(what|when|where|which|how|who|did|have|list|show|any|status|my|add|update)\b/i.test(text.trim());
+    const isQuestionOrProfile = /^(what|when|where|which|how|who|did|have|list|show|any)\b/i.test(text.trim());
+    const isRejectedSignal = /\b(?:not\s+selected(?:\s+by\s+employer)?|didn'?t\s+get\s+selected|did\s+not\s+get\s+selected|not\s+shortlisted|didn'?t\s+get\s+the\s+job|not\s+hired|turned\s+down|not\s+moving\s+forward|unsuccessful|declined|reject|rejected|rejection|got\s+rejected|was\s+rejected|application\s+rejected)\b/i.test(text);
     const detectedDate = !isQuestionOrProfile ? parseAppliedDate(text, null) : null;
     const detectedSource = !isQuestionOrProfile ? parseJobSource(text) : null;
 
-    if (!isQuestionOrProfile && existingJob && (detectedDate || detectedSource)) {
+    if (!isQuestionOrProfile && existingJob && (detectedDate || detectedSource || isRejectedSignal)) {
       if (!parsed.data) {
         parsed.data = { ...existingJob };
-        parsed.message = parsed.message || `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`;
+        parsed.message = parsed.message || (isRejectedSignal
+          ? `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) status to **Rejected** (Not selected by employer).\n\nJob search rejections are completely normal and part of the journey—don't let it discourage you! You're one step closer to the right opportunity.`
+          : `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`);
       }
     }
 
     if (parsed.data) {
+      if (isRejectedSignal) {
+        parsed.data.status = 'Rejected';
+      }
       if (detectedDate) {
         parsed.data.appliedDate = detectedDate;
         if (parsed.data.status === 'Saved') {
@@ -550,11 +568,16 @@ function parseAppliedDate(text, defaultDate = undefined) {
   const now = new Date();
   const lower = (text || '').toLowerCase();
 
-  // "yesterday"
-  if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?yesterday\b/i.test(lower)) {
+  // "yesterday" (including common typos like yesturday, yesteday, yestday, yesterdy)
+  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied\s+)?(?:yesterday|yesturday|yesteday|yestday|yesterdy)\b/i.test(lower)) {
     const d = new Date(now);
     d.setDate(d.getDate() - 1);
     return d.toISOString().split('T')[0];
+  }
+
+  // "today"
+  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied\s+)?today\b/i.test(lower)) {
+    return now.toISOString().split('T')[0];
   }
 
   // "X days ago" or "X days back"
