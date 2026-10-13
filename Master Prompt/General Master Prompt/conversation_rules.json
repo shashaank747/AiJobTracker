@@ -1,0 +1,140 @@
+{
+    "rules": [
+        {
+            "phrases": [
+                "give easiest code possible",
+                "simplest code",
+                "easy code"
+            ],
+            "intent": "REQUEST_SIMPLIFICATION",
+            "expected_action": "simplify_solution",
+            "expected_output_type": "CODE_SNIPPET",
+            "response_rule": "Return the simplest working code for the current task.",
+            "priority": 10
+        },
+        {
+            "phrases": [
+                "not like this",
+                "not this way",
+                "you misunderstood"
+            ],
+            "intent": "REQUEST_CORRECTION",
+            "expected_action": "revise_previous_response",
+            "expected_output_type": "CORRECTED_RESPONSE",
+            "response_rule": "Identify the rejected approach and change it.",
+            "priority": 10
+        },
+        {
+            "phrases": [
+                "use different data",
+                "change the dataset"
+            ],
+            "intent": "REQUEST_MODIFICATION",
+            "expected_action": "replace_dataset",
+            "expected_output_type": "UPDATED_EXAMPLE",
+            "response_rule": "Change the dataset while preserving other task requirements.",
+            "priority": 9
+        },
+        {
+            "phrases": [
+                "from start",
+                "start from the beginning"
+            ],
+            "intent": "REQUEST_RESTART",
+            "expected_action": "restart_explanation",
+            "expected_output_type": "STEP_BY_STEP_GUIDE",
+            "response_rule": "Explain from the first required step.",
+            "priority": 9
+        },
+        {
+            "phrases": [
+                "in short",
+                "short answer",
+                "just the answer"
+            ],
+            "intent": "REQUEST_BREVITY",
+            "expected_action": "reduce_response_length",
+            "expected_output_type": "SHORT_TEXT",
+            "response_rule": "Return only the essential answer.",
+            "priority": 8
+        },
+        {
+            "phrases": [
+                "explain in detail",
+                "super detailed",
+                "explain everything"
+            ],
+            "intent": "REQUEST_DETAIL",
+            "expected_action": "expand_explanation",
+            "expected_output_type": "DETAILED_EXPLANATION",
+            "response_rule": "Provide structured, comprehensive coverage.",
+            "priority": 8
+        },
+        {
+            "phrases": [
+                "what is wrong",
+                "find the error",
+                "why is this failing"
+            ],
+            "intent": "TECHNICAL_DIAGNOSIS",
+            "expected_action": "diagnose_problem",
+            "expected_output_type": "TROUBLESHOOTING_GUIDE",
+            "response_rule": "Identify the likely error and provide a correction.",
+            "priority": 9
+        },
+        {
+            "phrases": [
+                "same format",
+                "keep the format"
+            ],
+            "intent": "FORMAT_CONSTRAINT",
+            "expected_action": "preserve_format",
+            "expected_output_type": "CONTEXT_DEPENDENT",
+            "response_rule": "Preserve the previous output structure.",
+            "priority": 8
+        },
+        {
+            "phrases": [
+                "do one thing"
+            ],
+            "intent": "ACTION_INTRODUCTION",
+            "expected_action": "interpret_following_instruction",
+            "expected_output_type": "CONTEXT_DEPENDENT",
+            "response_rule": "Determine the action requested in the following words.",
+            "priority": 5
+        },
+        {
+            "phrases": [
+                "i don't understand",
+                "i am confused"
+            ],
+            "intent": "REPORT_CONFUSION",
+            "expected_action": "clarify_previous_explanation",
+            "expected_output_type": "SIMPLIFIED_EXPLANATION",
+            "response_rule": "Explain the confusing concept more clearly.",
+            "priority": 8
+        },
+        {
+            "phrases": [
+                "continue",
+                "go on",
+                "next"
+            ],
+            "intent": "REQUEST_CONTINUATION",
+            "expected_action": "continue_current_task",
+            "expected_output_type": "CONTEXT_DEPENDENT",
+            "response_rule": "Continue from the last relevant incomplete step.",
+            "priority": 7
+        },
+        {
+            "phrases": [
+                "add my github link"
+            ],
+            "intent": "APPLICATION_DATA_UPDATE",
+            "expected_action": "update_profile",
+            "expected_output_type": "APPLICATION_ACTION_RESULT",
+            "response_rule": "Identify the link and destination, validate them, then update if authorized.",
+            "priority": 9
+        }
+    ]
+}
