@@ -2179,8 +2179,14 @@ class JobTrackerApp {
       return;
     }
 
-    // Slash command to store currently drafted job in database
-    if (lower === '/store' || lower === '/save' || lower.startsWith('/store ')) {
+    // Slash command OR natural language to store currently drafted job in database
+    // Catch: /store, /save, store, save, "store this", "save it", "store in db", etc.
+    if (
+      lower === '/store' || lower === '/save' || lower.startsWith('/store ') ||
+      lower === 'store' || lower === 'save' ||
+      /^(?:store|save)\s+(?:this|it|job|application|app|in\s+db|to\s+db|in\s+database|to\s+database|to\s+cloud|in\s+cloud)$/i.test(lower) ||
+      /^(?:store|save)\s+(?:this\s+)?(?:job|application|app)\s+(?:in|to)\s+(?:db|database|cloud)$/i.test(lower)
+    ) {
       await this.handleStoreCommand();
       return;
     }
