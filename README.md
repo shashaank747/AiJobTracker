@@ -170,6 +170,8 @@ JobTrackerAI/
 
 ---
 
-## 📄 License
+## 📄 License & Copyright
 
-This project is licensed under the [ISC License](LICENSE).
+Copyright © 2026 **Shashaank Sajjanar**. All Rights Reserved.
+
+This project and its source code are proprietary. Unauthorized copying, distribution, modification, reverse engineering, or commercial use without prior written consent is strictly prohibited.
