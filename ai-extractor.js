@@ -1754,8 +1754,8 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
         if (s.includes('interview')) statusCounts.interviewing++;
         else if (s.includes('offer')) statusCounts.offer++;
         else if (s.includes('reject')) statusCounts.rejected++;
-        else if (s.includes('bookmark')) statusCounts.bookmarked++;
         else statusCounts.applied++;
+        if (a.isBookmarked || s.includes('bookmark')) statusCounts.bookmarked++;
       });
 
       return {
@@ -2318,6 +2318,15 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     } else if (/(?:reject|rejected|rejection)/i.test(text) && text.length < 100) {
       data.status = 'Rejected';
       summaryNotes.push('Updated status to Rejected.');
+    }
+
+    // Separate bookmark flag detection
+    if (/\b(?:bookmark|star)\b/i.test(text) && !/\bremove\s+bookmark\b|\bunbookmark\b|\bunstar\b/i.test(text)) {
+      data.isBookmarked = true;
+      summaryNotes.push('Bookmarked application.');
+    } else if (/\bremove\s+bookmark\b|\bunbookmark\b|\bunstar\b/i.test(text)) {
+      data.isBookmarked = false;
+      summaryNotes.push('Removed bookmark flag.');
     }
 
     // Work Mode detection

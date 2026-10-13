@@ -3177,7 +3177,44 @@ body {
 
 .job-actions-group {
   display: flex;
+  align-items: center;
   gap: 4px;
+}
+
+.btn-bookmark-job {
+  transition: all 0.2s ease;
+  color: var(--text-muted);
+}
+
+.btn-bookmark-job:hover {
+  color: #facc15;
+  background: rgba(234, 179, 8, 0.12);
+}
+
+.btn-bookmark-job.active {
+  color: #facc15;
+}
+
+.btn-bookmark-job.active svg {
+  fill: currentColor;
+}
+
+.btn-filter-bookmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-filter-bookmark.active {
+  background: rgba(234, 179, 8, 0.16) !important;
+  border-color: rgba(234, 179, 8, 0.5) !important;
+  color: #facc15 !important;
+}
+
+.btn-filter-bookmark.active svg {
+  fill: currentColor;
 }
 
 /* Empty State */

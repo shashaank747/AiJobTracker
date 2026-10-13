@@ -100,7 +100,8 @@ export const SupabaseService = {
               portalName: detectedPortal,
               applicationUrl: item.job_link || item.application_url || '',
               sourceUrl: item.company_link || item.source_url || '',
-              status: item.status || 'Applied',
+              status: (item.status === 'Bookmarked' ? 'Applied' : (item.status || 'Applied')),
+              isBookmarked: Boolean(item.is_bookmarked ?? item.isBookmarked ?? (item.status === 'Bookmarked')),
               appliedDate: item.date_added || item.applied_date || new Date().toISOString().split('T')[0],
               recruiterName: item.recruiter_name || item.recruiterName || '',
               recruiterEmail: item.recruiter_email || item.recruiterEmail || '',
@@ -166,7 +167,8 @@ export const SupabaseService = {
       portalName: appData.portalName || '',
       applicationUrl: appData.applicationUrl || '',
       sourceUrl: appData.sourceUrl || '',
-      status: appData.status || 'Applied',
+      status: (appData.status === 'Bookmarked' ? 'Applied' : (appData.status || 'Applied')),
+      isBookmarked: Boolean(appData.isBookmarked ?? (appData.status === 'Bookmarked')),
       appliedDate: appData.appliedDate || now.split('T')[0],
       recruiterName: appData.recruiterName || '',
       recruiterEmail: appData.recruiterEmail || '',
@@ -207,7 +209,8 @@ export const SupabaseService = {
         experience_required: appData.experienceRequired || '',
         salary_ctc: appData.salary || '',
         applied_through: formattedAppliedThrough,
-        status: appData.status || 'Applied',
+        status: normalizedApp.status,
+        is_bookmarked: normalizedApp.isBookmarked,
         date_added: appData.appliedDate || now.split('T')[0],
         recruiter_name: appData.recruiterName || '',
         recruiter_email: appData.recruiterEmail || '',
@@ -225,7 +228,7 @@ export const SupabaseService = {
           .upsert(primaryPayload, { onConflict: 'id' });
 
         // If primary payload failed due to column mismatch, retry with alternative schema
-        if (error && (error.message.includes('job_title') || error.message.includes('salary_ctc') || error.message.includes('date_added'))) {
+        if (error && (error.message.includes('job_title') || error.message.includes('salary_ctc') || error.message.includes('date_added') || error.message.includes('is_bookmarked'))) {
           const fallbackPayload = {
             id: appId,
             created_at: appData.createdAt || now,

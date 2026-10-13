@@ -49,7 +49,8 @@ Type `/` in the chat input to access quick commands:
   - Pending Review & Rejections
 - **Flexible Date Filtering**: Filter metrics by **Today**, **Yesterday**, **Last 7 Days**, **Last 30 Days**, or a **Custom Date Range**.
 - **Application Grid & List Views**:
-  - Filter by status (`Applied`, `Interviewing`, `Offer`, `Rejected`, `Bookmarked`), work mode, or keyword.
+  - Filter by lifecycle status (`Applied`, `Interviewing`, `Offer`, `Rejected`), work mode, or toggle the dedicated **⭐ Bookmarked** filter.
+  - Interactive star/bookmark toggle button on each application card to prioritize target roles independently of their application stage.
   - 1-click status dropdown changes that auto-sync to Supabase.
   - Direct clickable buttons for **Apply Portal** and original **Job Listing**.
   - **Export to CSV** with a single click.
@@ -88,7 +89,8 @@ CREATE TABLE IF NOT EXISTS public.job_applications (
     source TEXT DEFAULT 'Manual / Portal',
     application_url TEXT DEFAULT '',
     source_url TEXT DEFAULT '',
-    status TEXT DEFAULT 'Applied',
+    status TEXT DEFAULT 'Applied',            -- 'Applied', 'Interviewing', 'Offer', 'Rejected'
+    is_bookmarked BOOLEAN DEFAULT false,      -- Star/bookmark priority flag
     applied_date DATE DEFAULT CURRENT_DATE,
     interview_date DATE,
     recruiter_name TEXT DEFAULT '',

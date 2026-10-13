@@ -393,7 +393,6 @@
                 <option value="Interviewing">Interviewing</option>
                 <option value="Offer">Offer</option>
                 <option value="Rejected">Rejected</option>
-                <option value="Bookmarked">Bookmarked</option>
               </select>
 
               <select id="filterWorkMode" class="select-dropdown">
@@ -402,6 +401,11 @@
                 <option value="Hybrid">Hybrid</option>
                 <option value="On-site">On-site</option>
               </select>
+
+              <button type="button" id="btnFilterBookmarked" class="btn btn-secondary btn-sm btn-filter-bookmark" title="Filter by bookmarked applications">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                <span>Bookmarked (<span id="filterBookmarkCount">0</span>)</span>
+              </button>
 
               <button id="btnExportCsv" class="btn btn-secondary btn-sm" title="Export as CSV">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>

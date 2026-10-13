@@ -62,6 +62,20 @@ const SLASH_COMMANDS = [
     action: 'rejected'
   },
   {
+    cmd: '/bookmark',
+    label: 'Bookmark Application',
+    desc: 'Star/bookmark the current application to easily filter it on your dashboard',
+    icon: '⭐',
+    action: 'bookmark'
+  },
+  {
+    cmd: '/unbookmark',
+    label: 'Remove Bookmark',
+    desc: 'Remove the bookmark flag from the current application',
+    icon: '🔖',
+    action: 'unbookmark'
+  },
+  {
     cmd: '/salary',
     label: 'Update Salary',
     desc: 'Set compensation for the active application (e.g. /salary 12 LPA)',
@@ -212,6 +226,9 @@ class JobTrackerApp {
     this.filterStatus = document.getElementById('filterStatus');
     this.filterWorkMode = document.getElementById('filterWorkMode');
     this.btnExportCsv = document.getElementById('btnExportCsv');
+    this.btnFilterBookmarked = document.getElementById('btnFilterBookmarked');
+    this.filterBookmarkCount = document.getElementById('filterBookmarkCount');
+    this.filterOnlyBookmarked = false;
     this.applicationsGrid = document.getElementById('applicationsGrid');
     this.dashEmptyState = document.getElementById('dashEmptyState');
     this.btnEmptyGoChat = document.getElementById('btnEmptyGoChat');
@@ -836,6 +853,14 @@ class JobTrackerApp {
       this.renderApplicationsGrid();
     });
 
+    if (this.btnFilterBookmarked) {
+      this.btnFilterBookmarked.addEventListener('click', () => {
+        this.filterOnlyBookmarked = !this.filterOnlyBookmarked;
+        this.btnFilterBookmarked.classList.toggle('active', this.filterOnlyBookmarked);
+        this.renderApplicationsGrid();
+      });
+    }
+
     // Stat cards click filter
     document.querySelectorAll('.stat-card').forEach(card => {
       card.addEventListener('click', () => {
@@ -971,6 +996,9 @@ class JobTrackerApp {
     this.statAppliedCount.textContent = applied;
     this.statInterviewCount.textContent = interviewing;
     this.statOfferCount.textContent = offers;
+    if (this.filterBookmarkCount) {
+      this.filterBookmarkCount.textContent = this.applications.filter(a => a.isBookmarked).length;
+    }
     if (this.totalAppsBadge) {
       this.totalAppsBadge.textContent = total;
     }
@@ -1547,6 +1575,10 @@ class JobTrackerApp {
       await this.handleStatusCommand('Offer');
     } else if (selected.action === 'rejected') {
       await this.handleStatusCommand('Rejected');
+    } else if (selected.action === 'bookmark') {
+      await this.handleBookmarkCommand(true);
+    } else if (selected.action === 'unbookmark') {
+      await this.handleBookmarkCommand(false);
     } else if (selected.action === 'salary') {
       this.chatInput.value = '/salary ';
       this.chatInput.focus();
@@ -1626,6 +1658,38 @@ class JobTrackerApp {
     this.appendAssistantMessage(statusMsg, this.activeApplication);
     this.scrollToBottom();
     this.showToast(`Status updated to ${newStatus}`, 'success');
+  }
+
+  async handleBookmarkCommand(isBookmarked) {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+
+    if (!this.activeApplication || (!this.activeApplication.companyName && !this.activeApplication.roleTitle)) {
+      this.appendAssistantMessage(
+        "⚠️ **No active application selected.**\n\nPlease paste a Job Description (JD) or select an application from your tracker before bookmarking.",
+        null
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    this.activeApplication.isBookmarked = isBookmarked;
+    if (this.isJobStored(this.activeApplication)) {
+      this.activeApplication.isStored = true;
+    }
+    if (this.activeApplication.isStored) {
+      await SupabaseService.saveApplication(this.activeApplication);
+      await this.loadApplications();
+    }
+    this.updateStats();
+
+    const msg = isBookmarked
+      ? `⭐ **Application Bookmarked!**\n\n**${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** has been bookmarked.\n\nYou can click the **Bookmarked** filter button in the dashboard to review starred applications anytime.`
+      : `🔖 **Bookmark Removed.**\n\nBookmark flag removed from **${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}**.`;
+
+    this.appendAssistantMessage(msg, this.activeApplication);
+    this.scrollToBottom();
+    this.showToast(isBookmarked ? 'Application bookmarked' : 'Bookmark removed', 'info');
   }
 
   async handleSalaryCommand(text) {
@@ -2107,6 +2171,16 @@ class JobTrackerApp {
     // Slash command to mark as rejected
     if (lower === '/rejected' || lower === '/reject' || lower.startsWith('/rejected ')) {
       await this.handleStatusCommand('Rejected');
+      return;
+    }
+
+    // Slash command to bookmark or unbookmark
+    if (lower === '/bookmark' || lower === '/star' || lower.startsWith('/bookmark ') || lower.startsWith('/star ')) {
+      await this.handleBookmarkCommand(true);
+      return;
+    }
+    if (lower === '/unbookmark' || lower === '/unstar' || lower.startsWith('/unbookmark ') || lower.startsWith('/unstar ')) {
+      await this.handleBookmarkCommand(false);
       return;
     }
 
@@ -3479,6 +3553,11 @@ class JobTrackerApp {
       });
     }
 
+    // Bookmark filter
+    if (this.filterOnlyBookmarked) {
+      filtered = filtered.filter(a => Boolean(a.isBookmarked));
+    }
+
     this.applicationsGrid.innerHTML = '';
 
     if (filtered.length === 0) {
@@ -3501,7 +3580,7 @@ class JobTrackerApp {
     const initial = (app.companyName || 'C').charAt(0).toUpperCase();
     const daysAgoText = this.formatDaysAgo(app.appliedDate || app.createdAt);
 
-    const statusOptions = ['Applied', 'Interviewing', 'Offer', 'Rejected', 'Bookmarked'];
+    const statusOptions = ['Applied', 'Interviewing', 'Offer', 'Rejected'];
     const selectOptionsHtml = statusOptions.map(st => `
       <option value="${st}" ${st === app.status ? 'selected' : ''}>${st}</option>
     `).join('');
@@ -3581,6 +3660,9 @@ class JobTrackerApp {
         </div>
 
         <div class="job-actions-group">
+          <button type="button" class="btn-icon btn-bookmark-job ${app.isBookmarked ? 'active' : ''}" title="${app.isBookmarked ? 'Remove bookmark' : 'Bookmark this job'}" aria-label="Bookmark">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="${app.isBookmarked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+          </button>
           <button class="btn-icon btn-chat-job" title="Open AI Chat for this application">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
           </button>
@@ -3590,6 +3672,23 @@ class JobTrackerApp {
         </div>
       </div>
     `;
+
+    // Bookmark toggle button
+    const btnBookmark = card.querySelector('.btn-bookmark-job');
+    btnBookmark.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      app.isBookmarked = !app.isBookmarked;
+      await SupabaseService.saveApplication(app);
+      btnBookmark.classList.toggle('active', app.isBookmarked);
+      btnBookmark.title = app.isBookmarked ? 'Remove bookmark' : 'Bookmark this job';
+      const svg = btnBookmark.querySelector('svg');
+      if (svg) svg.setAttribute('fill', app.isBookmarked ? 'currentColor' : 'none');
+      this.updateStats();
+      this.showToast(app.isBookmarked ? `Bookmarked ${app.companyName}` : `Removed bookmark for ${app.companyName}`, 'info');
+      if (this.filterOnlyBookmarked && !app.isBookmarked) {
+        this.renderApplicationsGrid();
+      }
+    });
 
     // Status select change
     const statusSelect = card.querySelector('.job-status-select');
