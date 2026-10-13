@@ -67,6 +67,7 @@ Type `/` in the chat input to access quick commands:
 Run this SQL snippet in your [Supabase SQL Editor](https://app.supabase.com) to create the schema with Row Level Security:
 
 ```sql
+-- 1. Job Applications Table
 CREATE TABLE IF NOT EXISTS public.job_applications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMPTZ DEFAULT now(),
@@ -87,7 +88,7 @@ CREATE TABLE IF NOT EXISTS public.job_applications (
     chat_history JSONB DEFAULT '[]'::jsonb
 );
 
--- Enable Row Level Security (RLS)
+-- Enable Row Level Security (RLS) for job_applications
 ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read/write access (for anon API key)
@@ -95,7 +96,28 @@ CREATE POLICY "Allow public full access" ON public.job_applications
     FOR ALL
     USING (true)
     WITH CHECK (true);
+
+-- 2. Candidate Profiles Table (For sync across devices)
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+    id TEXT PRIMARY KEY,
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    profile_data JSONB DEFAULT '{}'::jsonb
+);
+
+-- Enable Row Level Security (RLS) for user_profiles
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Allow public read/write access (for anon API key)
+CREATE POLICY "Allow public full access on user_profiles" ON public.user_profiles
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
 ```
+
+### 💾 Candidate Profile Data Storage Architecture
+- **Browser LocalStorage (`offline-first`)**: All candidate profile information (personal info, education, marks, skills, projects, certifications, links) is saved instantly to `localStorage` under `jobtracker_user_profile`. The app functions 100% offline without requiring any database setup.
+- **Supabase Cloud Sync**: When connected to Supabase, the app automatically syncs the candidate profile to the `user_profiles` table (as the `primary_user` record) on every save, and rehydrates it when loaded on another browser/device.
+
 
 ### Linking Supabase in the App
 1. Open the app and click **Settings / Keys** in the sidebar.
