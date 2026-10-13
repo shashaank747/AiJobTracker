@@ -179,8 +179,10 @@ CREATE TABLE IF NOT EXISTS public.${table} (
     source TEXT DEFAULT 'Manual / Portal',
     application_url TEXT DEFAULT '',
     source_url TEXT DEFAULT '',
-    status TEXT DEFAULT 'Applied',
-    applied_date DATE DEFAULT CURRENT_DATE,
+    status TEXT DEFAULT 'Saved',
+    is_bookmarked BOOLEAN DEFAULT false,
+    applied_date DATE DEFAULT NULL,
+    interview_date DATE,
     skills TEXT[] DEFAULT '{}',
     notes TEXT DEFAULT '',
     chat_history JSONB DEFAULT '[]'::jsonb

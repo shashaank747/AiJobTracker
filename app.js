@@ -41,6 +41,13 @@ const SLASH_COMMANDS = [
     action: 'search'
   },
   {
+    cmd: '/apply',
+    label: 'Status: Applied',
+    desc: 'Mark job as submitted/Applied (record submission date and log to application tracker)',
+    icon: '🚀',
+    action: 'apply'
+  },
+  {
     cmd: '/interview',
     label: 'Status: Interviewing',
     desc: 'Mark job as Interviewing and ask Zuno for targeted interview questions',
@@ -1024,6 +1031,7 @@ class JobTrackerApp {
     let list = this.applications || [];
     if (this.activeSidebarDate) {
       list = list.filter(a => {
+        if (a.status === 'Saved') return false; // Saved opportunity leads have not been submitted yet
         const appDate = a.appliedDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
         return appDate === this.activeSidebarDate;
       });
@@ -1043,18 +1051,19 @@ class JobTrackerApp {
       }
     }
 
-    const totalApplied = list.length;
-    const gotCalls = list.filter(a => {
+    const submittedApps = list.filter(a => a.status !== 'Saved');
+    const totalApplied = submittedApps.length;
+    const gotCalls = submittedApps.filter(a => {
       const s = (a.status || '').toLowerCase();
       return s === 'interviewing' || s === 'offer';
     }).length;
 
-    const noCallYet = list.filter(a => {
+    const noCallYet = submittedApps.filter(a => {
       const s = (a.status || '').toLowerCase();
       return s === 'applied' || s === 'draft';
     }).length;
 
-    const rejected = list.filter(a => {
+    const rejected = submittedApps.filter(a => {
       const s = (a.status || '').toLowerCase();
       return s === 'rejected';
     }).length;
@@ -1083,6 +1092,7 @@ class JobTrackerApp {
     // 1. Group applications by date (YYYY-MM-DD)
     const dateAppsMap = {};
     for (const a of apps) {
+      if (a.status === 'Saved') continue; // Only count submitted applications on the submission timeline
       const dateKey = a.appliedDate || (a.createdAt ? a.createdAt.split('T')[0] : '');
       if (dateKey) {
         if (!dateAppsMap[dateKey]) dateAppsMap[dateKey] = [];
@@ -1569,6 +1579,8 @@ class JobTrackerApp {
       this.chatInput.focus();
     } else if (selected.action === 'clear') {
       this.clearCurrentChat();
+    } else if (selected.action === 'apply') {
+      await this.handleApplyCommand('/apply');
     } else if (selected.action === 'interview') {
       await this.handleStatusCommand('Interviewing');
     } else if (selected.action === 'offer') {
@@ -1599,9 +1611,11 @@ class JobTrackerApp {
       `• **/delete [company]** — Delete the active application or remove by company name (e.g. \`/delete Google\`)\n` +
       `• **/compare [company]** — Compare your About Me profile (skills, projects, marks, certs) against company requirements\n` +
       `• **/search [query]** — Search across all applications stored in your database (e.g. \`/search Google\` or \`/search React\`)\n` +
+      `• **/apply** — Mark opportunity as submitted/Applied and record application date\n` +
       `• **/interview** — Set status to **Interviewing** and get tailored interview prep checklists\n` +
       `• **/offer** — Set status to **Offer** and receive offer negotiation guidance\n` +
       `• **/rejected** — Set status to **Rejected** and update application records\n` +
+      `• **/bookmark** / **/unbookmark** — Star or unstar application independently of its status\n` +
       `• **/salary [amount]** — Set compensation (e.g. \`/salary $160,000\` or \`/salary 15 LPA\`)\n` +
       `• **/clear** — Clear current chat session\n` +
       `• **/help** — Show this command manual\n\n` +
@@ -1609,6 +1623,44 @@ class JobTrackerApp {
 
     this.appendAssistantMessage(helpMsg, this.activeApplication);
     this.scrollToBottom();
+  }
+
+  async handleApplyCommand(text = '') {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+
+    if (!this.activeApplication || (!this.activeApplication.companyName && !this.activeApplication.roleTitle)) {
+      this.appendAssistantMessage(
+        "⚠️ **No active application selected.**\n\nPlease paste a Job Description (JD) or select a saved opportunity from your tracker before marking as applied.",
+        null
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const detectedDate = (text && text.trim().length > 6) ? (AiExtractor.parseAppliedDate ? AiExtractor.parseAppliedDate(text, null) : null) : null;
+    const appliedDate = detectedDate || todayStr;
+
+    this.activeApplication.status = 'Applied';
+    this.activeApplication.appliedDate = appliedDate;
+
+    if (this.isJobStored(this.activeApplication)) {
+      this.activeApplication.isStored = true;
+    }
+    if (this.activeApplication.isStored) {
+      await SupabaseService.saveApplication(this.activeApplication);
+      await this.loadApplications();
+    }
+    this.updateStats();
+
+    const msg = `🚀 **Application Submission Recorded!**\n\n` +
+      `**${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** is now marked as **Applied** (Submission Date: **${appliedDate}**).\n\n` +
+      `Zuno has added this application to your **Velocity Analytics** timeline. Good luck!`;
+
+    this.appendAssistantMessage(msg, this.activeApplication);
+    this.scrollToBottom();
+    this.showToast(`Marked ${this.activeApplication.companyName} as Applied`, 'success');
   }
 
   async handleStatusCommand(newStatus) {
@@ -2093,15 +2145,16 @@ class JobTrackerApp {
     this.updateChatCardsToStored();
 
     const storageLocation = saveRes.isRemote ? 'Supabase Cloud database' : 'local database';
+    const isSavedOpportunity = this.activeApplication.status === 'Saved' || (!this.activeApplication.appliedDate && this.activeApplication.status !== 'Applied');
     const storeMsg = `🎉 **Successfully stored in database!**\n\n` +
       `**${this.activeApplication.roleTitle}** at **${this.activeApplication.companyName}** is now permanently saved in your ${storageLocation} and added to your **Applications Tracker** dashboard.\n\n` +
       `• **Company:** ${this.activeApplication.companyName}\n` +
       `• **Role:** ${this.activeApplication.roleTitle}\n` +
-      `• **Applied Date:** ${this.activeApplication.appliedDate || 'Today'}\n` +
+      `${this.activeApplication.appliedDate ? `• **Applied Date:** ${this.activeApplication.appliedDate}\n` : '• **Application Status:** Not submitted yet (Saved Opportunity Lead)\n'}` +
       `• **Source:** ${this.activeApplication.source || 'Direct Portal'}\n` +
       `• **Salary:** ${this.activeApplication.salary || 'Not disclosed'}\n` +
-      `• **Status:** ${this.activeApplication.status || 'Applied'}\n\n` +
-      `You can view it anytime in the **Applications Tracker** dashboard above, or continue refining details right here in chat.`;
+      `• **Status:** ${this.activeApplication.status || (isSavedOpportunity ? 'Saved' : 'Applied')}\n\n` +
+      (isSavedOpportunity ? `*Tip: Whenever you submit your application, tell me "Applied today" or type **/apply** to mark it as Applied with today's date!*` : `You can view it anytime in the **Applications Tracker** dashboard above, or continue refining details right here in chat.`);
 
     this.appendAssistantMessage(storeMsg, this.activeApplication);
     this.scrollToBottom();
@@ -2153,6 +2206,12 @@ class JobTrackerApp {
     // Slash command for help & shortcuts
     if (lower === '/help' || lower.startsWith('/help ')) {
       this.handleHelpCommand();
+      return;
+    }
+
+    // Slash command to mark as applied
+    if (lower === '/apply' || lower === '/applied' || lower.startsWith('/apply ') || lower.startsWith('/applied ')) {
+      await this.handleApplyCommand(text);
       return;
     }
 
@@ -3435,8 +3494,12 @@ class JobTrackerApp {
           <span class="meta-chip">💼 ${this.escapeHtml(data.jobType || 'Full-time')}</span>
           <span class="meta-chip chip-source">🌐 Found: <strong>${this.escapeHtml(data.source || 'Direct Portal')}</strong></span>
           ${data.portalName ? `<span class="meta-chip chip-portal">📝 Filled at: <strong>${this.escapeHtml(data.portalName)}</strong></span>` : ''}
-          <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
-          <span class="meta-chip chip-time">🕒 Time: <strong>${this.escapeHtml(data.appliedTime || this.formatTimeOnly(data.createdAt || new Date()))}</strong></span>
+          ${(data.status === 'Saved' || (!data.appliedDate && data.status !== 'Applied')) ? `
+            <span class="meta-chip chip-opportunity" style="background: rgba(14, 165, 233, 0.15); color: var(--accent-primary); border: 1px solid rgba(14, 165, 233, 0.3);">📌 Status: <strong>Saved Opportunity (Not Applied)</strong></span>
+          ` : `
+            <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
+            <span class="meta-chip chip-time">🕒 Time: <strong>${this.escapeHtml(data.appliedTime || this.formatTimeOnly(data.createdAt || new Date()))}</strong></span>
+          `}
           ${(data.viewedAt || (data.notes && data.notes.includes('Recruiter viewed application'))) ? `
             <span class="meta-chip chip-viewed" style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">👀 Recruiter Viewed: <strong>${this.escapeHtml(data.viewedAt || 'Yes')}</strong></span>
           ` : ''}
@@ -3578,11 +3641,14 @@ class JobTrackerApp {
     card.className = 'job-card';
 
     const initial = (app.companyName || 'C').charAt(0).toUpperCase();
-    const daysAgoText = this.formatDaysAgo(app.appliedDate || app.createdAt);
+    const isSavedOnly = app.status === 'Saved' || (!app.appliedDate && app.status !== 'Applied');
+    const daysAgoText = isSavedOnly
+      ? 'Opportunity Lead • Not Applied'
+      : this.formatDaysAgo(app.appliedDate || app.createdAt);
 
-    const statusOptions = ['Applied', 'Interviewing', 'Offer', 'Rejected'];
+    const statusOptions = ['Saved', 'Applied', 'Interviewing', 'Offer', 'Rejected'];
     const selectOptionsHtml = statusOptions.map(st => `
-      <option value="${st}" ${st === app.status ? 'selected' : ''}>${st}</option>
+      <option value="${st}" ${st === (app.status || 'Saved') ? 'selected' : ''}>${st === 'Saved' ? 'Saved (Not Applied)' : st}</option>
     `).join('');
 
     let linksHtml = '';
@@ -3604,7 +3670,7 @@ class JobTrackerApp {
       `;
     }
 
-    const statusClass = `status-${(app.status || 'applied').toLowerCase()}`;
+    const statusClass = `status-${(app.status || 'saved').toLowerCase()}`;
 
     card.innerHTML = `
       <div class="job-card-top">
@@ -3622,14 +3688,16 @@ class JobTrackerApp {
       </div>
 
       <div class="job-meta-row">
-        <span class="badge-days-ago" title="${app.appliedDate || ''}">
+        <span class="badge-days-ago" title="${app.appliedDate || (isSavedOnly ? 'Opportunity Lead — Not Applied' : '')}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
           <span>${daysAgoText}</span>
         </span>
-        <span class="badge-time" title="Applied Time: ${this.escapeHtml(app.appliedTime || this.formatTimeOnly(app.createdAt))}">
+        ${app.appliedTime ? `
+        <span class="badge-time" title="Applied Time: ${this.escapeHtml(app.appliedTime)}">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-          <span>${this.escapeHtml(app.appliedTime || this.formatTimeOnly(app.createdAt))}</span>
+          <span>${this.escapeHtml(app.appliedTime)}</span>
         </span>
+        ` : ''}
         <span class="badge-workmode">${this.escapeHtml(app.workMode || 'On-site')}</span>
         ${app.salary && app.salary !== 'Not disclosed' ? `<span class="badge-salary">${this.escapeHtml(app.salary)}</span>` : ''}
         <span class="badge-location">📍 ${this.escapeHtml(app.location || 'Location')}</span>
@@ -3695,10 +3763,18 @@ class JobTrackerApp {
     statusSelect.addEventListener('change', async (e) => {
       const newStatus = e.target.value;
       app.status = newStatus;
+      if (newStatus === 'Applied' && !app.appliedDate) {
+        const now = new Date();
+        app.appliedDate = now.toISOString().split('T')[0];
+        app.appliedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else if (newStatus === 'Saved') {
+        app.appliedDate = null;
+        app.appliedTime = null;
+      }
       await SupabaseService.saveApplication(app);
       this.updateStats();
+      this.renderApplicationsGrid();
       this.renderHistoryList();
-      statusSelect.className = `job-status-select status-${newStatus.toLowerCase()}`;
       this.showToast(`Updated status of ${app.companyName} to ${newStatus}`, 'info');
     });
 

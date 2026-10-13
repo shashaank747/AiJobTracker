@@ -212,10 +212,10 @@ CORE CAPABILITIES:
     "portalName": "Portal or platform where user filled/applied (e.g. Company Portal, Greenhouse, Workday, Lever, Ashby)",
     "applicationUrl": "Direct portal or ATS URL where application was filled or submitted",
     "sourceUrl": "Listing URL on the discovery platform where job was originally seen",
-    "status": "Applied" | "Interviewing" | "Offer" | "Rejected",
+    "status": "Saved" | "Applied" | "Interviewing" | "Offer" | "Rejected",
     "isBookmarked": false,
-    "appliedDate": "YYYY-MM-DD",
-    "appliedTime": "HH:MM AM/PM",
+    "appliedDate": "YYYY-MM-DD" or null,
+    "appliedTime": "HH:MM AM/PM" or null,
     "skills": ["Skill1", "Skill2", ...],
     "recruiterName": "Recruiter or caller name if mentioned (e.g. Priya)",
     "recruiterEmail": "Recruiter email if mentioned",
@@ -304,6 +304,23 @@ CRITICAL INSTRUCTION FOR APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Rec
   * Set "data": null and "profileUpdate": null.
 
 
+CRITICAL INSTRUCTION FOR SAVED OPPORTUNITY vs SUBMITTED APPLICATION:
+- Users frequently paste job descriptions (JDs), job posts, links, or draft opportunities to save or review without having submitted an application yet (e.g. "save this job", "check out this opening", "track this JD", or simply pasting the JD text/URL).
+- DISTINGUISH SAVING A JOB FROM SUBMITTING AN APPLICATION:
+  1. IF USER HAS NOT EXPLICITLY APPLIED (merely sharing a JD, asking about a role, saving a draft, or didn't explicitly say they applied):
+     * Set "status": "Saved"
+     * Set "appliedDate": null
+     * Set "appliedTime": null
+     * Inform the user in "message" that the opportunity is recorded as a Saved Lead, and they can mark it as Applied whenever they submit (or type /apply).
+  2. IF USER EXPLICITLY STATES THEY APPLIED (e.g. "I applied to...", "Submitted application", "applied today", "applied yesterday", confirmation email):
+     * Set "status": "Applied"
+     * Calculate and set "appliedDate": "YYYY-MM-DD" relative to today (${today}) or the past date mentioned
+     * Set "appliedTime": "HH:MM AM/PM" (or current time "${fullTimeStr}")
+  3. IF TRANSITIONING AN EXISTING JOB FROM "Saved" TO "Applied" (e.g. user says "/apply", "I just applied to Cisco", "marked as applied"):
+     * Update "status": "Applied"
+     * Set "appliedDate": "YYYY-MM-DD" (${today} or specified date)
+     * Set "appliedTime": "${fullTimeStr}" (or specified time)
+
 CRITICAL INSTRUCTION FOR APPLIED DATE:
 - Users frequently track jobs they applied to in the past (e.g., "I applied for this last week", "applied 3 days ago", "applied yesterday", "applied on 2026-09-28", "applied on Oct 2nd", or dates in email confirmations).
 - You MUST calculate and resolve the exact "YYYY-MM-DD" date relative to TODAY (${today}):
@@ -313,7 +330,7 @@ CRITICAL INSTRUCTION FOR APPLIED DATE:
   * "2 weeks ago" -> calculate 14 days before ${today}
   * "last month" -> calculate 30 days before ${today}
   * Explicit dates (e.g., "Oct 2", "15 September", "2026-09-25") -> convert to "YYYY-MM-DD".
-- ONLY set "appliedDate" to ${today} if the user does NOT specify any past application date or timeframe.
+- ONLY set "appliedDate" to ${today} if the user EXPLICITLY indicates they applied and does NOT specify any past application date or timeframe. Never set appliedDate on a job that is merely saved as an opportunity lead!
 - If updating an existing job, and the user specifies an applied date, update "appliedDate" accordingly.
 
 CONVERSATIONAL CONTEXT & NATURAL VARIATIONS (CRITICAL):
@@ -504,6 +521,9 @@ Ensure output is valid JSON.`;
     if (parsed.data) {
       if (detectedDate) {
         parsed.data.appliedDate = detectedDate;
+        if (parsed.data.status === 'Saved') {
+          parsed.data.status = 'Applied';
+        }
       }
       if (detectedSource) {
         parsed.data.source = detectedSource;

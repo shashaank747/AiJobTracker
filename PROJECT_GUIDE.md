@@ -77,10 +77,10 @@ CREATE TABLE applications (
     -- Basic Job Details
     company TEXT NOT NULL,
     role TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Applied', -- 'Saved', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Rejected'
+    status TEXT NOT NULL DEFAULT 'Saved', -- 'Saved', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Rejected'
     location TEXT,
     workplace_type TEXT,                   -- 'Remote', 'Hybrid', 'Onsite'
-    applied_date DATE DEFAULT CURRENT_DATE,
+    applied_date DATE DEFAULT NULL,
     deadline DATE,
 
     -- Dual Link & Source Tracking

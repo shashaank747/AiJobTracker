@@ -33,14 +33,19 @@
 
 ### 2. ⚡ Slash Command Palette
 Type `/` in the chat input to access quick commands:
+- **`/apply`**: Mark the currently active opportunity lead as submitted today (`status: 'Applied'`, sets `appliedDate` to today's date).
 - **`/search <query>`**: Instantly search all applications stored in your database by company, role, skill, status, or notes with interactive result cards.
 - **`/compare <company1> vs <company2>`**: Generate a side-by-side comparison of roles, compensation, and statuses.
-- **`/store`**: Save the current conversation's drafted application to your database and Applications Tracker immediately. (If no draft is active, prompts you with guidance to paste a JD or job details first).
+- **`/store`**: Save the current conversation's drafted application or opportunity lead to your database and Applications Tracker immediately.
 - **`/new`**: Start a fresh, clean chat session without losing saved applications.
 - **`/help`**: Display available commands and tips.
 
 ### 3. 📊 Dashboard & Velocity Analytics
-- **Application Velocity Chart**: Interactive SVG daily velocity bar graph and trend lines.
+- **Opportunity Leads vs. Submitted Applications**:
+  - Distinguishes saving an open job opportunity (`status: 'Saved'`, `applied_date: NULL`) from submitting an application (`status: 'Applied'`, `applied_date: 'YYYY-MM-DD'`).
+  - Saved opportunities let you bookmark and extract job postings without falsely inflating your daily submission velocity.
+  - When you submit, transition the status to `Applied` (or use `/apply`) to record your exact application submission date.
+- **Application Velocity Chart**: Interactive SVG daily velocity bar graph and trend lines for submitted applications.
 - **Conversion Metrics**: Real-time KPI cards for:
   - Total Applications
   - Applications Applied Today
@@ -49,7 +54,7 @@ Type `/` in the chat input to access quick commands:
   - Pending Review & Rejections
 - **Flexible Date Filtering**: Filter metrics by **Today**, **Yesterday**, **Last 7 Days**, **Last 30 Days**, or a **Custom Date Range**.
 - **Application Grid & List Views**:
-  - Filter by lifecycle status (`Applied`, `Interviewing`, `Offer`, `Rejected`), work mode, or toggle the dedicated **⭐ Bookmarked** filter.
+  - Filter by lifecycle status (`Saved`, `Applied`, `Interviewing`, `Offer`, `Rejected`), work mode, or toggle the dedicated **⭐ Bookmarked** filter.
   - Interactive star/bookmark toggle button on each application card to prioritize target roles independently of their application stage.
   - 1-click status dropdown changes that auto-sync to Supabase.
   - Direct clickable buttons for **Apply Portal** and original **Job Listing**.
@@ -89,9 +94,9 @@ CREATE TABLE IF NOT EXISTS public.job_applications (
     source TEXT DEFAULT 'Manual / Portal',
     application_url TEXT DEFAULT '',
     source_url TEXT DEFAULT '',
-    status TEXT DEFAULT 'Applied',            -- 'Applied', 'Interviewing', 'Offer', 'Rejected'
+    status TEXT DEFAULT 'Saved',              -- 'Saved' (opportunity lead), 'Applied', 'Interviewing', 'Offer', 'Rejected'
     is_bookmarked BOOLEAN DEFAULT false,      -- Star/bookmark priority flag
-    applied_date DATE DEFAULT CURRENT_DATE,
+    applied_date DATE DEFAULT NULL,           -- NULL for saved opportunities until submitted
     interview_date DATE,
     recruiter_name TEXT DEFAULT '',
     interview_questions TEXT[] DEFAULT '{}',

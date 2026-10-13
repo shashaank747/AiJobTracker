@@ -23,6 +23,10 @@
   --accent-purple: #c084fc;
 
   /* Status Colors */
+  --status-saved-bg: rgba(59, 130, 246, 0.12);
+  --status-saved-text: #60a5fa;
+  --status-saved-border: rgba(59, 130, 246, 0.3);
+
   --status-applied-bg: rgba(255, 255, 255, 0.08);
   --status-applied-text: #e4e4e7;
   --status-applied-border: rgba(255, 255, 255, 0.16);
@@ -1771,6 +1775,12 @@ body {
   line-height: 1.25;
 }
 
+.msg-assistant-text .md-table .app-status-badge.status-saved {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
 .msg-assistant-text .md-table .app-status-badge.status-applied {
   background: rgba(56, 189, 248, 0.12);
   color: #38bdf8;
@@ -1904,6 +1914,11 @@ body {
   transition: var(--transition);
 }
 
+.status-pill.status-saved {
+  background: var(--status-saved-bg);
+  color: var(--status-saved-text);
+  border-color: var(--status-saved-border);
+}
 .status-pill.status-applied {
   background: var(--status-applied-bg);
   color: var(--status-applied-text);
@@ -2979,6 +2994,36 @@ body {
   background-position: right 6px center;
   background-repeat: no-repeat;
   transition: var(--transition);
+}
+
+.job-status-select.status-saved {
+  background-color: var(--status-saved-bg);
+  color: var(--status-saved-text);
+  border-color: var(--status-saved-border);
+}
+
+.job-status-select.status-applied {
+  background-color: var(--status-applied-bg);
+  color: var(--status-applied-text);
+  border-color: var(--status-applied-border);
+}
+
+.job-status-select.status-interviewing {
+  background-color: var(--status-interview-bg);
+  color: var(--status-interview-text);
+  border-color: var(--status-interview-border);
+}
+
+.job-status-select.status-offer {
+  background-color: var(--status-offer-bg);
+  color: var(--status-offer-text);
+  border-color: var(--status-offer-border);
+}
+
+.job-status-select.status-rejected {
+  background-color: var(--status-rejected-bg);
+  color: var(--status-rejected-text);
+  border-color: var(--status-rejected-border);
 }
 
 /* Rectangular Card Middle Row: Applied X Days Ago & Badges */

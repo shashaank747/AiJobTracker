@@ -2167,6 +2167,11 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
 
     let summaryNotes = [];
 
+    // Distinguish between submitting an application vs saving an open job opportunity
+    const hasAppliedSignal = /\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied|applied\s+(?:on|via|through|today|yesterday|\d)|submitted|submission|sent\s+application|already\s+applied)\b/i.test(text);
+    const initialStatus = hasAppliedSignal ? 'Applied' : (detectedDate ? 'Applied' : 'Saved');
+    const initialAppliedDate = (hasAppliedSignal || detectedDate) ? (detectedDate || today) : null;
+
     const data = isNewJob ? {
       companyName: extractedCompany || '',
       roleTitle: extractedRole || '',
@@ -2178,9 +2183,9 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       portalName: detectedPortal || '',
       applicationUrl: '',
       sourceUrl: '',
-      status: 'Applied',
-      appliedDate: detectedDate || today,
-      appliedTime: currentTimeStr,
+      status: initialStatus,
+      appliedDate: initialAppliedDate,
+      appliedTime: initialAppliedDate ? currentTimeStr : '',
       skills: extractedSkills || [],
       notes: ''
     } : {
@@ -2195,10 +2200,17 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     };
 
     if (existingJob && !isNewJob) {
-      if (detectedDate) data.appliedDate = detectedDate;
+      if (hasAppliedSignal && (!data.status || data.status === 'Saved')) {
+        data.status = 'Applied';
+        summaryNotes.push('Updated status to Applied.');
+      }
+      if (detectedDate) {
+        data.appliedDate = detectedDate;
+        data.status = 'Applied';
+      }
       if (detectedSource) data.source = detectedSource;
       if (detectedPortal) data.portalName = detectedPortal;
-      if (!data.appliedTime) data.appliedTime = currentTimeStr;
+      if (!data.appliedTime && data.appliedDate) data.appliedTime = currentTimeStr;
     }
 
     if (detectedDate) {
@@ -2426,7 +2438,9 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
 
     // Friendly commentary message
     let message = isNewJob
-      ? `Successfully extracted job details for **${data.roleTitle}** at **${data.companyName}**!`
+      ? (data.status === 'Applied'
+          ? `Successfully recorded application for **${data.roleTitle}** at **${data.companyName}**! (Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}).`
+          : `Extracted job opportunity for **${data.roleTitle}** at **${data.companyName}**! Saved as **Saved Opportunity**. Whenever you submit your application, tell me *"Applied today"* or type **/apply** to mark it as Applied.`)
       : `Updated **${data.companyName}** (${data.roleTitle}) with the latest details.`;
 
     if (summaryNotes.length > 0) {
