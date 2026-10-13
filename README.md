@@ -13,7 +13,7 @@
 ## ✨ Core Features
 
 ### 1. 🤖 Zuno AI Chat Assistant
-- **Conversational Job Extraction**: Paste raw text, JDs, or links from LinkedIn, Indeed, Greenhouse, Lever, Workday, etc.
+- **Conversational Job Extraction**: Paste raw text, JDs, or job links from LinkedIn, Indeed, Greenhouse, Lever, Workday, etc. Links are automatically parsed for portal name, domain, and direct application URLs. *(Note: For job boards protected by login walls or bot blockers, simply paste the job description text or snippet directly into chat for instant AI extraction).*
 - **Smart Field Extraction**: Automatically captures:
   - **Company Name** & **Role Title**
   - **Job Type** (Full-time, Internship, Contract, Part-time)
@@ -25,13 +25,17 @@
   - Responses for current time, dates, application counts, and analytics render in custom interactive cards.
   - Quick action buttons to preview, edit, or directly open application URLs.
 - **Bi-Directional Updates**: Conversational updates like *"I got an interview scheduled for Tuesday"* or *"Change salary to $140k"* instantly update the active record in real time.
-- **High-Speed Engine**: Sub-second fast-path for conversational greetings, date inquiries, and metric summaries, backed by Google Gemini Flash / Groq / OpenAI.
+- **High-Speed & Resilient Engine**:
+  - **Sub-second Fast-Path**: Instant (< 5ms) deterministic routing for greetings, date inquiries, profile updates, and analytics queries.
+  - **Google Gemini (Primary)**: Powered by `gemini-3.5-flash-lite` or `gemini-3.8-flash` via the serverless `/api/chat` proxy or direct client API.
+  - **OpenAI (Alternative)**: Configurable fallback to `gpt-4o-mini` if selected as provider or if Gemini is unconfigured.
+  - **Smart NLP Heuristics Fallback**: If external LLMs time out (4.2s hard limit) or the network is unavailable, the local heuristic engine parses key fields client-side so your workflow is never blocked.
 
 ### 2. ⚡ Slash Command Palette
 Type `/` in the chat input to access quick commands:
 - **`/search <query>`**: Instantly search all applications stored in your database by company, role, skill, status, or notes with interactive result cards.
 - **`/compare <company1> vs <company2>`**: Generate a side-by-side comparison of roles, compensation, and statuses.
-- **`/store`**: Commit the current conversation's extracted job draft to Supabase immediately.
+- **`/store`**: Save the current conversation's drafted application to your database and Applications Tracker immediately. (If no draft is active, prompts you with guidance to paste a JD or job details first).
 - **`/new`**: Start a fresh, clean chat session without losing saved applications.
 - **`/help`**: Display available commands and tips.
 
@@ -58,7 +62,7 @@ Type `/` in the chat input to access quick commands:
 ### 5. 🎨 Modern UI & Responsive Design
 - **Animated Day/Night Switch**: Toggle seamlessly between custom **Dull Light** and **Deep Dark** modes.
 - **Mobile Optimized**: Responsive topbar view-switcher, full-drawer sidebar with backdrop, and touch-friendly cards.
-- **Offline Resilient**: Built-in `localStorage` fallback ensures all features, drafts, and applications work 100% offline even before database keys are entered.
+- **Local-First & Offline Resilient**: Core application tracking, dashboard analytics, candidate profile editing, CSV export, and the built-in Smart NLP Heuristic engine work 100% offline using browser `localStorage`. Cloud AI models and Supabase cloud sync activate automatically whenever online and configured.
 
 ---
 
@@ -132,11 +136,10 @@ For deployment on [Vercel](https://vercel.com), the repository includes a server
 
 | Variable | Description |
 | :--- | :--- |
-| `GEMINI_API_KEY` | Google Gemini API key (recommended: `gemini-2.5-flash` or `gemini-1.5-flash`) |
-| `OPENAI_API_KEY` | OpenAI API key (optional fallback) |
-| `GROQ_API_KEY` | Groq API key for low-latency Llama models (optional fallback) |
+| `GEMINI_API_KEY` | Google Gemini API key (recommended: `gemini-3.5-flash-lite` or `gemini-3.8-flash`) |
+| `OPENAI_API_KEY` | OpenAI API key (optional alternative / fallback: `gpt-4o-mini`) |
 
-> **Note**: You can also enter your API keys directly into the app UI via the Settings modal. If no API keys are provided, the built-in **Smart NLP Heuristics** engine extracts key job fields client-side with zero setup required.
+> **Note**: You can also enter your API keys directly in the app UI via **Settings / Keys**. If no cloud API keys are provided or the serverless function times out (4.2s limit), the built-in **Smart NLP Heuristics** engine automatically extracts key job fields client-side with zero external dependencies.
 
 ---
 
@@ -186,8 +189,8 @@ JobTrackerAI/
 
 ## 🔒 Privacy & Security
 
-- **Direct Storage**: Application data is stored directly in your private Supabase database or local browser cache.
-- **Client-Side Key Storage**: Any API keys entered in the browser settings remain in your browser's `localStorage` and are never shared.
+- **Direct Storage**: Application data is stored directly in your private Supabase database and local browser cache (`localStorage`).
+- **Client-Side Key Storage**: Any API keys entered in the settings remain in your browser's local storage and are transmitted directly to the respective AI/Supabase endpoints. No keys are ever collected or stored on intermediary third-party servers.
 - **Zero Lock-In**: Export your entire application dataset to CSV anytime from the Dashboard.
 
 ---
