@@ -24,7 +24,7 @@
 - **Rich Interactive Cards**:
   - Responses for current time, dates, application counts, and analytics render in custom interactive cards.
   - Quick action buttons to preview, edit, or directly open application URLs.
-- **Bi-Directional Updates**: Conversational updates like *"I got an interview scheduled for Tuesday"* or *"Change salary to $140k"* instantly update the active record in real time.
+- **Bi-Directional Updates**: Conversational updates like *"I got an interview scheduled for Tuesday"* (transitions status to `'Interviewing'` and logs date/recruiter details) or *"Change salary to $140k"* instantly update the active record in real time.
 - **High-Speed & Resilient Engine**:
   - **Sub-second Fast-Path**: Instant (< 5ms) deterministic routing for greetings, date inquiries, profile updates, and analytics queries.
   - **Google Gemini (Primary)**: Powered by `gemini-3.5-flash-lite` or `gemini-3.8-flash` via the serverless `/api/chat` proxy or direct client API.
@@ -87,6 +87,9 @@ CREATE TABLE IF NOT EXISTS public.job_applications (
     source_url TEXT DEFAULT '',
     status TEXT DEFAULT 'Applied',
     applied_date DATE DEFAULT CURRENT_DATE,
+    interview_date DATE,
+    recruiter_name TEXT DEFAULT '',
+    interview_questions TEXT[] DEFAULT '{}',
     skills TEXT[] DEFAULT '{}',
     notes TEXT DEFAULT '',
     chat_history JSONB DEFAULT '[]'::jsonb
@@ -117,6 +120,11 @@ CREATE POLICY "Allow public full access on user_profiles" ON public.user_profile
     USING (true)
     WITH CHECK (true);
 ```
+
+### 🗓️ How Interview Tracking & Schedules Work
+- **Conversational Status Pipeline**: When you tell Zuno *"I got an interview scheduled for Tuesday"* or type `/interview`, Zuno automatically updates the application's `status` to **`Interviewing`**, instantly recalculating your **Interview Rate (%)** and active call metrics in the Analytics Dashboard.
+- **Schedule, Recruiter & Question Storage**: The scheduled date, recruiter name, and discussion topics are formatted into structured call log entries inside the `notes` column (e.g. `[Call on 2026-10-13]: Recruiter: Sarah | Topics: System Design`), mapped to `interview_date` / `interview_questions` when provisioned in Supabase, and preserved in full conversational context within `chat_history`.
+
 
 ### 💾 Candidate Profile Data Storage Architecture
 - **Browser LocalStorage (`offline-first`)**: All candidate profile information (personal info, education, marks, skills, projects, certifications, links) is saved instantly to `localStorage` under `jobtracker_user_profile`. The app functions 100% offline without requiring any database setup.
