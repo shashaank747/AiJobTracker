@@ -4284,7 +4284,7 @@ class JobTrackerApp {
   }
 
   // ==========================================
-  // OCR & File Text Extraction (PDF.js & Tesseract.js)
+  // File Text Extraction (PDF.js)
   // ==========================================
   async handleFileUpload(file) {
     if (!file) return;
@@ -4292,28 +4292,30 @@ class JobTrackerApp {
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name);
 
-    if (!isPdf && !isImage) {
-      this.showToast('Please upload a PDF document or image file (PNG/JPG/WebP).', 'error');
+    if (isImage) {
+      this.showToast('Image OCR upload has been removed. Please upload a PDF or paste the JD text directly.', 'warning');
+      this.fileUploadInput.value = '';
+      return;
+    }
+
+    if (!isPdf) {
+      this.showToast('Please upload a PDF document (.pdf).', 'error');
+      this.fileUploadInput.value = '';
       return;
     }
 
     // Display attachment preview box
     this.attachmentPreview.style.display = 'flex';
     this.attachmentName.textContent = file.name;
-    this.attachmentIcon.textContent = isPdf ? '📑' : '🖼️';
-    this.attachmentStatus.textContent = isPdf ? 'Extracting PDF pages...' : 'Initializing Tesseract OCR...';
+    this.attachmentIcon.textContent = '📑';
+    this.attachmentStatus.textContent = 'Extracting PDF pages...';
 
     try {
-      let extractedText = '';
-      if (isPdf) {
-        extractedText = await this.extractTextFromPdf(file);
-      } else {
-        extractedText = await this.extractTextFromImage(file);
-      }
+      const extractedText = await this.extractTextFromPdf(file);
 
       if (!extractedText || !extractedText.trim()) {
-        this.attachmentStatus.textContent = 'No readable text found in document.';
-        this.showToast('No readable text found in file. Ensure the scan is clear.', 'error');
+        this.attachmentStatus.textContent = 'No readable text found in PDF document.';
+        this.showToast('No readable text found in PDF document.', 'error');
         return;
       }
 
@@ -4326,7 +4328,7 @@ class JobTrackerApp {
       this.chatInput.style.height = Math.min(this.chatInput.scrollHeight, 180) + 'px';
       this.chatInput.focus();
 
-      this.showToast(`OCR Extracted text from ${file.name}! Press Enter to analyze.`, 'success');
+      this.showToast(`Extracted text from ${file.name}! Press Enter to analyze.`, 'success');
     } catch (err) {
       console.error('File extraction error:', err);
       this.attachmentStatus.textContent = 'Extraction error: ' + (err.message || 'Failed');
@@ -4353,29 +4355,6 @@ class JobTrackerApp {
     }
 
     return fullText;
-  }
-
-  async extractTextFromImage(file) {
-    if (!window.Tesseract) {
-      throw new Error('OCR library not loaded.');
-    }
-
-    this.attachmentStatus.textContent = 'OCR: Scanning image...';
-
-    const result = await window.Tesseract.recognize(
-      file,
-      'eng',
-      {
-        logger: m => {
-          if (m.status === 'recognizing text' && m.progress) {
-            const pct = Math.round(m.progress * 100);
-            this.attachmentStatus.textContent = `OCR: Extracting text (${pct}%)...`;
-          }
-        }
-      }
-    );
-
-    return result.data.text;
   }
 
   clearAttachment() {
