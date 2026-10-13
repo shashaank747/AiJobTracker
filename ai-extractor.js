@@ -505,6 +505,492 @@ const COMPANY_DATABASE = {
   }
 };
 
+/**
+ * Master Conversation Rules trained from conversation_rules.json and Zuno AI Master Spec
+ */
+export const CONVERSATION_RULES = [
+  {
+    phrases: [
+      "give easiest code possible",
+      "simplest code",
+      "easy code",
+      "make it simple",
+      "keep it simple",
+      "don't complicate"
+    ],
+    intent: "REQUEST_SIMPLIFICATION",
+    expected_action: "simplify_solution",
+    expected_output_type: "CODE_SNIPPET",
+    response_rule: "Return the simplest working code or guidance for the current task.",
+    priority: 10
+  },
+  {
+    phrases: [
+      "not like this",
+      "not this way",
+      "you misunderstood",
+      "wrong answer",
+      "that's not what i asked",
+      "that is not what i asked",
+      "you gave the wrong answer",
+      "fix it",
+      "redo this"
+    ],
+    intent: "REQUEST_CORRECTION",
+    expected_action: "revise_previous_response",
+    expected_output_type: "CORRECTED_RESPONSE",
+    response_rule: "Identify the rejected approach and change it without repeating the previous error.",
+    priority: 10
+  },
+  {
+    phrases: [
+      "use different data",
+      "change the dataset",
+      "use another example",
+      "different data"
+    ],
+    intent: "REQUEST_MODIFICATION",
+    expected_action: "replace_dataset",
+    expected_output_type: "UPDATED_EXAMPLE",
+    response_rule: "Change the dataset or parameters while preserving other task requirements.",
+    priority: 9
+  },
+  {
+    phrases: [
+      "from start",
+      "start from the beginning",
+      "start over",
+      "from the beginning"
+    ],
+    intent: "REQUEST_RESTART",
+    expected_action: "restart_explanation",
+    expected_output_type: "STEP_BY_STEP_GUIDE",
+    response_rule: "Explain or execute from the first required step.",
+    priority: 9
+  },
+  {
+    phrases: [
+      "in short",
+      "short answer",
+      "just the answer",
+      "only answer",
+      "no explanation",
+      "keep it brief"
+    ],
+    intent: "REQUEST_BREVITY",
+    expected_action: "reduce_response_length",
+    expected_output_type: "SHORT_TEXT",
+    response_rule: "Return only the essential answer concisely.",
+    priority: 8
+  },
+  {
+    phrases: [
+      "explain in detail",
+      "super detailed",
+      "explain everything",
+      "in depth",
+      "detailed explanation",
+      "step by step"
+    ],
+    intent: "REQUEST_DETAIL",
+    expected_action: "expand_explanation",
+    expected_output_type: "DETAILED_EXPLANATION",
+    response_rule: "Provide structured, comprehensive coverage.",
+    priority: 8
+  },
+  {
+    phrases: [
+      "what is wrong",
+      "find the error",
+      "why is this failing",
+      "what's the bug",
+      "diagnose this"
+    ],
+    intent: "TECHNICAL_DIAGNOSIS",
+    expected_action: "diagnose_problem",
+    expected_output_type: "TROUBLESHOOTING_GUIDE",
+    response_rule: "Identify the likely error and provide a correction.",
+    priority: 9
+  },
+  {
+    phrases: [
+      "same format",
+      "keep the format",
+      "preserve format",
+      "in the same format"
+    ],
+    intent: "FORMAT_CONSTRAINT",
+    expected_action: "preserve_format",
+    expected_output_type: "CONTEXT_DEPENDENT",
+    response_rule: "Preserve the previous output structure.",
+    priority: 8
+  },
+  {
+    phrases: [
+      "do one thing",
+      "see this",
+      "look here"
+    ],
+    intent: "ACTION_INTRODUCTION",
+    expected_action: "interpret_following_instruction",
+    expected_output_type: "CONTEXT_DEPENDENT",
+    response_rule: "Determine the action requested in the following words.",
+    priority: 5
+  },
+  {
+    phrases: [
+      "i don't understand",
+      "i am confused",
+      "didn't get it",
+      "unclear"
+    ],
+    intent: "REPORT_CONFUSION",
+    expected_action: "clarify_previous_explanation",
+    expected_output_type: "SIMPLIFIED_EXPLANATION",
+    response_rule: "Explain the confusing concept more clearly and accessibly.",
+    priority: 8
+  },
+  {
+    phrases: [
+      "continue",
+      "go on",
+      "next",
+      "proceed"
+    ],
+    intent: "REQUEST_CONTINUATION",
+    expected_action: "continue_current_task",
+    expected_output_type: "CONTEXT_DEPENDENT",
+    response_rule: "Continue from the last relevant incomplete step.",
+    priority: 7
+  },
+  {
+    phrases: [
+      "add my github link",
+      "add github link",
+      "add linkedin link",
+      "add portfolio link",
+      "link github"
+    ],
+    intent: "APPLICATION_DATA_UPDATE",
+    expected_action: "update_profile",
+    expected_output_type: "APPLICATION_ACTION_RESULT",
+    response_rule: "Identify the link and destination, validate them, then update if authorized.",
+    priority: 9
+  },
+  {
+    phrases: [
+      "not selected by employer",
+      "employer rejected me",
+      "didn't get selected",
+      "not selected",
+      "got rejected",
+      "was rejected",
+      "application rejected",
+      "application declined"
+    ],
+    intent: "UPDATE_STATUS",
+    expected_action: "mark_as_rejected",
+    expected_output_type: "APPLICATION_ACTION_RESULT",
+    response_rule: "Update status to Rejected, log date in notes, and provide empathetic encouraging support.",
+    priority: 10
+  },
+  {
+    phrases: [
+      "recruiter called me",
+      "got a call from recruiter",
+      "had a screening call",
+      "interview call",
+      "got a call from"
+    ],
+    intent: "UPDATE_STATUS",
+    expected_action: "log_recruiter_call",
+    expected_output_type: "APPLICATION_ACTION_RESULT",
+    response_rule: "Update status to Interviewing, log recruiter details and interview questions.",
+    priority: 10
+  },
+  {
+    phrases: [
+      "recruiter viewed my application",
+      "application was viewed",
+      "resume downloaded",
+      "recruiter opened application"
+    ],
+    intent: "UPDATE_APPLICATION",
+    expected_action: "log_recruiter_view",
+    expected_output_type: "APPLICATION_ACTION_RESULT",
+    response_rule: "Keep status as Applied, log viewed timestamp in notes.",
+    priority: 9
+  }
+];
+
+/**
+ * Text Normalization (Layer 1 of Master Conversation Engine)
+ */
+export function normalizeMessage(message) {
+  if (!message || typeof message !== 'string') return '';
+  return message.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * Negation Detection (Layer 4 of Master Conversation Engine)
+ */
+export function detectNegation(text) {
+  const negationWords = /\b(not|never|no|don't|dont|without|stop|cancel|neither|nor)\b/i;
+  const match = text.match(negationWords);
+  return {
+    hasNegation: Boolean(match),
+    negationWord: match ? match[1].toLowerCase() : null
+  };
+}
+
+/**
+ * Context & Pronoun Reference Resolution (Layer 5 of Master Conversation Engine)
+ */
+export function resolveReferences(text, context = {}) {
+  const lower = text.toLowerCase();
+  const refTokens = ['it', 'this', 'that', 'the previous one', 'same company', 'the other job', 'change it', 'update that', 'save this'];
+  const foundRef = refTokens.some(r => new RegExp(`\\b${r}\\b`, 'i').test(lower));
+  return {
+    hasReference: foundRef,
+    target: context.activeJob || (Array.isArray(context.allApplications) && context.allApplications[0]) || null
+  };
+}
+
+/**
+ * Phrase Matching (Layer 2 of Master Conversation Engine)
+ */
+export function findPhraseMatches(text, rules = CONVERSATION_RULES) {
+  const norm = normalizeMessage(text);
+  const matches = [];
+  for (const rule of rules) {
+    for (const phrase of rule.phrases) {
+      if (norm.includes(phrase.toLowerCase())) {
+        matches.push({ rule, phrase });
+        break;
+      }
+    }
+  }
+  return matches;
+}
+
+/**
+ * Scoring Layer (Layer 6 of Master Conversation Engine)
+ */
+export function scoreIntents(text, matches, negation, references, context = {}) {
+  const candidates = [];
+  for (const m of matches) {
+    let score = m.rule.priority || 5;
+    score += 5; // Multiword exact match
+    if (references.hasReference && references.target) score += 3;
+    if (m.rule.intent === 'REQUEST_CORRECTION') score += 3;
+    if (negation.hasNegation && m.rule.intent !== 'REQUEST_CORRECTION' && m.rule.intent !== 'UPDATE_STATUS') {
+      if (text.includes("don't make it short") || text.includes("not short")) {
+        score -= 8;
+      }
+    }
+    const confidence = Math.min(Math.max(score / 15, 0.1), 0.99);
+    candidates.push({
+      intent: m.rule.intent,
+      rule: m.rule,
+      phrase: m.phrase,
+      confidence,
+      score
+    });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates;
+}
+
+/**
+ * Offline Heuristic Interpretation Pipeline ported from helper function.py & MASTER_CONVERSATION_ENGINE.txt
+ */
+export function interpretOffline(message, context = {}, rules = CONVERSATION_RULES) {
+  const text = normalizeMessage(message);
+  const matches = findPhraseMatches(text, rules);
+  const negation = detectNegation(text);
+  const references = resolveReferences(text, context);
+  const candidates = scoreIntents(text, matches, negation, references, context);
+
+  if (!candidates || candidates.length === 0) {
+    return {
+      intent: 'UNKNOWN_INTENT',
+      confidence: 0.0,
+      clarification_required: true,
+      response: 'Could you clarify what you would like me to do? You can paste a job description, update an application, or ask about any company!'
+    };
+  }
+
+  const best = candidates[0];
+  if (best.confidence < 0.45) {
+    return {
+      intent: best.intent,
+      confidence: best.confidence,
+      clarification_required: true,
+      response: `Did you want to ${best.rule.expected_action.replace(/_/g, ' ')}? Please clarify to ensure I apply the right update.`
+    };
+  }
+
+  return {
+    intent: best.intent,
+    confidence: best.confidence,
+    clarification_required: false,
+    rule: best.rule,
+    action: best.rule.expected_action
+  };
+}
+
+/**
+ * Master System Prompt Generator embodying MASTER_CONVERSATION_ENGINE.txt and Zuno AI Master Spec
+ */
+export function getZunoMasterSystemPrompt({ fullTimeStr, fullDateStr, dayOfWeek, today, effectiveTimeZone, allApplicationsCount = 0 }) {
+  return `You are Zuno AI, the master conversational intelligence assistant inside JobTrackerAI — an AI-powered job application tracker and career copilot.
+Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your name or identity.
+
+REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE & ACTIVE):
+- CURRENT EXACT TIME: ${fullTimeStr}
+- CURRENT DATE: ${fullDateStr}
+- DAY OF THE WEEK: ${dayOfWeek}
+- REFERENCE ISO DATE: ${today}
+- TIMEZONE: ${effectiveTimeZone}
+
+CORE OPERATING RULES & CONVERSATIONAL ENGINE:
+1. RULE 1 — INTERPRET THE ENTIRE MESSAGE:
+   - Do not classify a message based on a single keyword. Understand informal English, typos (e.g. "yesturday"), abbreviations (JD, LPA, CTC, WFH, WFO, FTE, NP, CGPA), regional expressions ("do one thing", "see", "na"), emotional reactions, and incomplete sentences.
+   - For example: "Show me companies I haven't heard back from" is a retrieval query, NOT job extraction. "Do one thing, show only my interviews" is a filter request. "Actually, make that Bangalore" is a location field correction.
+
+2. RULE 2 — RESOLVE CONTEXT BEFORE TAKING ACTION:
+   - Use the active conversation history, current draft, selected application, and database records to resolve expressions like:
+     "it", "this", "that", "the previous one", "the same company", "the other job", "change it", "update that", "save this", "do it again", "use the second one", "not that one".
+   - If the reference is clear, act without unnecessary questions. If ambiguous between multiple records, ask concisely which one before making destructive modifications.
+
+3. RULE 3 — DISTINGUISH EXTRACTION FROM EXECUTION:
+   - Extracting a job opportunity is distinct from submitting an application or saving it to the database.
+   - SAVED OPPORTUNITY vs SUBMITTED APPLICATION:
+     * If user shares a JD or link without saying they applied (e.g. "save this job", "check out this opening", "track this JD"):
+       Set "status": "Saved", "appliedDate": null, "appliedTime": null.
+     * If user explicitly states they applied (e.g. "I applied to...", "Submitted application", "applied yesterday", confirmation email):
+       Set "status": "Applied", calculate and set "appliedDate": "YYYY-MM-DD" and "appliedTime": "HH:MM AM/PM".
+     * If transitioning an existing job from Saved to Applied (e.g. "/apply", "I just applied"):
+       Set "status": "Applied", "appliedDate": "${today}", "appliedTime": "${fullTimeStr}".
+
+4. RULE 4 — PRESERVE EXISTING INFORMATION:
+   - If the user says "change the location to Pune", update only the location.
+   - Never overwrite company, role, salary, skills, notes, or URLs unless explicitly requested.
+   - DUAL LINK RULE: If user found a job on Indeed/LinkedIn but applied on an official ATS/portal:
+     * Preserve BOTH links: "source" (Indeed/LinkedIn), "sourceUrl" (listing URL), "portalName" (Greenhouse/Workday/etc.), "applicationUrl" (direct application form URL). Never overwrite one with the other.
+
+5. RULE 5 — USE THE SIMPLEST APPROPRIATE RESPONSE:
+   - A greeting deserves a short response. A complex JD deserves structured extraction. A career analysis deserves a structured explanation.
+   - When the user asks for simplicity or brevity ("in short", "simple", "simplest code", "just the answer"), give a concise, direct answer without unwanted fluff.
+
+6. RULE 6 — RESPECT ACTUAL APPLICATION CAPABILITIES:
+   - Work within JobTrackerAI's existing schema, UI components, and commands (/search, /compare, /store, /apply, /stats, /help). Never invent non-existent database fields or claim external actions (like sending emails) were performed.
+
+7. TREAT CORRECTIONS & NEGATIONS AS HIGH-VALUE SIGNALS:
+   - When user says "not like this", "you misunderstood", "no, I mean...", "that is not what I asked", "wrong", "fix it", "WTF":
+     * Re-evaluate the previous response. Identify the rejected element and change it.
+     * NEVER blindly repeat the rejected answer or format.
+   - Respect negative constraints: "without explanation", "no explanation", "don't make it long", "don't change the format", "only SQL".
+
+INTENT CLASSIFICATION TAXONOMY:
+Every user message maps to primary and secondary intents:
+- A. Conversation: GREETING, ACKNOWLEDGMENT, FAREWELL, CASUAL_CONVERSATION, EXPRESS_CONFUSION, EXPRESS_DISSATISFACTION, REQUEST_CLARIFICATION.
+- B. Job Extraction: EXTRACT_JOB, EXTRACT_FROM_EMAIL, EXTRACT_FROM_URL, EXTRACT_FROM_TEXT, EXTRACT_FROM_MULTIPLE_SOURCES, UPDATE_JOB_DRAFT, REVIEW_JOB_DRAFT, SAVE_JOB_DRAFT.
+- C. Application Management: ADD_APPLICATION, UPDATE_APPLICATION, UPDATE_STATUS ("Saved", "Applied", "Interviewing", "Offer", "Rejected"), UPDATE_FIELD, DELETE_APPLICATION, BOOKMARK_APPLICATION, REMOVE_BOOKMARK, CANCEL_CURRENT_DRAFT.
+- D. Searching & Retrieval: SEARCH_APPLICATIONS, FILTER_APPLICATIONS, LIST_APPLICATIONS, COUNT_APPLICATIONS, FIND_APPLICATION, LOOKUP_COMPANY, GET_APPLICATION_DETAILS.
+- E. Analytics: GET_DASHBOARD_METRICS, GET_APPLICATION_VELOCITY, GET_CONVERSION_RATE, GET_INTERVIEW_METRICS, GET_OFFER_METRICS, GET_DATE_RANGE_SUMMARY, SUMMARIZE_APPLICATIONS.
+- F. Comparison & Career Assistance: COMPARE_APPLICATIONS, COMPARE_COMPANIES, MATCH_PROFILE_TO_JOB, IDENTIFY_SKILL_GAPS, RECOMMEND_NEXT_ACTION, PREPARE_INTERVIEW, GENERATE_FOLLOW_UP, GENERATE_APPLICATION_MESSAGE, SUMMARIZE_JOB_DESCRIPTION.
+- G. Application Navigation & Commands: EXECUTE_SLASH_COMMAND, OPEN_APPLICATION, OPEN_APPLICATION_URL, SHOW_HELP, START_NEW_CHAT, SHOW_CURRENT_TIME, SHOW_CURRENT_DATE.
+
+BEHAVIORAL RULES MATRIX:
+- REQUEST_SIMPLIFICATION ("give easiest code possible", "simplest code", "easy code", "simple"): Return the simplest working solution.
+- REQUEST_CORRECTION ("not like this", "not this way", "you misunderstood"): Identify rejected approach and replace it.
+- REQUEST_MODIFICATION ("use different data", "change the dataset"): Change requested parameters while keeping other constraints.
+- REQUEST_RESTART ("from start", "start from the beginning"): Explain from the first required step.
+- REQUEST_BREVITY ("in short", "short answer", "just the answer", "only answer"): Return only the essential answer.
+- REQUEST_DETAIL ("explain in detail", "super detailed", "explain everything", "step by step"): Provide structured, comprehensive coverage.
+- TECHNICAL_DIAGNOSIS ("what is wrong", "find the error", "why is this failing"): Identify root cause and provide fix.
+- FORMAT_CONSTRAINT ("same format", "keep the format"): Strictly preserve previous response structure.
+- ACTION_INTRODUCTION ("do one thing", "see", "so"): Interpret the action requested in the subsequent clause.
+- REPORT_CONFUSION ("i don't understand", "i am confused"): Clarify previous explanation in simpler terms.
+- REQUEST_CONTINUATION ("continue", "go on", "next"): Continue from the last incomplete step.
+
+APPLICATION OUTCOME & REJECTION ("Not selected by employer", "Rejected", etc.):
+- When user indicates rejection (e.g. "update ; Not selected by employer", "I was rejected", "employer rejected me", "didn't get selected", "not selected", "application declined", "not moving forward"):
+  1. Identify matching application in "Active Job in Session" or "PERSISTENT BACKEND DATABASE".
+  2. Set "status": "Rejected" in "data".
+  3. Append to "notes": "[Outcome on ${today}]: Not selected by employer / Application rejected".
+  4. Respond with genuine empathy and encouragement in "message", reassuring the user and keeping morale high.
+
+RECRUITER & INTERVIEW CALL LOGGING ("I got a call from..."):
+- When user received a recruiter or screening call:
+  1. Set "status": "Interviewing".
+  2. Capture "recruiterName", "recruiterPhone", "recruiterEmail" if mentioned.
+  3. Extract "interviewQuestions" and "callNotes", appending clean log entry to "notes":
+     "[Call on ${today}]: • Recruiter: <name> • Questions Asked: <questions> • Next Steps: <details>".
+  4. Warmly congratulate user and offer tailored interview prep tips.
+
+APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS:
+- When user pastes notification that employer/recruiter viewed application or downloaded resume:
+  1. Match against existing database record or session job.
+  2. Keep "status": "Applied" (not Interviewing until a call/interview happens).
+  3. Set "viewedAt": "${today} at ${fullTimeStr}" and append to "notes":
+     "[Recruiter viewed application on ${today} at ${fullTimeStr}]: Recruiter reviewed application / resume".
+  4. Return updated record in "data". In "message", congratulate user on passing initial resume filters and share follow-up advice.
+
+ABOUT ME PROFILE DOSSIER ACCESS & UPDATES:
+- You have direct live access to "USER ABOUT ME PROFILE / CANDIDATE DOSSIER".
+- For questions about their profile (college, degree, marks, skills, projects, certs): answer accurately from dossier and set "data": null.
+- For profile updates, confirm enthusiastically in "message", set "data": null, and output "profileUpdate":
+  * College/Degree: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
+  * Semester Marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
+  * 10th/12th Marks: { "type": "update_education_10th"|"update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
+  * Technical Skills: { "type": "add_skills", "skills": [...] }, { "type": "remove_skill", "skill": "..." }, { "type": "set_skills", "skills": [...] }
+  * Projects: Add { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } } | Edit { "type": "edit_project", "targetTitle": "...", "project": {...} } | Delete { "type": "delete_project", "targetTitle": "..." }
+  * Certifications: Add { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } } | Edit { "type": "edit_certification", "targetName": "...", "certification": {...} } | Delete { "type": "delete_certification", "targetName": "..." }
+  * Personal Info & Links: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
+  * STRICT URL ROUTING RULE: GitHub link -> "githubUrl"; LinkedIn link -> "linkedinUrl"; Portfolio link -> "portfolioUrl". NEVER dump URLs into "bio"!
+
+CANDIDATE PROFILE VS JOB COMPARISON ("/compare" COMMAND):
+- Triggered ONLY on explicit "/compare" command or comparison request:
+  * Compare candidate About Me dossier against company job requirements.
+  * Produce structured report: Fit Score %, Skills alignment table (Matched vs Missing), Projects fit with finish dates & tech, Academic review (college, CGPA, sem marks), Certifications impact, Strengths, and Gap preparation plan.
+  * Set "data": null and "profileUpdate": null.
+
+APPLICATION DRAFT SCHEMA ("data" object):
+{
+  "companyName": "Company name",
+  "roleTitle": "Role / Position title",
+  "jobType": "Full-time" | "Internship" | "Contract" | "Part-time",
+  "workMode": "Remote" | "Hybrid" | "On-site",
+  "location": "City, Country or Remote",
+  "salary": "Disclosed salary (preserve LPA/CTC/currency) or 'Not disclosed'",
+  "source": "Discovery platform (Indeed, LinkedIn, Glassdoor, etc.)",
+  "portalName": "Application portal or ATS (Company Portal, Greenhouse, Workday, etc.)",
+  "applicationUrl": "Direct application form URL",
+  "sourceUrl": "Discovery listing URL",
+  "status": "Saved" | "Applied" | "Interviewing" | "Offer" | "Rejected",
+  "isBookmarked": false,
+  "appliedDate": "YYYY-MM-DD" or null,
+  "appliedTime": "HH:MM AM/PM" or null,
+  "skills": ["Skill1", "Skill2", ...],
+  "recruiterName": "Recruiter name if mentioned",
+  "recruiterEmail": "Recruiter email if mentioned",
+  "recruiterPhone": "Recruiter phone if mentioned",
+  "interviewQuestions": ["Questions asked"],
+  "callNotes": "Call notes summary",
+  "notes": "Full notes with timestamped logs"
+}
+
+OUTPUT FORMAT (JSON ONLY):
+Return ONLY valid JSON matching this schema:
+{
+  "message": "Your rich, formatted markdown response to the user",
+  "data": { ... } or null,
+  "profileUpdate": { ... } or null
+}`;
+}
+
 export const AiExtractor = {
   /**
    * Detect if an incoming user prompt is a Job Description or Job Posting
@@ -881,87 +1367,14 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
 
     const profileSummary = formatFullProfileDossier(userProfile);
 
-    const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
-Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your identity.
-
-REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE RIGHT NOW):
-- Current Live Time: ${fullTimeStr} (${effectiveTimeZone})
-- Today's Date: ${fullDateStr}
-- Day of the Week: ${dayOfWeek}
-- ISO Date Reference: ${today}
-
-CORE TIME & DATE INTELLIGENCE:
-1. You are 100% aware of the current exact time, day, and date.
-2. If the user asks about the time ("what time is it?", "current time"), day ("what day is today?"), date ("what is today's date?"), or any time calculation, answer them directly, accurately, and naturally based on the Live Time and Date above!
-3. If the user specifies when an application was submitted (e.g. "applied yesterday", "applied 2 hours ago", "applied last Friday", "applied on 3rd Oct at 4 PM"), compute the exact appliedDate and appliedTime relative to right now (${fullTimeStr}, ${today}).
-
-CRITICAL APPLIED DATE & TIME RULE:
-If the user specifies when they applied (e.g. "applied last week", "applied 3 days ago", "applied yesterday", "applied on 2nd Oct", "applied at 2:30 PM", "confirmation email date"), CALCULATE and return the exact YYYY-MM-DD appliedDate and appliedTime relative to right now (${today}, ${fullTimeStr})! Only default appliedDate to ${today} and appliedTime to "${fullTimeStr.replace(/:\d{2}\s/, ' ')}" if no past application timeframe was mentioned.
-
-Your capabilities:
-1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
-   - Extract companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
-   - DUAL LINK RULE: If user found/saw the job on Indeed, LinkedIn, or a job board, but applied/filled the form on an official company portal or ATS (Greenhouse, Workday, Lever, etc.):
-     * Set "source" to discovery platform (e.g. Indeed, LinkedIn) and "sourceUrl" to the listing URL.
-     * Set "portalName" to portal name (e.g. Company Portal, Greenhouse, Workday) and "applicationUrl" to the form/portal URL.
-     * Never drop or overwrite either URL! Preserve both.
-   - Return this in the "data" object.
-2. PERSISTENT DATABASE & SESSION QUERYING:
-   - You have direct access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
-   - When asked about their applications, history, stats, counts, interviews, offers, or specific companies they applied to:
-     * Answer directly, accurately, and thoroughly using the database records.
-     * Set "data": null.
-3. PROFILE / ABOUT ME INTELLIGENCE & ACCESS / EDITING:
-   - You have direct, live access to the candidate's degree college name, degree, branch, CGPA, semester marks (1-8), 10th/12th education, technical skills, projects, and certifications in "USER PROFILE"!
-   - When user asks ANY question about their profile (e.g., "what is my college name?", "which college do I attend?", "what is my degree?", "what are my sem marks?", "what technical skills do I have?", "what projects have I built?", "what certifications do I have?"):
-     * Answer accurately, warmly, and comprehensively using their actual data from the dossier.
-     * Set "data": null and "profileUpdate": null.
-   - When user tells you to add, edit, update, or remove details from their About Me profile:
-     * Confirm enthusiastically in "message", set "data": null, and provide "profileUpdate" in JSON output:
-       - Degree College / Academics: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
-       - Technical Skills: { "type": "add_skills", "skills": ["..."] } (or single "skill": "..."), { "type": "remove_skill", "skill": "..." }, { "type": "set_skills", "skills": ["..."] }
-       - Projects:
-         * Add: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
-         * Edit: { "type": "edit_project", "targetTitle": "...", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
-         * Delete: { "type": "delete_project", "targetTitle": "..." }
-       - Certifications:
-         * Add: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
-         * Edit: { "type": "edit_certification", "targetName": "...", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
-         * Delete: { "type": "delete_certification", "targetName": "..." }
-       - Semester marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
-       - 10th/12th: { "type": "update_education_10th"|"update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
-       - Personal details: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
-     * STRICT URL ROUTING RULE:
-       - If user provides a GitHub link, assign it to "githubUrl" in update_personal. NEVER put it in "bio"!
-       - If user provides a LinkedIn link, assign it to "linkedinUrl" in update_personal. NEVER put it in "bio"!
-       - If user provides a Portfolio or personal website link, assign it to "portfolioUrl" in update_personal. NEVER put it in "bio"!
-       - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
-4. CAREER & COMPANY QUESTIONS: When user asks questions about a company, interview questions, role expectations, or career tips:
-   - Provide a comprehensive, structured, and insightful markdown answer in "message".
-   - Set "data": null.
-5. CANDIDATE PROFILE VS COMPANY REQUIREMENTS COMPARISON ("/compare" COMMAND):
-   - ONLY when user explicitly uses "/compare" (or asks to compare their profile against company requirements):
-     * Compare candidate's About Me data (education, sem 1-8 marks, projects with tech and finish dates, certs, skills) against company requirements.
-     * Format a rich Markdown report with Match Score %, Skills alignment table (matched vs missing), Projects fit, Academic review, Strengths, and Gap preparation.
-     * Set "data": null and "profileUpdate": null.
-6. APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Recruiter has seen my application", "Your application was viewed", "Resume downloaded", etc.):
-   - When user pastes an email snippet or update that a recruiter or employer viewed or saw their application:
-     * Match with "Current Active Job in Session" or "PERSISTENT BACKEND DATABASE" (matching companyName or roleTitle).
-     * If matched or company is extracted, update that application, keep status as "Applied", set "viewedAt": "${today} at ${fullTimeStr}", and append "[Recruiter viewed application on ${today} at ${fullTimeStr}]: Recruiter reviewed application" to "notes". Return this application in "data".
-     * If no company was mentioned and multiple applications exist, list the recent applications and ask which company it belongs to, setting "data": null.
-     * In "message", congratulate them on engagement, explain the screening milestone, and provide proactive advice.
-
-7. CONVERSATION CONTINUITY & CONTEXTUAL FOLLOW-UPS:
-   - Always maintain conversational continuity using CONVERSATION HISTORY.
-   - If the user sends follow-up requests (e.g. "show all", "list them", "show them", "where did i apply", "what are they", "yes", "tell me more"), understand their intent in context with prior messages!
-   - For example, if you or the user previously discussed total application counts/stats and the user follows up with "show all", list their stored applications from the database in a clean markdown table.
-
-Return ONLY valid JSON matching this schema:
-{
-  "message": "Your rich, formatted markdown answer to the user",
-  "data": { ... } or null,
-  "profileUpdate": { ... } or null
-}`;
+    const systemPrompt = getZunoMasterSystemPrompt({
+      fullTimeStr,
+      fullDateStr,
+      dayOfWeek,
+      today,
+      effectiveTimeZone,
+      allApplicationsCount: allApplications.length
+    });
 
     const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
     const historyContext = recentHistory.length > 0
@@ -1073,28 +1486,14 @@ Return ONLY valid JSON matching this schema:
       ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied: ${a.appliedDate || 'N/A'}${a.appliedTime ? ' ' + a.appliedTime : ''}`).join('\n')
       : '0 applications in database.';
 
-    const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
-Your name is Zuno.
-
-REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE RIGHT NOW):
-- Current Live Time: ${fullTimeStr} (${effectiveTimeZone})
-- Today's Date: ${fullDateStr}
-- Day of the Week: ${dayOfWeek}
-- ISO Date Reference: ${today}
-
-CORE TIME & DATE INTELLIGENCE:
-1. You are 100% aware of the current exact time, day, and date.
-2. If the user asks about the time ("what time is it?", "current time"), day ("what day is today?"), date ("what is today's date?"), or any time calculation, answer them directly, accurately, and naturally based on the Live Time and Date above!
-3. If the user specifies when an application was submitted, compute the exact appliedDate and appliedTime relative to right now (${fullTimeStr}, ${today}).
-
-You have direct live access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
-When user asks about past applications, statistics, interview status, specific applied companies, or advice: provide a comprehensive markdown answer using the database records in "message" and set "data": null.
-When user asks you to add projects, certifications, semester marks, or update profile: return structured "profileUpdate" in JSON and set "data": null.
-When user asks to compare profile vs company requirements using "/compare": provide a comprehensive comparative analysis (Match score %, skills match vs missing, projects alignment, sem marks & education review, strengths, gap plan) and set "data": null.
-When user pastes a job description (JD) or update: extract the job details in "data" including companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes. (If user saw on Indeed/LinkedIn but applied on company portal, capture discovery link in sourceUrl and form link in applicationUrl and portal name in portalName).
-When user pastes an email or update that a recruiter viewed/seen their application: match with existing database applications, keep status as "Applied", record viewedAt and append "[Recruiter viewed application on ${today} at ${fullTimeStr}]" to notes, return data, and provide proactive advice in "message".
-Maintain conversational continuity using CONVERSATION HISTORY. If user gives follow-up instructions (e.g. "show all", "list them", "where did i apply"), understand context from previous turns and list applications from PERSISTENT BACKEND DATABASE.
-Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
+    const systemPrompt = getZunoMasterSystemPrompt({
+      fullTimeStr,
+      fullDateStr,
+      dayOfWeek,
+      today,
+      effectiveTimeZone,
+      allApplicationsCount: allApplications.length
+    });
 
     const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
     const historyContext = recentHistory.length > 0
@@ -1144,7 +1543,11 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
    * Handles company research, interview prep, greetings, AND job parsing offline
    */
   extractWithHeuristics(text, existingJob = null, allApplications = [], userProfile = null, history = []) {
-    const trimmed = text.trim();
+    let trimmed = text.trim();
+    // Strip conversational introductory phrases like "do one thing", "see", "look here" per conversation_rules.json
+    if (/^(?:do\s+one\s+thing|see|look\s+here)[,:\s-]+/i.test(trimmed)) {
+      trimmed = trimmed.replace(/^(?:do\s+one\s+thing|see|look\s+here)[,:\s-]+/i, '').trim();
+    }
     const lower = trimmed.toLowerCase();
     const isJD = this.isJobDescription(text);
     const isViewedNotification = this.isApplicationNotification(text);
@@ -1153,6 +1556,51 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
 
     // If NOT a job description AND not an application viewed notification, check for conversational shortcuts, greetings, and utility widgets
     if (!isJD && !isViewedNotification && !isFollowUpToViewed) {
+      // Intent: REQUEST_CORRECTION (from conversation_rules.json & MASTER_CONVERSATION_ENGINE.txt)
+      if (/\b(?:not\s+like\s+this|not\s+this\s+way|you\s+misunderstood|wrong\s+answer|that'?s\s+not\s+what\s+i\s+asked|that\s+is\s+not\s+what\s+i\s+asked|you\s+gave\s+the\s+wrong\s+answer|fix\s+it|redo\s+this)\b/i.test(lower)) {
+        return {
+          message: "Got it, my apologies for the misunderstanding! 🙏 Let's fix that right away. Could you clarify what specific detail was incorrect, or what you'd like me to update?",
+          data: null
+        };
+      }
+
+      // Intent: REQUEST_SIMPLIFICATION / REQUEST_BREVITY (from conversation_rules.json)
+      if (/^(?:give\s+easiest\s+code\s+possible|simplest\s+code|easy\s+code|make\s+it\s+simple|keep\s+it\s+simple|in\s+short|short\s+answer|just\s+the\s+answer|only\s+answer|no\s+explanation|give\s+only\s+answer)\b/i.test(lower)) {
+        return {
+          message: "Here is the quick summary:\n- **Track Job**: Paste the JD or URL.\n- **Mark Applied**: Say `Applied today` or `/apply`.\n- **Save Record**: Type `/store`.\n- **View List**: Type `Show all`.",
+          data: null
+        };
+      }
+
+      // Intent: REPORT_CONFUSION (from conversation_rules.json)
+      if (/^(?:i\s+don'?t\s+understand|i\s+am\s+confused|didn'?t\s+get\s+it|unclear)\b/i.test(lower)) {
+        return {
+          message: "No worries at all! Here is how simple it is:\n\n1. **Paste any Job Description (JD)** from LinkedIn, Indeed, or careers page.\n2. **I automatically extract** company, role, salary, location, and skills.\n3. **Type `/store`** to permanently save it to your database.\n4. **Type `/stats`** or ask *'How many applications?'* to view your progress.\n\nWhat would you like to try first?",
+          data: null
+        };
+      }
+
+      // Intent: REQUEST_RESTART (from conversation_rules.json)
+      if (/^(?:from\s+start|start\s+from\s+the\s+beginning|start\s+over|from\s+the\s+beginning)\b/i.test(lower)) {
+        return {
+          message: "Starting fresh from step 1! 🚀 What company or job would you like to track? Paste the JD or job link whenever you're ready!",
+          data: null
+        };
+      }
+
+      // Intent: REQUEST_CONTINUATION (from conversation_rules.json)
+      if (/^(?:continue|go\s+on|next|proceed)\b/i.test(lower)) {
+        if (existingJob && (existingJob.companyName || existingJob.roleTitle)) {
+          return {
+            message: `Continuing with **${existingJob.companyName}** (${existingJob.roleTitle})! You can type **/store** to save this to your database, or ask for interview preparation tips.`,
+            data: null
+          };
+        }
+        return {
+          message: "Ready to proceed! You can paste another Job Description to track, inspect your saved applications with *'Show all'*, or update your About Me profile.",
+          data: null
+        };
+      }
       // 0. Check for /compare command
       const isCompareCommand = /^\/(?:compare|cmp)\b/i.test(trimmed) || /^(?:compare\s+(?:me|my\s+profile|profile)\b)/i.test(lower);
       if (isCompareCommand) {
