@@ -48,9 +48,16 @@ const SLASH_COMMANDS = [
     action: 'apply'
   },
   {
+    cmd: '/interview Qs',
+    label: 'Interview Questions',
+    desc: 'Get targeted technical & behavioral interview questions for this job',
+    icon: '💡',
+    action: 'interview_qs'
+  },
+  {
     cmd: '/interview',
     label: 'Status: Interviewing',
-    desc: 'Mark job as Interviewing and ask Zuno for targeted interview questions',
+    desc: 'Mark application status as Interviewing in your tracker pipeline',
     icon: '🎯',
     action: 'interview'
   },
@@ -1446,8 +1453,9 @@ class JobTrackerApp {
   showSlashCommandMenu(inputText) {
     if (!this.slashCommandMenu) return;
 
-    // If input contains spaces, user is typing arguments (e.g. /search google), dismiss menu
-    if (inputText.includes(' ')) {
+    // If input contains spaces, user may be typing towards a multi-word command (e.g. /interview Qs)
+    const hasSpaceCommandPrefix = SLASH_COMMANDS.some(cmd => cmd.cmd.toLowerCase().startsWith(inputText.toLowerCase()));
+    if (inputText.includes(' ') && !hasSpaceCommandPrefix) {
       this.hideSlashCommandMenu();
       return;
     }
@@ -1580,6 +1588,8 @@ class JobTrackerApp {
       this.clearCurrentChat();
     } else if (selected.action === 'apply') {
       await this.handleApplyCommand('/apply');
+    } else if (selected.action === 'interview_qs') {
+      await this.handleInterviewQuestionsCommand('/interview Qs');
     } else if (selected.action === 'interview') {
       await this.handleStatusCommand('Interviewing');
     } else if (selected.action === 'offer') {
@@ -1610,8 +1620,9 @@ class JobTrackerApp {
       `• **/delete [company]** — Delete the active application or remove by company name (e.g. \`/delete Google\`)\n` +
       `• **/compare [company]** — Compare your About Me profile (skills, projects, marks, certs) against company requirements\n` +
       `• **/search [query]** — Search across all applications stored in your database (e.g. \`/search Google\` or \`/search React\`)\n` +
+      `• **/interview Qs [company]** — Get targeted technical, system design, and behavioral interview questions for this role\n` +
       `• **/apply** — Mark opportunity as submitted/Applied and record application date\n` +
-      `• **/interview** — Set status to **Interviewing** and get tailored interview prep checklists\n` +
+      `• **/interview** — Set status to **Interviewing** and update your interview funnel\n` +
       `• **/offer** — Set status to **Offer** and receive offer negotiation guidance\n` +
       `• **/rejected** — Set status to **Rejected** and update application records\n` +
       `• **/bookmark** / **/unbookmark** — Star or unstar application independently of its status\n` +
@@ -1997,6 +2008,72 @@ class JobTrackerApp {
     }
   }
 
+  async handleInterviewQuestionsCommand(rawText = '/interview Qs') {
+    this.chatInput.value = '';
+    this.chatInput.style.height = 'auto';
+    this.chatInput.style.overflowY = 'hidden';
+    this.welcomeHero.style.display = 'none';
+
+    // Extract optional target argument, e.g. "/interview Qs Google" or "/interview Qs Stripe"
+    const query = (rawText || '')
+      .replace(/^\/(?:interview[\s_-]?qs?|interview\s*questions|questions)\s*/i, '')
+      .trim();
+
+    // Identify target application
+    let targetApp = this.activeApplication;
+    if ((!targetApp || (!targetApp.companyName && !targetApp.roleTitle)) && this.applications && this.applications.length > 0) {
+      if (query) {
+        const q = query.toLowerCase();
+        targetApp = this.applications.find(a =>
+          (a.companyName && a.companyName.toLowerCase().includes(q)) ||
+          (a.roleTitle && a.roleTitle.toLowerCase().includes(q))
+        ) || this.applications[0];
+      } else {
+        targetApp = this.applications[0];
+      }
+    }
+
+    if (!targetApp || (!targetApp.companyName && !targetApp.roleTitle)) {
+      this.appendUserMessage(rawText || '/interview Qs');
+      this.appendAssistantMessage(
+        `⚠️ **No active job application found.**\n\n` +
+        `To generate targeted interview questions:\n` +
+        `1. Paste a **Job Description (JD)** in the chat or select a job from your **Applications Tracker**.\n` +
+        `2. Type **/interview Qs** (or \`/interview Qs [company]\`) to get targeted technical, system design, and behavioral questions!`,
+        null
+      );
+      this.scrollToBottom();
+      return;
+    }
+
+    const coName = targetApp.companyName || 'this company';
+    const roleName = targetApp.roleTitle || 'this role';
+    const displayText = rawText || `/interview Qs ${targetApp.companyName || ''}`.trim();
+    this.appendUserMessage(displayText);
+    const thinkingEl = this.appendThinkingIndicator();
+
+    try {
+      const effectiveProfile = this.getEffectiveUserProfile();
+      const promptQuery = `/interview Qs for ${roleName} at ${coName}`;
+      const result = await AiExtractor.processInput(
+        promptQuery,
+        targetApp,
+        this.chatMessages,
+        this.applications,
+        effectiveProfile
+      );
+
+      thinkingEl.remove();
+      this.appendAssistantMessage(result.message, targetApp);
+      this.scrollToBottom();
+      this.showToast(`Generated interview questions for ${coName}!`, 'info');
+    } catch (err) {
+      thinkingEl.remove();
+      this.appendAssistantMessage(`❌ **Interview Questions Error:** ${err.message}`, targetApp);
+      this.scrollToBottom();
+    }
+  }
+
   async handleSearchCommand(rawText = '/search') {
     this.chatInput.value = '';
     this.chatInput.style.height = 'auto';
@@ -2220,6 +2297,19 @@ class JobTrackerApp {
       return;
     }
 
+    // Slash command for interview questions: /interview Qs, /interview qs, /interview-qs, /questions
+    if (
+      lower === '/interview qs' || lower.startsWith('/interview qs ') ||
+      lower === '/interview-qs' || lower.startsWith('/interview-qs ') ||
+      lower === '/interviewqs' || lower.startsWith('/interviewqs ') ||
+      lower === '/interview q' || lower.startsWith('/interview q ') ||
+      lower === '/questions' || lower.startsWith('/questions ') ||
+      lower === '/interview questions' || lower.startsWith('/interview questions ')
+    ) {
+      await this.handleInterviewQuestionsCommand(text);
+      return;
+    }
+
     // Slash command to mark as interviewing
     if (lower === '/interview' || lower.startsWith('/interview ')) {
       await this.handleStatusCommand('Interviewing');
@@ -2361,22 +2451,20 @@ class JobTrackerApp {
 
         this.activeApplication = appData;
 
-        // If it was ALREADY stored in DB, keep DB synced with edits
-        if (this.activeApplication.isStored) {
+        // Auto-save application to database immediately so it is tracked in the tracker
+        try {
           const saveRes = await SupabaseService.saveApplication(this.activeApplication);
           this.activeApplication = { ...saveRes.data, isStored: true };
           await this.loadApplications();
+          this.highlightActiveHistoryItem();
+        } catch (saveErr) {
+          console.warn('Auto-save application notice:', saveErr);
         }
-
-        const alreadyHasStoreHint = /\/store|store\s+in\s+db/i.test(result.message || '');
-        const promptHint = (!this.activeApplication.isStored && !alreadyHasStoreHint)
-          ? '\n\n💡 Type `/store` or click **Store in DB** on the card to save this job to your database!'
-          : '';
 
         const assistantTimestamp = new Date().toISOString();
         const assistantMsg = {
           role: 'assistant',
-          text: (result.message + promptHint).trim(),
+          text: (result.message || '').trim(),
           data: { ...this.activeApplication, chatHistory: [] },
           timestamp: assistantTimestamp
         };
@@ -3449,12 +3537,14 @@ class JobTrackerApp {
   }
 
   createExtractionCardHtml(data) {
-    const isStored = this.isJobStored(data);
-    if (isStored) {
-      data.isStored = true;
-    }
     const initial = (data.companyName || 'C').charAt(0).toUpperCase();
-    const statusClass = `status-${(data.status || 'applied').toLowerCase()}`;
+    const rawStatus = (data.status || 'Applied').trim();
+    let statusClass = `status-${rawStatus.toLowerCase()}`;
+    let displayStatus = rawStatus;
+    if (rawStatus.toLowerCase() === 'saved') {
+      displayStatus = 'Opportunity';
+      statusClass = 'status-opportunity';
+    }
 
     // Skills tags
     const skillsHtml = (data.skills && data.skills.length > 0)
@@ -3463,10 +3553,10 @@ class JobTrackerApp {
          </div>`
       : '';
 
-    // External links
+    // External links (clean buttons, no filler text if none)
     let linksHtml = '';
     if (data.applicationUrl) {
-      const applyBtnText = data.portalName ? `Apply Portal (${this.escapeHtml(data.portalName)})` : 'Apply Portal';
+      const applyBtnText = data.portalName ? `Apply (${this.escapeHtml(data.portalName)})` : 'Apply Portal';
       linksHtml += `
         <a href="${this.escapeHtml(data.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(data.portalName || 'Portal')})">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
@@ -3484,6 +3574,34 @@ class JobTrackerApp {
       `;
     }
 
+    // Meaningful meta chips only — filter out empty/generic fillers
+    const metaChips = [];
+    if (data.salary && !/^(?:not\s+disclosed|not\s+specified|n\/?a|undisclosed|none|-)$/i.test(data.salary.trim())) {
+      metaChips.push(`<span class="meta-chip chip-salary">💰 <strong>${this.escapeHtml(data.salary)}</strong></span>`);
+    }
+    if (data.workMode && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(data.workMode.trim())) {
+      const modeIcon = /remote/i.test(data.workMode) ? '🏠' : (/hybrid/i.test(data.workMode) ? '🔄' : '🏢');
+      metaChips.push(`<span class="meta-chip chip-mode">${modeIcon} <strong>${this.escapeHtml(data.workMode)}</strong></span>`);
+    }
+    if (data.location && !/^(?:not\s+specified|n\/?a|none|unknown|-)$/i.test(data.location.trim())) {
+      metaChips.push(`<span class="meta-chip">📍 ${this.escapeHtml(data.location)}</span>`);
+    }
+    if (data.jobType && !/^(?:not\s+specified|n\/?a|-)$/i.test(data.jobType.trim())) {
+      metaChips.push(`<span class="meta-chip">💼 ${this.escapeHtml(data.jobType)}</span>`);
+    }
+    if (data.appliedDate && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(data.appliedDate.trim())) {
+      metaChips.push(`<span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate)}</strong></span>`);
+    }
+    if (data.source && !/^(?:portal|direct\s+portal|online|web|direct)$/i.test(data.source.trim())) {
+      metaChips.push(`<span class="meta-chip chip-source">🌐 ${this.escapeHtml(data.source)}</span>`);
+    } else if (data.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(data.portalName)) {
+      metaChips.push(`<span class="meta-chip chip-portal">📝 ${this.escapeHtml(data.portalName)}</span>`);
+    }
+    if (data.viewedAt || (data.notes && data.notes.includes('Recruiter viewed application'))) {
+      metaChips.push(`<span class="meta-chip chip-viewed" style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">👀 Recruiter Viewed: <strong>${this.escapeHtml(data.viewedAt || 'Yes')}</strong></span>`);
+    }
+    const chipsHtml = metaChips.length > 0 ? `<div class="card-meta-chips">${metaChips.join('')}</div>` : '';
+
     return `
       <div class="ai-extraction-card">
         <div class="card-header-row">
@@ -3494,33 +3612,12 @@ class JobTrackerApp {
               <p class="card-company-name">${this.escapeHtml(data.companyName || 'Company')}</p>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            ${isStored ? `
-              <span class="status-stored-badge" title="Stored in Database">✓ Saved in DB</span>
-            ` : `
-              <span class="status-draft-badge" title="Draft / Unsaved - Type /store to save">Draft • Unsaved</span>
-            `}
-            <span class="status-pill ${statusClass}">${data.status || 'Applied'}</span>
+          <div class="card-status-wrapper">
+            <span class="status-pill ${statusClass}" title="Pipeline Status: ${displayStatus}">${displayStatus}</span>
           </div>
         </div>
 
-        <div class="card-meta-chips">
-          <span class="meta-chip chip-salary">💰 <strong>${this.escapeHtml(data.salary || 'Not disclosed')}</strong></span>
-          <span class="meta-chip chip-mode">🏢 <strong>${this.escapeHtml(data.workMode || 'On-site')}</strong></span>
-          <span class="meta-chip">📍 ${this.escapeHtml(data.location || 'Not specified')}</span>
-          <span class="meta-chip">💼 ${this.escapeHtml(data.jobType || 'Full-time')}</span>
-          <span class="meta-chip chip-source">🌐 Found: <strong>${this.escapeHtml(data.source || 'Direct Portal')}</strong></span>
-          ${(data.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|yesturday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(data.portalName)) ? `<span class="meta-chip chip-portal">📝 Filled at: <strong>${this.escapeHtml(data.portalName)}</strong></span>` : ''}
-          ${(data.status === 'Saved' || (!data.appliedDate && data.status !== 'Applied')) ? `
-            <span class="meta-chip chip-opportunity" style="background: rgba(14, 165, 233, 0.15); color: var(--accent-primary); border: 1px solid rgba(14, 165, 233, 0.3);">📌 Status: <strong>Saved Opportunity (Not Applied)</strong></span>
-          ` : `
-            <span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate || 'Today')}</strong> <em style="opacity: 0.85; font-size: 0.76rem;">(${this.formatDaysAgo(data.appliedDate)})</em></span>
-            <span class="meta-chip chip-time">🕒 Time: <strong>${this.escapeHtml(data.appliedTime || this.formatTimeOnly(data.createdAt || new Date()))}</strong></span>
-          `}
-          ${(data.viewedAt || (data.notes && data.notes.includes('Recruiter viewed application'))) ? `
-            <span class="meta-chip chip-viewed" style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">👀 Recruiter Viewed: <strong>${this.escapeHtml(data.viewedAt || 'Yes')}</strong></span>
-          ` : ''}
-        </div>
+        ${chipsHtml}
 
         ${skillsHtml}
 
@@ -3552,21 +3649,21 @@ class JobTrackerApp {
 
         <div class="card-actions-row">
           <div class="card-external-links">
-            ${linksHtml || '<span style="font-size: 0.78rem; color: var(--text-subtle);">No direct URLs detected yet. You can paste them in the chat.</span>'}
+            ${linksHtml}
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            ${!isStored ? `
-              <button class="btn btn-primary btn-sm btn-store-job" title="Save this application to database (/store)">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                <span>Store in DB (/store)</span>
-              </button>
-            ` : `
-              <button class="btn btn-secondary btn-sm btn-store-job" title="Update in database (/store)">
+            ${(displayStatus === 'Opportunity') ? `
+              <button class="btn btn-primary btn-sm btn-mark-applied-card" title="Mark this job as Applied today">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span>Saved (Update /store)</span>
+                <span>Mark as Applied</span>
               </button>
-            `}
-            <button class="btn btn-secondary btn-sm btn-view-in-dash">
+            ` : ''}
+            <button class="btn btn-secondary btn-sm btn-interview-qs-card" title="Generate tailored interview questions for this role (/interview Qs)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <span>Interview Qs</span>
+            </button>
+            <button class="btn btn-secondary btn-sm btn-view-in-dash" title="View in Applications Tracker">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
               <span>View in Tracker</span>
             </button>
           </div>
@@ -3579,10 +3676,30 @@ class JobTrackerApp {
     const btnView = msgDiv.querySelector('.btn-view-in-dash');
     if (btnView) {
       btnView.addEventListener('click', async () => {
-        if (!this.activeApplication?.isStored) {
-          await this.handleStoreCommand();
-        }
         this.switchView('dashboard');
+      });
+    }
+
+    const btnInterviewQs = msgDiv.querySelector('.btn-interview-qs-card');
+    if (btnInterviewQs) {
+      btnInterviewQs.addEventListener('click', async () => {
+        this.activeApplication = jobData;
+        await this.handleInterviewQuestionsCommand(`/interview Qs ${jobData.companyName || ''}`.trim());
+      });
+    }
+
+    const btnApply = msgDiv.querySelector('.btn-mark-applied-card');
+    if (btnApply) {
+      btnApply.addEventListener('click', async () => {
+        await this.handleApplyCommand();
+        btnApply.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg><span>Applied</span>';
+        btnApply.disabled = true;
+        btnApply.classList.replace('btn-primary', 'btn-secondary');
+        const statusBadge = msgDiv.querySelector('.status-pill');
+        if (statusBadge) {
+          statusBadge.className = 'status-pill status-applied';
+          statusBadge.textContent = 'Applied';
+        }
       });
     }
 

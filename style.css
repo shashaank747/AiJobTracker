@@ -1914,7 +1914,8 @@ body {
   transition: var(--transition);
 }
 
-.status-pill.status-saved {
+.status-pill.status-saved,
+.status-pill.status-opportunity {
   background: var(--status-saved-bg);
   color: var(--status-saved-text);
   border-color: var(--status-saved-border);

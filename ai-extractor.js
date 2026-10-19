@@ -1073,8 +1073,10 @@ CRITICAL APPLIED DATE & TIME RULE:
 If the user specifies when they applied (e.g. "applied last week", "applied 3 days ago", "applied yesterday", "applied on 2nd Oct", "applied at 2:30 PM", "confirmation email date"), CALCULATE and return the exact YYYY-MM-DD appliedDate and appliedTime relative to right now (${today}, ${fullTimeStr})! Only default appliedDate to ${today} and appliedTime to "${fullTimeStr.replace(/:\d{2}\s/, ' ')}" if no past application timeframe was mentioned.
 
 Your capabilities:
-1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
+1. JOB EXTRACTION (STRICTLY NO UNSOLICITED INTERVIEW QUESTIONS): When user pastes a Job Description (JD), link, or status update:
    - Extract companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
+   - STRICT REQUIREMENT: DO NOT generate interview questions, interview rounds, or prep advice in "message". The user did NOT ask for interview questions!
+   - In "message", present a simple, clean JD breakdown: Role, Company, Location, Compensation, Key Skills, and state that it is tracked. Inform the user they can type /interview Qs for targeted interview questions or /apply when submitted.
    - DUAL LINK RULE: If user found/saw the job on Indeed, LinkedIn, or a job board, but applied/filled the form on an official company portal or ATS (Greenhouse, Workday, Lever, etc.):
      * Set "source" to discovery platform (e.g. Indeed, LinkedIn) and "sourceUrl" to the listing URL.
      * Set "portalName" to portal name (e.g. Company Portal, Greenhouse, Workday) and "applicationUrl" to the form/portal URL.
@@ -1118,7 +1120,11 @@ Your capabilities:
      * Compare candidate's About Me data (education, sem 1-8 marks, projects with tech and finish dates, certs, skills) against company requirements.
      * Format a rich Markdown report with Match Score %, Skills alignment table (matched vs missing), Projects fit, Academic review, Strengths, and Gap preparation.
      * Set "data": null and "profileUpdate": null.
-6. APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Recruiter has seen my application", "Your application was viewed", "Resume downloaded", etc.):
+6. INTERVIEW QUESTIONS COMMAND ("/interview Qs" COMMAND):
+   - ONLY when user explicitly types "/interview Qs", "/interview questions", or asks for interview questions for a role/company:
+     * Provide focused, high-value interview questions: Technical questions on role stack, System design / practical scenarios, Behavioral questions (STAR format), and reverse questions for the interviewer.
+     * Set "data": null and "profileUpdate": null.
+7. APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Recruiter has seen my application", "Your application was viewed", "Resume downloaded", etc.):
    - When user pastes an email snippet or update that a recruiter or employer viewed or saw their application:
      * Match with "Current Active Job in Session" or "PERSISTENT BACKEND DATABASE" (matching companyName or roleTitle).
      * If matched or company is extracted, update that application, keep status as "Applied", set "viewedAt": "${today} at ${fullTimeStr}", and append "[Recruiter viewed application on ${today} at ${fullTimeStr}]: Recruiter reviewed application" to "notes". Return this application in "data".
@@ -1339,6 +1345,17 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       if (isCompareCommand) {
         const queryTarget = trimmed.replace(/^\/(?:compare|cmp)\s*/i, '').replace(/^(?:compare\s+(?:me|my\s+profile|profile)(?:\s+(?:with|to|against))?\s*)/i, '').trim();
         return this.generateProfileJobComparison(userProfile, existingJob, queryTarget, allApplications);
+      }
+
+      // 0b. Check for /interview Qs command
+      const isInterviewQsCmd = /^\/(?:interview[\s_-]?qs?|interview\s*questions|questions)\b/i.test(trimmed) ||
+        /^(?:interview\s+questions?|give\s+(?:me\s+)?interview\s+questions?|practice\s+questions?)\b/i.test(lower);
+      if (isInterviewQsCmd) {
+        const queryTarget = trimmed
+          .replace(/^\/(?:interview[\s_-]?qs?|interview\s*questions|questions)\s*/i, '')
+          .replace(/^(?:interview\s+questions?|give\s+(?:me\s+)?interview\s+questions?|practice\s+questions?)(?:\s+(?:for|at|on))?\s*/i, '')
+          .trim();
+        return this.generateInterviewQuestions(existingJob, queryTarget, allApplications, userProfile);
       }
 
       // 1. Check for greetings
@@ -2713,18 +2730,27 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       summaryNotes.push(`Identified ${data.skills.length} skill(s).`);
     }
 
-    // Friendly commentary message
+    // Clean, simple commentary message without unsolicited interview questions
+    const cleanSkillsSummary = data.skills && data.skills.length > 0 ? data.skills.slice(0, 6).join(', ') : 'General software engineering';
     let message = isNewJob
       ? (data.status === 'Applied'
-          ? `Successfully recorded application for **${data.roleTitle}** at **${data.companyName}**! (Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}).`
-          : `Extracted job opportunity for **${data.roleTitle}** at **${data.companyName}**! Saved as **Saved Opportunity**. Whenever you submit your application, tell me *"Applied today"* or type **/apply** to mark it as Applied.`)
+          ? `📋 **Application Recorded: ${data.roleTitle} at ${data.companyName}**\n\n` +
+            `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+            `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+            `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+            `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
+            `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.\n\n` +
+            `💡 *Need interview prep?* Type **/interview Qs** anytime to generate targeted interview questions for this role!`
+          : `📋 **Job Opportunity Tracked: ${data.roleTitle} at ${data.companyName}**\n\n` +
+            `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+            `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+            `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+            `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
+            `✅ Saved to your tracker board as an **Opportunity**.\n\n` +
+            `💡 *Need interview prep?* Type **/interview Qs** anytime to generate targeted interview questions for this role, or **/apply** when you submit your application!`)
       : (data.status === 'Rejected'
           ? `Updated **${data.companyName}** (${data.roleTitle}) status to **Rejected** (Not selected by employer).\n\nJob search rejections are completely normal and part of the journey—don't let it discourage you! You're one step closer to the right opportunity.`
           : `Updated **${data.companyName}** (${data.roleTitle}) with the latest details.`);
-
-    if (summaryNotes.length > 0) {
-      message += ` ` + summaryNotes.join(' ');
-    }
 
     return {
       message,
@@ -2963,10 +2989,70 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     } else {
       report += `- **Full Skill Coverage:** You cover all primary technical requirements! Focus your prep on behavioral STAR stories and mock system design.\n`;
     }
-    report += `- **Next Action:** Type **/interview** to get custom mock interview questions for **${job.companyName}**, or update any new projects in your profile!\n`;
+    report += `- **Next Action:** Type **/interview Qs** to get custom mock interview questions for **${job.companyName}**, or update any new projects in your profile!\n`;
 
     return {
       message: report,
+      data: null
+    };
+  },
+
+  /**
+   * Generates targeted technical, system design, and behavioral interview questions
+   * specifically for the target job/company.
+   */
+  generateInterviewQuestions(targetJob = null, targetQuery = '', allApplications = [], userProfile = null) {
+    let job = targetJob;
+    if ((!job || (!job.companyName && !job.roleTitle)) && allApplications && allApplications.length > 0) {
+      if (targetQuery) {
+        const q = targetQuery.toLowerCase();
+        job = allApplications.find(a =>
+          (a.companyName && a.companyName.toLowerCase().includes(q)) ||
+          (a.roleTitle && a.roleTitle.toLowerCase().includes(q))
+        ) || allApplications[0];
+      } else {
+        job = allApplications[0];
+      }
+    }
+
+    if (!job || (!job.companyName && !job.roleTitle)) {
+      return {
+        message: `⚠️ **No Job Application Found**\n\n` +
+          `To generate targeted interview questions:\n` +
+          `1. Paste a **Job Description (JD)** in the chat or select an application from your **Applications Tracker**.\n` +
+          `2. Type **/interview Qs** (or \`/interview Qs [company]\`) to get targeted technical, system design, and behavioral questions!`,
+        data: null
+      };
+    }
+
+    const company = job.companyName || 'Target Company';
+    const role = job.roleTitle || 'Software Engineer';
+    const rawSkills = Array.isArray(job.skills) && job.skills.length > 0 ? job.skills : ['Core Engineering', 'Data Structures', 'System Architecture', 'Problem Solving'];
+    const skills = rawSkills.slice(0, 6);
+    const primarySkill = skills[0] || 'Software Engineering';
+    const secondarySkill = skills[1] || 'System Architecture';
+
+    const msg = `🎯 **Targeted Interview Questions: ${role} at ${company}**\n\n` +
+      `Here is a targeted interview question set designed specifically for this role based on required skills (\`${skills.join('`, `')}\`):\n\n` +
+      `### 1. 💻 Core Technical & Engineering Questions\n` +
+      `1. **${primarySkill} Deep-Dive:** Can you explain how you design and optimize high-throughput components using **${primarySkill}**, and how you handle concurrency, state management, or edge failure conditions?\n` +
+      `2. **Architecture & Reliability (${secondarySkill}):** In your past projects, how did you integrate **${secondarySkill}** into the overall application architecture? What trade-offs did you evaluate?\n` +
+      `3. **Database & Query Optimization:** How would you design a caching strategy (e.g. Redis / materialized views) to reduce database read bottlenecks during high traffic spikes?\n` +
+      `4. **Error Handling & Observability:** How do you set up telemetry, distributed tracing, and automated alerting to catch silent failures before users report them?\n\n` +
+      `### 2. 🏗️ System Design & Scenario-Based Challenges\n` +
+      `1. **Scalability:** Design a real-time event ingestion or tracking service for **${company}** that handles 50,000 requests/sec with minimal latency and high fault tolerance.\n` +
+      `2. **Trade-off Analysis:** If a primary downstream dependency or third-party API starts timing out or throwing 500 errors, how do you implement circuit breaking and graceful degradation?\n\n` +
+      `### 3. 🤝 Behavioral & Culture Fit (STAR Method)\n` +
+      `1. **Technical Disagreement:** Describe a time you disagreed with a senior engineer or product manager on an architectural decision. How did you present your case and resolve it?\n` +
+      `2. **Production Incident:** Walk through the most complex bug or production outage you diagnosed. What was the root cause and how did you prevent regression?\n` +
+      `3. **Rapid Learning:** Tell me about a time you had to deliver a critical project using a technology or stack you had never worked with before.\n\n` +
+      `### 4. 💡 Smart Reverse Questions to Ask the Interviewer\n` +
+      `• *"What does the deployment and on-call rotation look like for this specific engineering team at ${company}?"*\n` +
+      `• *"What is the most pressing technical challenge or legacy migration this team is tackling over the next 6 months?"*\n\n` +
+      `*Pro tip: Use the STAR method (Situation, Task, Action, Result) for behavioral answers and keep technical explanations grounded in real systems you've built!*`;
+
+    return {
+      message: msg,
       data: null
     };
   }
