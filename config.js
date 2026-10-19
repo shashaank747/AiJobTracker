@@ -66,9 +66,9 @@ export const Config = {
       supabaseUrl: localStorage.getItem(STORAGE_KEYS.SUPABASE_URL) || 'https://bcblfftacinxymmgfjsz.supabase.co',
       supabaseKey: localStorage.getItem(STORAGE_KEYS.SUPABASE_KEY) || 'sb_publishable_e-5eedNJWiqBm7UQxWv7kw__7wT2OX9',
       supabaseTable: localStorage.getItem(STORAGE_KEYS.SUPABASE_TABLE) || 'job_applications',
-      aiProvider: localStorage.getItem(STORAGE_KEYS.AI_PROVIDER) || 'gemini',
+      aiProvider: (localStorage.getItem(STORAGE_KEYS.AI_PROVIDER) === 'openai' ? 'gemini' : (localStorage.getItem(STORAGE_KEYS.AI_PROVIDER) || 'gemini')),
       geminiKey: localStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '',
-      geminiModel: localStorage.getItem(STORAGE_KEYS.GEMINI_MODEL) || 'gemini-3.5-flash-lite',
+      geminiModel: localStorage.getItem(STORAGE_KEYS.GEMINI_MODEL) || 'gemini-2.5-flash',
       openaiKey: localStorage.getItem(STORAGE_KEYS.OPENAI_KEY) || '',
       theme: 'dark'
     };

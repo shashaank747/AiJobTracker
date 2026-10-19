@@ -9,22 +9,30 @@ import { Config } from './config.js';
  */
 export function parseAppliedDate(text, defaultDate = undefined) {
   const now = new Date();
-  const lower = (text || '').toLowerCase();
+  const raw = text || '';
+  const lower = raw.toLowerCase();
 
-  // "yesterday" (including common typos like yesturday, yesteday, yestday, yesterdy)
-  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied\s+)?(?:yesterday|yesturday|yesteday|yestday|yesterdy)\b/i.test(lower)) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
+  // Strip job listing publication dates like "reposted 3 days ago", "posted yesterday", "listed 2 days ago"
+  const cleanLower = lower.replace(/\b(?:reposted|posted|listed|active|published|updated)\s+(?:\d+\s*days?\s*ago|yesterday|today|\d+\s*weeks?\s*ago|\d+\s*months?\s*ago)\b/gi, '');
+
+  // "yesterday" (including common typos)
+  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied|submitted|sent\s+application)?\s*(?:yesterday|yesturday|yesteday|yestday|yesterdy)\b/i.test(cleanLower)) {
+    // Only match if "yesterday" wasn't stripped as a posting date
+    if (/\b(?:yesterday|yesturday|yesteday|yestday|yesterdy)\b/i.test(cleanLower)) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().split('T')[0];
+    }
   }
 
-  // "today"
-  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied\s+)?today\b/i.test(lower)) {
+  // "today" - only if explicitly stating application or submission
+  if (/\b(?:(?:i\s+)?(?:have\s+|had\s+)?applied|submitted|sent\s+application)\s+(?:on\s+)?today\b/i.test(cleanLower) ||
+      /^(?:applied|submitted)\s+today\b/i.test(cleanLower.trim())) {
     return now.toISOString().split('T')[0];
   }
 
-  // "X days ago" or "X days back"
-  const daysAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(\d+)\s*days?\s*(?:ago|back)\b/i);
+  // "X days ago" or "X days back" (only if application context or in clean text)
+  const daysAgoMatch = cleanLower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(\d+)\s*days?\s*(?:ago|back)\b/i);
   if (daysAgoMatch) {
     const days = parseInt(daysAgoMatch[1], 10);
     const d = new Date(now);
@@ -33,7 +41,7 @@ export function parseAppliedDate(text, defaultDate = undefined) {
   }
 
   // "last week" / "a week ago" / "X weeks ago"
-  const weeksAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*weeks?\s*(?:ago|back)|last\s*week|a\s*week\s*ago)\b/i);
+  const weeksAgoMatch = cleanLower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*weeks?\s*(?:ago|back)|last\s*week|a\s*week\s*ago)\b/i);
   if (weeksAgoMatch) {
     const weeks = weeksAgoMatch[1] ? parseInt(weeksAgoMatch[1], 10) : 1;
     const d = new Date(now);
@@ -42,7 +50,7 @@ export function parseAppliedDate(text, defaultDate = undefined) {
   }
 
   // "last month" / "X months ago"
-  const monthsAgoMatch = lower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*months?\s*(?:ago|back)|last\s*month|a\s*month\s*ago)\b/i);
+  const monthsAgoMatch = cleanLower.match(/\b(?:(?:i\s+)?(?:had\s+)?applied\s+)?(?:(\d+)\s*months?\s*(?:ago|back)|last\s*month|a\s*month\s*ago)\b/i);
   if (monthsAgoMatch) {
     const months = monthsAgoMatch[1] ? parseInt(monthsAgoMatch[1], 10) : 1;
     const d = new Date(now);
@@ -67,7 +75,7 @@ export function parseAppliedDate(text, defaultDate = undefined) {
 
   // Explicit month names (e.g. "applied on 2nd Oct", "i had applied on 21 sept", "applied Sep 28", "21st sept")
   const monthRegex = /\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on\s+)?)?(?:(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?)?(?:,?\s+(202\d))?\b/i;
-  const monthMatch = lower.match(monthRegex);
+  const monthMatch = cleanLower.match(monthRegex);
   if (monthMatch && (monthMatch[1] || monthMatch[3])) {
     const monthMap = {
       jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
@@ -182,12 +190,79 @@ export function parsePortalName(text, url = '') {
 
 const EXTRACTION_BLACKLIST = new Set([
   'full', 'time', 'part', 'job', 'role', 'title', 'location', 'work', 'work location',
-  'in person', 'remote', 'on-site', 'hybrid', 'full-time', 'part-time', 'contract',
+  'in person', 'remote', 'on-site', 'hybrid', 'full-time', 'part-time', 'contract', 'internship',
   'key responsibilities', 'full job description', 'job details', 'required skills',
   'application question', 'application questions', 'provident fund', 'benefits',
-  'pay', 'salary', 'bengaluru', 'karnataka', 'india', 'target company', 'software professional',
-  'qualification', 'qualifications', 'experience', 'responsibilities'
+  'pay', 'salary', 'ctc', 'package', 'stipend', 'bengaluru', 'karnataka', 'india',
+  'target company', 'software professional', 'professional role', 'company', 'job title',
+  'qualification', 'qualifications', 'experience', 'responsibilities', 'about us', 'about the job',
+  'about the role', 'what you will do', 'what you\'ll do', 'who you are', 'overview', 'description',
+  'requirements', 'preferred qualifications', 'basic qualifications', 'skills required',
+  'equal opportunity employer', 'we are hiring', 'we are looking for', 'apply now', 'apply',
+  'job summary', 'position summary', 'duties', 'what you need', 'must have'
 ]);
+
+export function isSentence(str) {
+  if (!str) return false;
+  const s = str.trim().toLowerCase();
+  return /\b(?:is|are|was|were|we|our|you|your|they|their|will|have|has|had|must|should|can|could|looking\s+for|seeking|join\s+our|welcome|excited\s+to|build|building|provide|providing|delivering|experience\s+with|proficient\s+in|responsible\s+for)\b/i.test(s) ||
+    /[.!?]$/.test(str.trim()) ||
+    s.split(/\s+/).length > 7;
+}
+
+export function extractCompanyFromUrl(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname;
+
+    const capitalizeSlug = (slug) => {
+      if (!slug) return null;
+      return slug.split(/[-_]/)
+        .filter(w => !['jobs', 'careers', 'apply', 'view', 'embed', 'gh', 'co', 'io'].includes(w.toLowerCase()))
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+    };
+
+    if (host.includes('greenhouse.io')) {
+      const parts = path.split('/').filter(Boolean);
+      if (parts.length > 0 && parts[0] !== 'embed' && parts[0] !== 'jobs') return capitalizeSlug(parts[0]);
+      if (parts[0] === 'embed' && parts[1] === 'job' && parts[2]) return capitalizeSlug(parts[2]);
+    }
+
+    if (host.includes('lever.co')) {
+      const parts = path.split('/').filter(Boolean);
+      if (parts.length > 0) return capitalizeSlug(parts[0]);
+    }
+
+    if (host.includes('ashbyhq.com')) {
+      const parts = path.split('/').filter(Boolean);
+      if (parts.length > 0) return capitalizeSlug(parts[0]);
+    }
+
+    if (host.includes('myworkdayjobs.com')) {
+      const sub = host.split('.')[0];
+      if (sub && sub !== 'www') return capitalizeSlug(sub);
+    }
+
+    if (host.includes('smartrecruiters.com')) {
+      const parts = path.split('/').filter(Boolean);
+      if (parts.length > 0) return capitalizeSlug(parts[0]);
+    }
+
+    if (host.includes('bamboohr.com')) {
+      const sub = host.split('.')[0];
+      if (sub && sub !== 'www') return capitalizeSlug(sub);
+    }
+
+    if (host.startsWith('careers.')) {
+      const domain = host.replace('careers.', '').split('.')[0];
+      if (domain && domain.length > 2) return capitalizeSlug(domain);
+    }
+  } catch (e) {}
+  return null;
+}
 
 export function extractSalary(text) {
   if (!text) return null;
@@ -244,48 +319,92 @@ export function extractCompany(text) {
   if (!text) return null;
 
   // 1. Explicit labeled company
-  const labeled = text.match(/(?:Company(?:\s*Name)?|Employer|Organization|Hiring\s+Company)\s*[:\-]\s*([^\n\r,;|]+)/i);
+  const labeled = text.match(/(?:Company(?:\s*Name)?|Employer|Organization|Hiring\s+Company|Hiring\s+Firm)\s*[:\-]\s*([^\n\r,;|]+)/i);
   if (labeled) {
     const val = labeled[1].trim();
-    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 2 && val.length < 50) return val;
+    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && !isSentence(val) && val.length >= 2 && val.length <= 50) return val;
   }
 
-  // 2. Corporate Entity suffix / keyword line match (e.g. HYDRO PNEUMATIC ENGINEERS (HYD) PVT LTD)
+  // 2. URL-based ATS extraction (Greenhouse, Lever, Ashby, Workday, BambooHR)
+  const urlMatch = text.match(/https?:\/\/[^\s]+/i);
+  if (urlMatch) {
+    const urlCo = extractCompanyFromUrl(urlMatch[0]);
+    if (urlCo && !EXTRACTION_BLACKLIST.has(urlCo.toLowerCase())) {
+      return urlCo;
+    }
+  }
+
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const entityRegex = /\b(?:PVT\.?\s*LTD\.?|PRIVATE\s+LIMITED|LTD\.?|LIMITED|INC\.?|INCORPORATED|LLC|CORP\.?|CORPORATION|LLP|GMBH|TECHNOLOGIES|SOLUTIONS|ENGINEERS|SYSTEMS|SERVICES|LABS|HOLDINGS|ENTERPRISES)\b/i;
-  
-  for (const line of lines) {
-    if (entityRegex.test(line)) {
-      const clean = line.replace(/^(?:Company|Employer|At)\s*[:\-]?\s*/i, '').trim();
-      if (clean.length >= 3 && clean.length <= 60 && !EXTRACTION_BLACKLIST.has(clean.toLowerCase())) {
-        return clean;
+
+  // 3. LinkedIn format with middle dot delimiter (· or • or |)
+  // e.g. "Uber · Bengaluru, Karnataka, India · Reposted 2 days ago"
+  // e.g. "Razorpay · Bengaluru, Karnataka · 45 applicants"
+  for (const line of lines.slice(0, 8)) {
+    if (line.includes('·') || line.includes('•')) {
+      const parts = line.split(/[·•]/).map(p => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const cand = parts[0];
+        const isNotCompany = /^\d+[\d,]*\+?\s*employees/i.test(cand) ||
+                             /^(?:full-time|part-time|contract|internship|remote|hybrid|on-site)$/i.test(cand) ||
+                             /^(?:mid-senior|entry|associate|director|executive)\s+level/i.test(cand) ||
+                             EXTRACTION_BLACKLIST.has(cand.toLowerCase()) ||
+                             isSentence(cand);
+        if (!isNotCompany && cand.length >= 2 && cand.length <= 40) {
+          return cand;
+        }
       }
     }
   }
 
-  // 3. Common intro phrases: e.g. "Careers at Google", "Join Stripe", "About Acme"
-  const introMatch = text.match(/(?:join|about|careers\s+at)\s+([A-Z][A-Za-z0-9&.,'()\- ]{1,35})/i);
-  if (introMatch) {
-    const val = introMatch[1].trim();
-    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 2) return val;
-  }
-
-  // 4. "Role at Company" pattern: stop at 'in', 'with', 'for', ',', etc.
-  const atMatch = text.match(/(?:for\s+)?([A-Za-z0-9 &.'\-/]{2,35})\s+at\s+([A-Z][A-Za-z0-9&.'\-]{1,35}?)(?:\s+(?:in|with|for|as|on|at)\b|[,.\n\r(]|$)/i);
+  // 4. "Role at Company" pattern
+  // e.g. "Frontend Engineer at Swiggy", "SDE 1 at Razorpay", "Software Engineer at Google"
+  const atMatch = text.match(/\b(?:engineer|developer|architect|designer|manager|analyst|intern|sde|swe|specialist|consultant|lead|scientist|technician|role|position|job)\b[^\n\r,.]*?\s+(?:at|with|@)\s+([A-Z][A-Za-z0-9&.'\-]{1,30})(?:\s+(?:in|for|on|as)\b|[,.\n\r(]|$)/i);
   if (atMatch) {
-    const co = atMatch[2].trim();
-    if (!EXTRACTION_BLACKLIST.has(co.toLowerCase()) && co.length > 2) return co;
+    const co = atMatch[1].trim();
+    if (!EXTRACTION_BLACKLIST.has(co.toLowerCase()) && !isSentence(co) && co.length >= 2) {
+      return co;
+    }
   }
 
-  // 5. Look for company line immediately preceding location line or salary line
-  for (let i = 0; i < lines.length - 1; i++) {
-    const nextLine = lines[i + 1];
-    const isLocationNext = /^[A-Z][a-zA-Z\s]{2,20},\s*[A-Z][a-zA-Z\s]{2,20}$/.test(nextLine) ||
-                           /\b(?:Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Chennai|Seattle|San Francisco|New York)\b/i.test(nextLine);
-    if (isLocationNext) {
+  // 5. "About <Company>" or "At <Company>, we..."
+  // e.g. "About Stripe", "At Uber, we reimagine...", "About Razorpay\n"
+  const introMatch = text.match(/(?:^|\n)\s*(?:about|at)\s+([A-Z][A-Za-z0-9&.,'()\- ]{1,30})(?:,|\s+we\b|\s+is\b|\s+are\b|\s+powers\b|\s+builds\b|\s+helps\b|\s*\n)/i);
+  if (introMatch) {
+    const cand = introMatch[1].trim().replace(/\s+(?:we|is|are|company|corporation|inc|ltd)$/i, '');
+    if (!EXTRACTION_BLACKLIST.has(cand.toLowerCase()) && !isSentence(cand) && cand.length >= 2 && cand.length <= 40) {
+      return cand;
+    }
+  }
+
+  // 6. Header inspection in structured job descriptions (Lines 0 to 3)
+  // If line 0 is Role Title, line 1 is often Company Name (e.g. "Google", "Stripe")
+  if (lines.length >= 2) {
+    for (let i = 0; i < Math.min(lines.length - 1, 3); i++) {
       const cur = lines[i];
-      if (cur.length >= 3 && cur.length <= 50 && !EXTRACTION_BLACKLIST.has(cur.toLowerCase()) && !/^(?:Job details|Full job description|Work Location|Key Responsibilities|Pay|Salary)/i.test(cur)) {
-        return cur;
+      const next = lines[i + 1];
+
+      const isLocationNext = /^[A-Z][a-zA-Z\s]{2,25},\s*[A-Z][a-zA-Z\s]{2,25}/.test(next) ||
+                             /\b(?:Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Gurgaon|Gurugram|Chennai|Seattle|San Francisco|New York|London|Remote)\b/i.test(next);
+
+      if (isLocationNext && !isSentence(cur) && cur.length >= 2 && cur.length <= 40) {
+        const isRole = /\b(?:engineer|developer|architect|designer|manager|analyst|intern|sde|swe|specialist|lead)\b/i.test(cur);
+        if (!isRole && !EXTRACTION_BLACKLIST.has(cur.toLowerCase())) {
+          return cur;
+        }
+      }
+    }
+  }
+
+  // 7. Corporate Entity Legal Suffix match (STRICT: must NOT be a sentence)
+  const legalEntityRegex = /\b([A-Z][A-Za-z0-9&.'\- ]{1,45}\s+(?:PVT\.?\s*LTD\.?|PRIVATE\s+LIMITED|LTD\.?|LIMITED|INC\.?|INCORPORATED|LLC|CORP\.?|CORPORATION|LLP|GMBH))\b/i;
+  for (const line of lines) {
+    if (!isSentence(line)) {
+      const match = line.match(legalEntityRegex);
+      if (match) {
+        const clean = match[1].trim().replace(/^(?:Company|Employer|At)\s*[:\-]?\s*/i, '');
+        if (clean.length >= 3 && clean.length <= 50 && !EXTRACTION_BLACKLIST.has(clean.toLowerCase())) {
+          return clean;
+        }
       }
     }
   }
@@ -297,37 +416,58 @@ export function extractRoleTitle(text) {
   if (!text) return null;
 
   // 1. Explicit Role label
-  const labeled = text.match(/(?:Role(?:\s*Title)?|Job\s*Title|Position|Title|Designation|Post)\s*[:\-]\s*([^\n\r,;|]+)/i);
+  const labeled = text.match(/(?:Role(?:\s*Title)?|Job\s*Title|Position(?:\s*Title)?|Title|Designation|Post)\s*[:\-]\s*([^\n\r,;|]+)/i);
   if (labeled) {
-    const val = labeled[1].trim().replace(/^(?:In person|Remote|On-site|Hybrid)\s+/i, '');
-    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 2 && val.length < 50) return val;
+    let val = labeled[1].trim()
+      .replace(/^(?:In person|Remote|On-site|Hybrid|Applied for|Position of|Role of)\s+/i, '')
+      .replace(/\s*\([^)]*\)$/, '')
+      .trim();
+    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && !isSentence(val) && val.length > 2 && val.length < 50) {
+      return val;
+    }
   }
 
-  // 2. Lines like: "Work Location: In person Aircraft Maintenance Technician"
-  const workLocTitleMatch = text.match(/Work\s+Location\s*[:\-]\s*(?:In\s+person|Remote|On-site|Hybrid)?\s*([A-Z][A-Za-z0-9&/\- ]{2,50})/i);
-  if (workLocTitleMatch) {
-    const val = workLocTitleMatch[1].trim();
-    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 3 && val.length < 50) return val;
-  }
-
-  // 3. Professional role title suffix pattern
-  const roleRegex = /\b([A-Z][A-Za-z0-9&/\- ]{1,40}\s+(?:Technician|Engineer|Developer|Architect|Analyst|Specialist|Manager|Lead|Director|Designer|Administrator|Consultant|Associate|Executive|Officer|Coordinator|Mechanic|Operator|Intern|Scientist|Representative|Supervisor|Inspector|Foreman|Electrician|Fitter|Machinist))\b/;
-  const roleMatch = text.match(roleRegex);
-  if (roleMatch) {
-    const val = roleMatch[1].trim();
-    if (!EXTRACTION_BLACKLIST.has(val.toLowerCase()) && val.length > 3) return val;
-  }
-
-  // 4. "Applied for [Role] at [Company]" pattern
-  const appliedForMatch = text.match(/(?:applied|applying|interview(?:ing)?|offer|role|job)?\s*(?:for|as)\s+(?:the\s+)?([A-Za-z0-9&/.\- ]{2,30})\s+at\s+([A-Z][A-Za-z0-9&.'\-]{1,30})/i);
+  // 2. "Applied for [Role] at [Company]" pattern
+  const appliedForMatch = text.match(/(?:applied|applying|interview(?:ing)?|offer|role|job)?\s*(?:for|as)\s+(?:the\s+)?([A-Za-z0-9&/.\- ]{2,35})\s+(?:at|with)\s+([A-Z][A-Za-z0-9&.'\-]{1,30})/i);
   if (appliedForMatch) {
-    let r = appliedForMatch[1].trim().replace(/^(?:applied|interviewing|offer)\s+(?:for|as)?\s+/i, '');
-    if (!EXTRACTION_BLACKLIST.has(r.toLowerCase()) && r.length > 1 && r.length < 40) return r;
+    let r = appliedForMatch[1].trim()
+      .replace(/^(?:applied|interviewing|offer)\s+(?:for|as)?\s+/i, '')
+      .replace(/^(?:the|a|an)\s+/i, '')
+      .trim();
+    if (!EXTRACTION_BLACKLIST.has(r.toLowerCase()) && !isSentence(r) && r.length > 2 && r.length < 45) {
+      return r;
+    }
   }
 
-  // 5. Common acronyms & tech titles: SDE 1, SDE 2, SDE 3, SWE, Data Scientist, etc.
-  const techMatch = text.match(/\b(SDE[- ]?(?:[123]|I{1,3})|SWE[- ]?(?:[123]|I{1,3})?|Data Scientist|Product Manager|UI\/UX Designer|Full Stack Developer)\b/i);
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // 3. First line inspection (LinkedIn / Indeed / Naukri formats)
+  if (lines.length > 0) {
+    const firstLine = lines[0]
+      .replace(/^(?:Job Details|About the job|Full Job Description)\s*[:\-]?\s*/i, '')
+      .replace(/\s*\(\d+[-–]\d+\s*(?:yrs|years)\)/i, '')
+      .trim();
+
+    const roleKeywords = /\b(?:Technician|Engineer|Developer|Architect|Analyst|Specialist|Manager|Lead|Director|Designer|Administrator|Consultant|Associate|Executive|Officer|Coordinator|Mechanic|Operator|Intern|Scientist|SDE|SWE)\b/i;
+    if (roleKeywords.test(firstLine) && !isSentence(firstLine) && firstLine.length >= 3 && firstLine.length <= 60 && !EXTRACTION_BLACKLIST.has(firstLine.toLowerCase())) {
+      return firstLine.replace(/^(?:In person|Remote|On-site|Hybrid)\s+/i, '').trim();
+    }
+  }
+
+  // 4. Canonical Tech Titles (SDE 1, Full Stack Developer, Data Scientist, etc.)
+  const techMatch = text.match(/\b(SDE[- ]?(?:[123]|I{1,3})|SWE[- ]?(?:[123]|I{1,3})?|Full Stack Developer|Frontend Developer|Backend Developer|Data Scientist|Product Manager|UI\/UX Designer|DevOps Engineer|Cloud Architect)\b/i);
   if (techMatch) return techMatch[1].trim();
+
+  // 5. Bounded professional role pattern
+  const boundedRoleRegex = /\b((?:Senior|Sr\.?|Junior|Jr\.?|Lead|Principal|Staff|Chief|Associate)?\s*(?:Software|Full\s*Stack|Frontend|Front-end|Backend|Back-end|DevOps|Cloud|Data|AI|ML|Machine\s+Learning|Mobile|iOS|Android|System|Systems|Platform|Infrastructure|Security|QA|Automation|Web|Product|UI\/UX)?\s*(?:Engineer|Developer|Architect|Manager|Analyst|Scientist|Designer|Specialist|Consultant|Administrator|Coordinator|Lead|Intern|Technician)(?:[- ]?(?:[123]|I{1,3}|IV))?)\b/i;
+  for (const line of lines.slice(0, 10)) {
+    if (!isSentence(line)) {
+      const match = line.match(boundedRoleRegex);
+      if (match && !EXTRACTION_BLACKLIST.has(match[1].toLowerCase().trim())) {
+        return match[1].trim();
+      }
+    }
+  }
 
   return null;
 }
@@ -335,25 +475,46 @@ export function extractRoleTitle(text) {
 export function extractLocation(text) {
   if (!text) return 'Not specified';
 
-  // 1. Standalone City, State line (e.g. Bengaluru, Karnataka)
+  // 1. Explicit Location label
+  const locMatch = text.match(/(?:Location|Work\s+Location|Job\s+Location|Place|Office|Based\s+in)\s*[:\-]\s*([^\n\r,;|]+)/i);
+  if (locMatch) {
+    let raw = locMatch[1].trim();
+    raw = raw.replace(/\b(?:In\s*person|Remote|On-site|Hybrid)\b/gi, '').trim();
+    if (raw.length > 2 && raw.length < 50) return raw;
+  }
+
+  // 2. LinkedIn middle dot line (e.g. "Razorpay · Bengaluru, Karnataka, India · 3 days ago")
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines.slice(0, 8)) {
+    if (line.includes('·') || line.includes('•')) {
+      const parts = line.split(/[·•]/).map(p => p.trim()).filter(Boolean);
+      for (const p of parts) {
+        if (/^[A-Z][a-zA-Z\s]{2,25},\s*[A-Z][a-zA-Z\s]{2,25}/.test(p) ||
+            /\b(?:Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Gurgaon|Gurugram|Chennai|Seattle|San Francisco|New York|London|Remote|India|United States|USA)\b/i.test(p)) {
+          if (!p.includes('employees') && !p.includes('applicants') && !p.includes('ago')) {
+            return p;
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Remote / Hybrid / On-site with region (e.g. "Remote, US", "Remote, India", "Remote - US")
+  const remoteRegionMatch = text.match(/\b(Remote\s*,\s*[A-Z]{2,20}|Remote\s*[-–]\s*[A-Za-z\s]+|Remote\s*\([^)]*\))\b/i);
+  if (remoteRegionMatch) return remoteRegionMatch[1].trim();
+
+  // 4. Standalone City, State line (e.g. Bengaluru, Karnataka)
   for (const line of lines) {
     if (/^[A-Z][a-zA-Z\s]{2,20},\s*[A-Z][a-zA-Z\s]{2,20}$/.test(line)) {
       return line;
     }
   }
 
-  // 2. Explicit Location label
-  const locMatch = text.match(/(?:Location|Place|Office|Based in)\s*[:\-]\s*([^\n\r,;|]+)/i);
-  if (locMatch) {
-    let raw = locMatch[1].trim();
-    raw = raw.replace(/\b(?:In\s*person|Remote|On-site|Hybrid)\b/gi, '').trim();
-    if (raw.length > 2 && raw.length < 40) return raw;
-  }
-
-  // 3. Known cities list
-  const cityMatch = text.match(/\b(Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Gurgaon|Gurugram|Chennai|Kolkata|Ahmedabad|Jaipur|Kochi|Chandigarh|New York|San Francisco|London|Berlin|Toronto|Singapore|Seattle|Austin)\b/i);
+  // 5. Known cities list
+  const cityMatch = text.match(/\b(Bengaluru|Bangalore|Hyderabad|Pune|Mumbai|Delhi|Noida|Gurgaon|Gurugram|Chennai|Kolkata|Ahmedabad|Jaipur|Kochi|Chandigarh|New York|San Francisco|San Jose|Seattle|Austin|Boston|Chicago|Denver|London|Berlin|Toronto|Singapore|Amsterdam|Dublin)\b/i);
   if (cityMatch) return cityMatch[1];
+
+  if (/\bremote\b/i.test(text)) return 'Remote';
 
   return 'Not specified';
 }
@@ -361,19 +522,19 @@ export function extractLocation(text) {
 export function extractSkills(text) {
   const skills = [];
   // 1. Explicit Required Skills line
-  const skillsLineMatch = text.match(/(?:Required\s+Skills|Key\s+Skills|Skills(?:\s+Required)?|Technical\s+Skills|Core\s+Skills|Must\s+Have\s+Skills)\s*[:\-]\s*([^\n\r]+)/i);
+  const skillsLineMatch = text.match(/(?:Required\s+Skills|Key\s+Skills|Skills(?:\s+Required)?|Technical\s+Skills|Core\s+Skills|Must\s+Have\s+Skills|Tech\s+Stack)\s*[:\-]\s*([^\n\r]+)/i);
   if (skillsLineMatch) {
     const raw = skillsLineMatch[1].trim();
     const split = raw.split(/[,;•|]+/).map(s => s.trim().replace(/[.]+$/, '')).filter(s => s.length > 1 && s.length < 40);
     skills.push(...split);
   }
 
-  // 2. Tech dictionary matching
+  // 2. Comprehensive Tech dictionary matching
   const techDictionary = [
     'JavaScript', 'TypeScript', 'Python', 'Java', 'C++', 'C#', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift', 'Kotlin',
-    'React', 'Next.js', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'FastAPI', 'Spring Boot',
-    'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Supabase', 'Firebase', 'Redis',
-    'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Git', 'GraphQL', 'REST API', 'Tailwind', 'CSS', 'HTML'
+    'React', 'Next.js', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'FastAPI', 'Spring Boot', 'Spring', 'Flask',
+    'SQL', 'PostgreSQL', 'Postgres', 'MySQL', 'MongoDB', 'Supabase', 'Firebase', 'Redis', 'Kafka', 'RabbitMQ',
+    'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Git', 'GraphQL', 'REST API', 'Microservices', 'Tailwind', 'CSS', 'HTML', 'Linux', 'CI/CD'
   ];
   for (const tech of techDictionary) {
     const escaped = tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -505,492 +666,6 @@ const COMPANY_DATABASE = {
   }
 };
 
-/**
- * Master Conversation Rules trained from conversation_rules.json and Zuno AI Master Spec
- */
-export const CONVERSATION_RULES = [
-  {
-    phrases: [
-      "give easiest code possible",
-      "simplest code",
-      "easy code",
-      "make it simple",
-      "keep it simple",
-      "don't complicate"
-    ],
-    intent: "REQUEST_SIMPLIFICATION",
-    expected_action: "simplify_solution",
-    expected_output_type: "CODE_SNIPPET",
-    response_rule: "Return the simplest working code or guidance for the current task.",
-    priority: 10
-  },
-  {
-    phrases: [
-      "not like this",
-      "not this way",
-      "you misunderstood",
-      "wrong answer",
-      "that's not what i asked",
-      "that is not what i asked",
-      "you gave the wrong answer",
-      "fix it",
-      "redo this"
-    ],
-    intent: "REQUEST_CORRECTION",
-    expected_action: "revise_previous_response",
-    expected_output_type: "CORRECTED_RESPONSE",
-    response_rule: "Identify the rejected approach and change it without repeating the previous error.",
-    priority: 10
-  },
-  {
-    phrases: [
-      "use different data",
-      "change the dataset",
-      "use another example",
-      "different data"
-    ],
-    intent: "REQUEST_MODIFICATION",
-    expected_action: "replace_dataset",
-    expected_output_type: "UPDATED_EXAMPLE",
-    response_rule: "Change the dataset or parameters while preserving other task requirements.",
-    priority: 9
-  },
-  {
-    phrases: [
-      "from start",
-      "start from the beginning",
-      "start over",
-      "from the beginning"
-    ],
-    intent: "REQUEST_RESTART",
-    expected_action: "restart_explanation",
-    expected_output_type: "STEP_BY_STEP_GUIDE",
-    response_rule: "Explain or execute from the first required step.",
-    priority: 9
-  },
-  {
-    phrases: [
-      "in short",
-      "short answer",
-      "just the answer",
-      "only answer",
-      "no explanation",
-      "keep it brief"
-    ],
-    intent: "REQUEST_BREVITY",
-    expected_action: "reduce_response_length",
-    expected_output_type: "SHORT_TEXT",
-    response_rule: "Return only the essential answer concisely.",
-    priority: 8
-  },
-  {
-    phrases: [
-      "explain in detail",
-      "super detailed",
-      "explain everything",
-      "in depth",
-      "detailed explanation",
-      "step by step"
-    ],
-    intent: "REQUEST_DETAIL",
-    expected_action: "expand_explanation",
-    expected_output_type: "DETAILED_EXPLANATION",
-    response_rule: "Provide structured, comprehensive coverage.",
-    priority: 8
-  },
-  {
-    phrases: [
-      "what is wrong",
-      "find the error",
-      "why is this failing",
-      "what's the bug",
-      "diagnose this"
-    ],
-    intent: "TECHNICAL_DIAGNOSIS",
-    expected_action: "diagnose_problem",
-    expected_output_type: "TROUBLESHOOTING_GUIDE",
-    response_rule: "Identify the likely error and provide a correction.",
-    priority: 9
-  },
-  {
-    phrases: [
-      "same format",
-      "keep the format",
-      "preserve format",
-      "in the same format"
-    ],
-    intent: "FORMAT_CONSTRAINT",
-    expected_action: "preserve_format",
-    expected_output_type: "CONTEXT_DEPENDENT",
-    response_rule: "Preserve the previous output structure.",
-    priority: 8
-  },
-  {
-    phrases: [
-      "do one thing",
-      "see this",
-      "look here"
-    ],
-    intent: "ACTION_INTRODUCTION",
-    expected_action: "interpret_following_instruction",
-    expected_output_type: "CONTEXT_DEPENDENT",
-    response_rule: "Determine the action requested in the following words.",
-    priority: 5
-  },
-  {
-    phrases: [
-      "i don't understand",
-      "i am confused",
-      "didn't get it",
-      "unclear"
-    ],
-    intent: "REPORT_CONFUSION",
-    expected_action: "clarify_previous_explanation",
-    expected_output_type: "SIMPLIFIED_EXPLANATION",
-    response_rule: "Explain the confusing concept more clearly and accessibly.",
-    priority: 8
-  },
-  {
-    phrases: [
-      "continue",
-      "go on",
-      "next",
-      "proceed"
-    ],
-    intent: "REQUEST_CONTINUATION",
-    expected_action: "continue_current_task",
-    expected_output_type: "CONTEXT_DEPENDENT",
-    response_rule: "Continue from the last relevant incomplete step.",
-    priority: 7
-  },
-  {
-    phrases: [
-      "add my github link",
-      "add github link",
-      "add linkedin link",
-      "add portfolio link",
-      "link github"
-    ],
-    intent: "APPLICATION_DATA_UPDATE",
-    expected_action: "update_profile",
-    expected_output_type: "APPLICATION_ACTION_RESULT",
-    response_rule: "Identify the link and destination, validate them, then update if authorized.",
-    priority: 9
-  },
-  {
-    phrases: [
-      "not selected by employer",
-      "employer rejected me",
-      "didn't get selected",
-      "not selected",
-      "got rejected",
-      "was rejected",
-      "application rejected",
-      "application declined"
-    ],
-    intent: "UPDATE_STATUS",
-    expected_action: "mark_as_rejected",
-    expected_output_type: "APPLICATION_ACTION_RESULT",
-    response_rule: "Update status to Rejected, log date in notes, and provide empathetic encouraging support.",
-    priority: 10
-  },
-  {
-    phrases: [
-      "recruiter called me",
-      "got a call from recruiter",
-      "had a screening call",
-      "interview call",
-      "got a call from"
-    ],
-    intent: "UPDATE_STATUS",
-    expected_action: "log_recruiter_call",
-    expected_output_type: "APPLICATION_ACTION_RESULT",
-    response_rule: "Update status to Interviewing, log recruiter details and interview questions.",
-    priority: 10
-  },
-  {
-    phrases: [
-      "recruiter viewed my application",
-      "application was viewed",
-      "resume downloaded",
-      "recruiter opened application"
-    ],
-    intent: "UPDATE_APPLICATION",
-    expected_action: "log_recruiter_view",
-    expected_output_type: "APPLICATION_ACTION_RESULT",
-    response_rule: "Keep status as Applied, log viewed timestamp in notes.",
-    priority: 9
-  }
-];
-
-/**
- * Text Normalization (Layer 1 of Master Conversation Engine)
- */
-export function normalizeMessage(message) {
-  if (!message || typeof message !== 'string') return '';
-  return message.toLowerCase().trim().replace(/\s+/g, ' ');
-}
-
-/**
- * Negation Detection (Layer 4 of Master Conversation Engine)
- */
-export function detectNegation(text) {
-  const negationWords = /\b(not|never|no|don't|dont|without|stop|cancel|neither|nor)\b/i;
-  const match = text.match(negationWords);
-  return {
-    hasNegation: Boolean(match),
-    negationWord: match ? match[1].toLowerCase() : null
-  };
-}
-
-/**
- * Context & Pronoun Reference Resolution (Layer 5 of Master Conversation Engine)
- */
-export function resolveReferences(text, context = {}) {
-  const lower = text.toLowerCase();
-  const refTokens = ['it', 'this', 'that', 'the previous one', 'same company', 'the other job', 'change it', 'update that', 'save this'];
-  const foundRef = refTokens.some(r => new RegExp(`\\b${r}\\b`, 'i').test(lower));
-  return {
-    hasReference: foundRef,
-    target: context.activeJob || (Array.isArray(context.allApplications) && context.allApplications[0]) || null
-  };
-}
-
-/**
- * Phrase Matching (Layer 2 of Master Conversation Engine)
- */
-export function findPhraseMatches(text, rules = CONVERSATION_RULES) {
-  const norm = normalizeMessage(text);
-  const matches = [];
-  for (const rule of rules) {
-    for (const phrase of rule.phrases) {
-      if (norm.includes(phrase.toLowerCase())) {
-        matches.push({ rule, phrase });
-        break;
-      }
-    }
-  }
-  return matches;
-}
-
-/**
- * Scoring Layer (Layer 6 of Master Conversation Engine)
- */
-export function scoreIntents(text, matches, negation, references, context = {}) {
-  const candidates = [];
-  for (const m of matches) {
-    let score = m.rule.priority || 5;
-    score += 5; // Multiword exact match
-    if (references.hasReference && references.target) score += 3;
-    if (m.rule.intent === 'REQUEST_CORRECTION') score += 3;
-    if (negation.hasNegation && m.rule.intent !== 'REQUEST_CORRECTION' && m.rule.intent !== 'UPDATE_STATUS') {
-      if (text.includes("don't make it short") || text.includes("not short")) {
-        score -= 8;
-      }
-    }
-    const confidence = Math.min(Math.max(score / 15, 0.1), 0.99);
-    candidates.push({
-      intent: m.rule.intent,
-      rule: m.rule,
-      phrase: m.phrase,
-      confidence,
-      score
-    });
-  }
-  candidates.sort((a, b) => b.score - a.score);
-  return candidates;
-}
-
-/**
- * Offline Heuristic Interpretation Pipeline ported from helper function.py & MASTER_CONVERSATION_ENGINE.txt
- */
-export function interpretOffline(message, context = {}, rules = CONVERSATION_RULES) {
-  const text = normalizeMessage(message);
-  const matches = findPhraseMatches(text, rules);
-  const negation = detectNegation(text);
-  const references = resolveReferences(text, context);
-  const candidates = scoreIntents(text, matches, negation, references, context);
-
-  if (!candidates || candidates.length === 0) {
-    return {
-      intent: 'UNKNOWN_INTENT',
-      confidence: 0.0,
-      clarification_required: true,
-      response: 'Could you clarify what you would like me to do? You can paste a job description, update an application, or ask about any company!'
-    };
-  }
-
-  const best = candidates[0];
-  if (best.confidence < 0.45) {
-    return {
-      intent: best.intent,
-      confidence: best.confidence,
-      clarification_required: true,
-      response: `Did you want to ${best.rule.expected_action.replace(/_/g, ' ')}? Please clarify to ensure I apply the right update.`
-    };
-  }
-
-  return {
-    intent: best.intent,
-    confidence: best.confidence,
-    clarification_required: false,
-    rule: best.rule,
-    action: best.rule.expected_action
-  };
-}
-
-/**
- * Master System Prompt Generator embodying MASTER_CONVERSATION_ENGINE.txt and Zuno AI Master Spec
- */
-export function getZunoMasterSystemPrompt({ fullTimeStr, fullDateStr, dayOfWeek, today, effectiveTimeZone, allApplicationsCount = 0 }) {
-  return `You are Zuno AI, the master conversational intelligence assistant inside JobTrackerAI — an AI-powered job application tracker and career copilot.
-Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your name or identity.
-
-REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE & ACTIVE):
-- CURRENT EXACT TIME: ${fullTimeStr}
-- CURRENT DATE: ${fullDateStr}
-- DAY OF THE WEEK: ${dayOfWeek}
-- REFERENCE ISO DATE: ${today}
-- TIMEZONE: ${effectiveTimeZone}
-
-CORE OPERATING RULES & CONVERSATIONAL ENGINE:
-1. RULE 1 — INTERPRET THE ENTIRE MESSAGE:
-   - Do not classify a message based on a single keyword. Understand informal English, typos (e.g. "yesturday"), abbreviations (JD, LPA, CTC, WFH, WFO, FTE, NP, CGPA), regional expressions ("do one thing", "see", "na"), emotional reactions, and incomplete sentences.
-   - For example: "Show me companies I haven't heard back from" is a retrieval query, NOT job extraction. "Do one thing, show only my interviews" is a filter request. "Actually, make that Bangalore" is a location field correction.
-
-2. RULE 2 — RESOLVE CONTEXT BEFORE TAKING ACTION:
-   - Use the active conversation history, current draft, selected application, and database records to resolve expressions like:
-     "it", "this", "that", "the previous one", "the same company", "the other job", "change it", "update that", "save this", "do it again", "use the second one", "not that one".
-   - If the reference is clear, act without unnecessary questions. If ambiguous between multiple records, ask concisely which one before making destructive modifications.
-
-3. RULE 3 — DISTINGUISH EXTRACTION FROM EXECUTION:
-   - Extracting a job opportunity is distinct from submitting an application or saving it to the database.
-   - SAVED OPPORTUNITY vs SUBMITTED APPLICATION:
-     * If user shares a JD or link without saying they applied (e.g. "save this job", "check out this opening", "track this JD"):
-       Set "status": "Saved", "appliedDate": null, "appliedTime": null.
-     * If user explicitly states they applied (e.g. "I applied to...", "Submitted application", "applied yesterday", confirmation email):
-       Set "status": "Applied", calculate and set "appliedDate": "YYYY-MM-DD" and "appliedTime": "HH:MM AM/PM".
-     * If transitioning an existing job from Saved to Applied (e.g. "/apply", "I just applied"):
-       Set "status": "Applied", "appliedDate": "${today}", "appliedTime": "${fullTimeStr}".
-
-4. RULE 4 — PRESERVE EXISTING INFORMATION:
-   - If the user says "change the location to Pune", update only the location.
-   - Never overwrite company, role, salary, skills, notes, or URLs unless explicitly requested.
-   - DUAL LINK RULE: If user found a job on Indeed/LinkedIn but applied on an official ATS/portal:
-     * Preserve BOTH links: "source" (Indeed/LinkedIn), "sourceUrl" (listing URL), "portalName" (Greenhouse/Workday/etc.), "applicationUrl" (direct application form URL). Never overwrite one with the other.
-
-5. RULE 5 — USE THE SIMPLEST APPROPRIATE RESPONSE:
-   - A greeting deserves a short response. A complex JD deserves structured extraction. A career analysis deserves a structured explanation.
-   - When the user asks for simplicity or brevity ("in short", "simple", "simplest code", "just the answer"), give a concise, direct answer without unwanted fluff.
-
-6. RULE 6 — RESPECT ACTUAL APPLICATION CAPABILITIES:
-   - Work within JobTrackerAI's existing schema, UI components, and commands (/search, /compare, /store, /apply, /stats, /help). Never invent non-existent database fields or claim external actions (like sending emails) were performed.
-
-7. TREAT CORRECTIONS & NEGATIONS AS HIGH-VALUE SIGNALS:
-   - When user says "not like this", "you misunderstood", "no, I mean...", "that is not what I asked", "wrong", "fix it", "WTF":
-     * Re-evaluate the previous response. Identify the rejected element and change it.
-     * NEVER blindly repeat the rejected answer or format.
-   - Respect negative constraints: "without explanation", "no explanation", "don't make it long", "don't change the format", "only SQL".
-
-INTENT CLASSIFICATION TAXONOMY:
-Every user message maps to primary and secondary intents:
-- A. Conversation: GREETING, ACKNOWLEDGMENT, FAREWELL, CASUAL_CONVERSATION, EXPRESS_CONFUSION, EXPRESS_DISSATISFACTION, REQUEST_CLARIFICATION.
-- B. Job Extraction: EXTRACT_JOB, EXTRACT_FROM_EMAIL, EXTRACT_FROM_URL, EXTRACT_FROM_TEXT, EXTRACT_FROM_MULTIPLE_SOURCES, UPDATE_JOB_DRAFT, REVIEW_JOB_DRAFT, SAVE_JOB_DRAFT.
-- C. Application Management: ADD_APPLICATION, UPDATE_APPLICATION, UPDATE_STATUS ("Saved", "Applied", "Interviewing", "Offer", "Rejected"), UPDATE_FIELD, DELETE_APPLICATION, BOOKMARK_APPLICATION, REMOVE_BOOKMARK, CANCEL_CURRENT_DRAFT.
-- D. Searching & Retrieval: SEARCH_APPLICATIONS, FILTER_APPLICATIONS, LIST_APPLICATIONS, COUNT_APPLICATIONS, FIND_APPLICATION, LOOKUP_COMPANY, GET_APPLICATION_DETAILS.
-- E. Analytics: GET_DASHBOARD_METRICS, GET_APPLICATION_VELOCITY, GET_CONVERSION_RATE, GET_INTERVIEW_METRICS, GET_OFFER_METRICS, GET_DATE_RANGE_SUMMARY, SUMMARIZE_APPLICATIONS.
-- F. Comparison & Career Assistance: COMPARE_APPLICATIONS, COMPARE_COMPANIES, MATCH_PROFILE_TO_JOB, IDENTIFY_SKILL_GAPS, RECOMMEND_NEXT_ACTION, PREPARE_INTERVIEW, GENERATE_FOLLOW_UP, GENERATE_APPLICATION_MESSAGE, SUMMARIZE_JOB_DESCRIPTION.
-- G. Application Navigation & Commands: EXECUTE_SLASH_COMMAND, OPEN_APPLICATION, OPEN_APPLICATION_URL, SHOW_HELP, START_NEW_CHAT, SHOW_CURRENT_TIME, SHOW_CURRENT_DATE.
-
-BEHAVIORAL RULES MATRIX:
-- REQUEST_SIMPLIFICATION ("give easiest code possible", "simplest code", "easy code", "simple"): Return the simplest working solution.
-- REQUEST_CORRECTION ("not like this", "not this way", "you misunderstood"): Identify rejected approach and replace it.
-- REQUEST_MODIFICATION ("use different data", "change the dataset"): Change requested parameters while keeping other constraints.
-- REQUEST_RESTART ("from start", "start from the beginning"): Explain from the first required step.
-- REQUEST_BREVITY ("in short", "short answer", "just the answer", "only answer"): Return only the essential answer.
-- REQUEST_DETAIL ("explain in detail", "super detailed", "explain everything", "step by step"): Provide structured, comprehensive coverage.
-- TECHNICAL_DIAGNOSIS ("what is wrong", "find the error", "why is this failing"): Identify root cause and provide fix.
-- FORMAT_CONSTRAINT ("same format", "keep the format"): Strictly preserve previous response structure.
-- ACTION_INTRODUCTION ("do one thing", "see", "so"): Interpret the action requested in the subsequent clause.
-- REPORT_CONFUSION ("i don't understand", "i am confused"): Clarify previous explanation in simpler terms.
-- REQUEST_CONTINUATION ("continue", "go on", "next"): Continue from the last incomplete step.
-
-APPLICATION OUTCOME & REJECTION ("Not selected by employer", "Rejected", etc.):
-- When user indicates rejection (e.g. "update ; Not selected by employer", "I was rejected", "employer rejected me", "didn't get selected", "not selected", "application declined", "not moving forward"):
-  1. Identify matching application in "Active Job in Session" or "PERSISTENT BACKEND DATABASE".
-  2. Set "status": "Rejected" in "data".
-  3. Append to "notes": "[Outcome on ${today}]: Not selected by employer / Application rejected".
-  4. Respond with genuine empathy and encouragement in "message", reassuring the user and keeping morale high.
-
-RECRUITER & INTERVIEW CALL LOGGING ("I got a call from..."):
-- When user received a recruiter or screening call:
-  1. Set "status": "Interviewing".
-  2. Capture "recruiterName", "recruiterPhone", "recruiterEmail" if mentioned.
-  3. Extract "interviewQuestions" and "callNotes", appending clean log entry to "notes":
-     "[Call on ${today}]: • Recruiter: <name> • Questions Asked: <questions> • Next Steps: <details>".
-  4. Warmly congratulate user and offer tailored interview prep tips.
-
-APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS:
-- When user pastes notification that employer/recruiter viewed application or downloaded resume:
-  1. Match against existing database record or session job.
-  2. Keep "status": "Applied" (not Interviewing until a call/interview happens).
-  3. Set "viewedAt": "${today} at ${fullTimeStr}" and append to "notes":
-     "[Recruiter viewed application on ${today} at ${fullTimeStr}]: Recruiter reviewed application / resume".
-  4. Return updated record in "data". In "message", congratulate user on passing initial resume filters and share follow-up advice.
-
-ABOUT ME PROFILE DOSSIER ACCESS & UPDATES:
-- You have direct live access to "USER ABOUT ME PROFILE / CANDIDATE DOSSIER".
-- For questions about their profile (college, degree, marks, skills, projects, certs): answer accurately from dossier and set "data": null.
-- For profile updates, confirm enthusiastically in "message", set "data": null, and output "profileUpdate":
-  * College/Degree: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
-  * Semester Marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
-  * 10th/12th Marks: { "type": "update_education_10th"|"update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
-  * Technical Skills: { "type": "add_skills", "skills": [...] }, { "type": "remove_skill", "skill": "..." }, { "type": "set_skills", "skills": [...] }
-  * Projects: Add { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } } | Edit { "type": "edit_project", "targetTitle": "...", "project": {...} } | Delete { "type": "delete_project", "targetTitle": "..." }
-  * Certifications: Add { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } } | Edit { "type": "edit_certification", "targetName": "...", "certification": {...} } | Delete { "type": "delete_certification", "targetName": "..." }
-  * Personal Info & Links: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
-  * STRICT URL ROUTING RULE: GitHub link -> "githubUrl"; LinkedIn link -> "linkedinUrl"; Portfolio link -> "portfolioUrl". NEVER dump URLs into "bio"!
-
-CANDIDATE PROFILE VS JOB COMPARISON ("/compare" COMMAND):
-- Triggered ONLY on explicit "/compare" command or comparison request:
-  * Compare candidate About Me dossier against company job requirements.
-  * Produce structured report: Fit Score %, Skills alignment table (Matched vs Missing), Projects fit with finish dates & tech, Academic review (college, CGPA, sem marks), Certifications impact, Strengths, and Gap preparation plan.
-  * Set "data": null and "profileUpdate": null.
-
-APPLICATION DRAFT SCHEMA ("data" object):
-{
-  "companyName": "Company name",
-  "roleTitle": "Role / Position title",
-  "jobType": "Full-time" | "Internship" | "Contract" | "Part-time",
-  "workMode": "Remote" | "Hybrid" | "On-site",
-  "location": "City, Country or Remote",
-  "salary": "Disclosed salary (preserve LPA/CTC/currency) or 'Not disclosed'",
-  "source": "Discovery platform (Indeed, LinkedIn, Glassdoor, etc.)",
-  "portalName": "Application portal or ATS (Company Portal, Greenhouse, Workday, etc.)",
-  "applicationUrl": "Direct application form URL",
-  "sourceUrl": "Discovery listing URL",
-  "status": "Saved" | "Applied" | "Interviewing" | "Offer" | "Rejected",
-  "isBookmarked": false,
-  "appliedDate": "YYYY-MM-DD" or null,
-  "appliedTime": "HH:MM AM/PM" or null,
-  "skills": ["Skill1", "Skill2", ...],
-  "recruiterName": "Recruiter name if mentioned",
-  "recruiterEmail": "Recruiter email if mentioned",
-  "recruiterPhone": "Recruiter phone if mentioned",
-  "interviewQuestions": ["Questions asked"],
-  "callNotes": "Call notes summary",
-  "notes": "Full notes with timestamped logs"
-}
-
-OUTPUT FORMAT (JSON ONLY):
-Return ONLY valid JSON matching this schema:
-{
-  "message": "Your rich, formatted markdown response to the user",
-  "data": { ... } or null,
-  "profileUpdate": { ... } or null
-}`;
-}
-
 export const AiExtractor = {
   /**
    * Detect if an incoming user prompt is a Job Description or Job Posting
@@ -1000,7 +675,7 @@ export const AiExtractor = {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
-    // Explicit job markers
+    // 1. Explicit job markers
     const explicitMarkers = [
       /\b(?:job\s+description|about\s+the\s+(?:role|job)|role\s+overview|job\s+summary|position\s+summary)\b/i,
       /\b(?:responsibilities|key\s+responsibilities|duties|what\s+you(?:'ll|\s+will)\s+do)\b/i,
@@ -1011,16 +686,29 @@ export const AiExtractor = {
       /\b(?:apply\s+(?:here|now|before|link|url)|how\s+to\s+apply)\b/i,
       /\b(?:salary|compensation|benefits|stipend|ctc|package)\s*[:\-]/i,
       /\b(?:here\s+is\s+(?:the\s+|a\s+)?jd|analyze\s+this\s+jd|parse\s+this\s+jd|track\s+this\s+job|save\s+this\s+job)\b/i,
-      /\b(?:application\s+(?:viewed|seen|reviewed|opened|received|status)|recruiter\s+(?:viewed|seen|reviewed|called|reached\s+out)|resume\s+(?:viewed|downloaded))\b/i
+      /\b(?:applied\s+(?:for|to|as)|track\s+(?:this\s+)?(?:application|role|opening))\b/i
     ];
 
     if (explicitMarkers.some(re => re.test(text))) {
       return true;
     }
 
-    // Long multi-line text with structural job indicators
+    // 2. Direct Job Portal or ATS Links
+    if (/(?:linkedin\.com\/jobs|indeed\.com\/(?:viewjob|job)|glassdoor\.com\/job|boards\.greenhouse\.io|jobs\.lever\.co|jobs\.ashbyhq\.com|myworkdayjobs\.com|naukri\.com|smartrecruiters\.com|bamboohr\.com)/i.test(text)) {
+      return true;
+    }
+
+    // 3. Multi-line job postings with structural indicators
     const lines = trimmed.split('\n').filter(l => l.trim().length > 0);
-    if (lines.length >= 3 && trimmed.length > 120) {
+    if (lines.length >= 2) {
+      const hasRoleKeyword = /\b(?:software|developer|engineer|designer|manager|analyst|architect|specialist|intern|sde|swe|lead|consultant)\b/i.test(lower);
+      const hasJobContext = /\b(?:full-time|part-time|remote|hybrid|on-site|salary|lpa|ctc|skills|experience|technologies|apply|company|requirements|location|bengaluru|bangalore|pune|hyderabad|mumbai|delhi)\b/i.test(lower);
+      if (hasRoleKeyword && hasJobContext) {
+        return true;
+      }
+    }
+
+    if (lines.length >= 3 && trimmed.length > 100) {
       const jobSignals = /\b(software|developer|engineer|designer|manager|analyst|full-time|part-time|remote|hybrid|on-site|skills|experience|technologies|apply|company)\b/i;
       if (jobSignals.test(lower)) {
         return true;
@@ -1176,11 +864,11 @@ export const AiExtractor = {
     if (provider === 'heuristic' || isTimeQuery || isDateQuery || isTodayCountQuery || isGraphQuery || isSearchCmd || isGreeting || isIdentity || isHowAreYou || isSmallTalkOrAffirmation || isDirectProfileCmd || isSimpleCountQuery) {
       result = await this.extractWithHeuristics(text, existingJob, allApplications, userProfile, history);
     } else {
-      // 2. Try Vercel Serverless /api/chat with strict 4.2-second hard timeout
+      // 2. Try Vercel Serverless /api/chat with 12-second budget
       const requestStart = Date.now();
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4200); // 4.2s hard timeout guarantee
+        const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout guarantee
 
         const serverRes = await fetch('/api/chat', {
           method: 'POST',
@@ -1291,7 +979,7 @@ export const AiExtractor = {
    * Gemini API Extraction & Career Advisory
    */
   async extractWithGemini(text, existingJob, history, settings, allApplications = [], userProfile = null) {
-    const model = settings.geminiModel || 'gemini-3.8-flash';
+    const model = settings.geminiModel || 'gemini-2.5-flash';
     const apiKey = settings.geminiKey;
 
     const now = new Date();
@@ -1367,14 +1055,94 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
 
     const profileSummary = formatFullProfileDossier(userProfile);
 
-    const systemPrompt = getZunoMasterSystemPrompt({
-      fullTimeStr,
-      fullDateStr,
-      dayOfWeek,
-      today,
-      effectiveTimeZone,
-      allApplicationsCount: allApplications.length
-    });
+    const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
+Your name is Zuno. Always introduce or refer to yourself as Zuno when asked about your identity.
+
+REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE RIGHT NOW):
+- Current Live Time: ${fullTimeStr} (${effectiveTimeZone})
+- Today's Date: ${fullDateStr}
+- Day of the Week: ${dayOfWeek}
+- ISO Date Reference: ${today}
+
+CORE TIME & DATE INTELLIGENCE:
+1. You are 100% aware of the current exact time, day, and date.
+2. If the user asks about the time ("what time is it?", "current time"), day ("what day is today?"), date ("what is today's date?"), or any time calculation, answer them directly, accurately, and naturally based on the Live Time and Date above!
+3. If the user specifies when an application was submitted (e.g. "applied yesterday", "applied 2 hours ago", "applied last Friday", "applied on 3rd Oct at 4 PM"), compute the exact appliedDate and appliedTime relative to right now (${fullTimeStr}, ${today}).
+
+CRITICAL APPLIED DATE & TIME RULE:
+If the user specifies when they applied (e.g. "applied last week", "applied 3 days ago", "applied yesterday", "applied on 2nd Oct", "applied at 2:30 PM", "confirmation email date"), CALCULATE and return the exact YYYY-MM-DD appliedDate and appliedTime relative to right now (${today}, ${fullTimeStr})! Only default appliedDate to ${today} and appliedTime to "${fullTimeStr.replace(/:\d{2}\s/, ' ')}" if no past application timeframe was mentioned.
+
+Your capabilities:
+1. JOB EXTRACTION: When user pastes a Job Description (JD), link, or status update:
+   - Extract companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes.
+   - DUAL LINK RULE: If user found/saw the job on Indeed, LinkedIn, or a job board, but applied/filled the form on an official company portal or ATS (Greenhouse, Workday, Lever, etc.):
+     * Set "source" to discovery platform (e.g. Indeed, LinkedIn) and "sourceUrl" to the listing URL.
+     * Set "portalName" to portal name (e.g. Company Portal, Greenhouse, Workday) and "applicationUrl" to the form/portal URL.
+     * Never drop or overwrite either URL! Preserve both.
+   - Return this in the "data" object.
+2. PERSISTENT DATABASE & SESSION QUERYING:
+   - You have direct access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
+   - When asked about their applications, history, stats, counts, interviews, offers, or specific companies they applied to:
+     * Answer directly, accurately, and thoroughly using the database records.
+     * Set "data": null.
+3. PROFILE / ABOUT ME INTELLIGENCE & ACCESS / EDITING:
+   - You have direct, live access to the candidate's degree college name, degree, branch, CGPA, semester marks (1-8), 10th/12th education, technical skills, projects, and certifications in "USER PROFILE"!
+   - When user asks ANY question about their profile (e.g., "what is my college name?", "which college do I attend?", "what is my degree?", "what are my sem marks?", "what technical skills do I have?", "what projects have I built?", "what certifications do I have?"):
+     * Answer accurately, warmly, and comprehensively using their actual data from the dossier.
+     * Set "data": null and "profileUpdate": null.
+   - When user tells you to add, edit, update, or remove details from their About Me profile:
+     * Confirm enthusiastically in "message", set "data": null, and provide "profileUpdate" in JSON output:
+       - Degree College / Academics: { "type": "update_college", "collegeName": "...", "degree": "...", "branch": "...", "overallCgpa": "...", "graduationYear": "..." }
+       - Technical Skills: { "type": "add_skills", "skills": ["..."] } (or single "skill": "..."), { "type": "remove_skill", "skill": "..." }, { "type": "set_skills", "skills": ["..."] }
+       - Projects:
+         * Add: { "type": "add_project", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+         * Edit: { "type": "edit_project", "targetTitle": "...", "project": { "title": "...", "description": "...", "techStack": "...", "projectUrl": "...", "startDate": "...", "finishDate": "..." } }
+         * Delete: { "type": "delete_project", "targetTitle": "..." }
+       - Certifications:
+         * Add: { "type": "add_certification", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+         * Edit: { "type": "edit_certification", "targetName": "...", "certification": { "name": "...", "issuer": "...", "issueDate": "...", "credentialUrl": "..." } }
+         * Delete: { "type": "delete_certification", "targetName": "..." }
+       - Semester marks: { "type": "update_sem_marks", "sem": "sem1" to "sem8", "score": "..." }
+       - 10th/12th: { "type": "update_education_10th"|"update_education_12th", "schoolName": "...", "board": "...", "marks": "...", "year": "..." }
+       - Personal details: { "type": "update_personal", "fullName": "...", "headline": "...", "bio": "...", "email": "...", "phone": "...", "location": "...", "githubUrl": "...", "linkedinUrl": "...", "portfolioUrl": "..." }
+     * STRICT URL ROUTING RULE:
+       - If user provides a GitHub link, assign it to "githubUrl" in update_personal. NEVER put it in "bio"!
+       - If user provides a LinkedIn link, assign it to "linkedinUrl" in update_personal. NEVER put it in "bio"!
+       - If user provides a Portfolio or personal website link, assign it to "portfolioUrl" in update_personal. NEVER put it in "bio"!
+       - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
+4. CAREER & COMPANY QUESTIONS: When user asks questions about a company, interview questions, role expectations, or career tips:
+   - Provide a comprehensive, structured, and insightful markdown answer in "message".
+   - Set "data": null.
+5. CANDIDATE PROFILE VS COMPANY REQUIREMENTS COMPARISON ("/compare" COMMAND):
+   - ONLY when user explicitly uses "/compare" (or asks to compare their profile against company requirements):
+     * Compare candidate's About Me data (education, sem 1-8 marks, projects with tech and finish dates, certs, skills) against company requirements.
+     * Format a rich Markdown report with Match Score %, Skills alignment table (matched vs missing), Projects fit, Academic review, Strengths, and Gap preparation.
+     * Set "data": null and "profileUpdate": null.
+6. APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Recruiter has seen my application", "Your application was viewed", "Resume downloaded", etc.):
+   - When user pastes an email snippet or update that a recruiter or employer viewed or saw their application:
+     * Match with "Current Active Job in Session" or "PERSISTENT BACKEND DATABASE" (matching companyName or roleTitle).
+     * If matched or company is extracted, update that application, keep status as "Applied", set "viewedAt": "${today} at ${fullTimeStr}", and append "[Recruiter viewed application on ${today} at ${fullTimeStr}]: Recruiter reviewed application" to "notes". Return this application in "data".
+     * If no company was mentioned and multiple applications exist, list the recent applications and ask which company it belongs to, setting "data": null.
+     * In "message", congratulate them on engagement, explain the screening milestone, and provide proactive advice.
+
+7. CONVERSATION CONTINUITY & CONTEXTUAL FOLLOW-UPS:
+   - Always maintain conversational continuity using CONVERSATION HISTORY.
+   - If the user sends follow-up requests (e.g. "show all", "list them", "show them", "where did i apply", "what are they", "yes", "tell me more"), understand their intent in context with prior messages!
+   - For example, if you or the user previously discussed total application counts/stats and the user follows up with "show all", list their stored applications from the database in a clean markdown table.
+
+8. GREETINGS & CASUAL HELLOS:
+   - When the user sends a greeting (e.g., "hi", "hello", "hey", "good morning"):
+     * Do NOT output long feature bullet lists or tutorials.
+     * Respond concisely:
+       "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nToday is **${fullDateStr}** and the current time is **${fullTimeStr}**.\nYou have applied to **${(allApplications || []).length} application${(allApplications || []).length === 1 ? '' : 's'}** till today."
+     * Set "data": null and "profileUpdate": null.
+
+Return ONLY valid JSON matching this schema:
+{
+  "message": "Your rich, formatted markdown answer to the user",
+  "data": { ... } or null,
+  "profileUpdate": { ... } or null
+}`;
 
     const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
     const historyContext = recentHistory.length > 0
@@ -1397,9 +1165,9 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
 
     const candidateModels = [
       settings.geminiModel,
-      'gemini-3.5-flash-lite',
-      'gemini-3.8-flash',
-      'gemini-flash-latest'
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash'
     ].filter(Boolean);
 
     let lastError = null;
@@ -1486,14 +1254,28 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
       ? allApplications.map((a, i) => `#${i+1}: ${a.companyName || 'Unknown'} | Role: ${a.roleTitle || 'Undisclosed'} | Status: ${a.status || 'Applied'} | Salary: ${a.salary || 'N/A'} | Applied: ${a.appliedDate || 'N/A'}${a.appliedTime ? ' ' + a.appliedTime : ''}`).join('\n')
       : '0 applications in database.';
 
-    const systemPrompt = getZunoMasterSystemPrompt({
-      fullTimeStr,
-      fullDateStr,
-      dayOfWeek,
-      today,
-      effectiveTimeZone,
-      allApplicationsCount: allApplications.length
-    });
+    const systemPrompt = `You are Zuno, an expert AI Job Application Tracker and Career Advisor Assistant at JobTrackerAI.
+Your name is Zuno.
+
+REAL-TIME CLOCK, CURRENT DATE & TIME (ACCURATE RIGHT NOW):
+- Current Live Time: ${fullTimeStr} (${effectiveTimeZone})
+- Today's Date: ${fullDateStr}
+- Day of the Week: ${dayOfWeek}
+- ISO Date Reference: ${today}
+
+CORE TIME & DATE INTELLIGENCE:
+1. You are 100% aware of the current exact time, day, and date.
+2. If the user asks about the time ("what time is it?", "current time"), day ("what day is today?"), date ("what is today's date?"), or any time calculation, answer them directly, accurately, and naturally based on the Live Time and Date above!
+3. If the user specifies when an application was submitted, compute the exact appliedDate and appliedTime relative to right now (${fullTimeStr}, ${today}).
+
+You have direct live access to the user's persistent backend database (${allApplications.length} applications stored) and active session instance!
+When user asks about past applications, statistics, interview status, specific applied companies, or advice: provide a comprehensive markdown answer using the database records in "message" and set "data": null.
+When user asks you to add projects, certifications, semester marks, or update profile: return structured "profileUpdate" in JSON and set "data": null.
+When user asks to compare profile vs company requirements using "/compare": provide a comprehensive comparative analysis (Match score %, skills match vs missing, projects alignment, sem marks & education review, strengths, gap plan) and set "data": null.
+When user pastes a job description (JD) or update: extract the job details in "data" including companyName, roleTitle, jobType, workMode, location, salary, source, portalName, applicationUrl, sourceUrl, status, appliedDate, appliedTime, skills, notes. (If user saw on Indeed/LinkedIn but applied on company portal, capture discovery link in sourceUrl and form link in applicationUrl and portal name in portalName).
+When user greets or says hi/hello: respond concisely with "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nToday is **${fullDateStr}** and the current time is **${fullTimeStr}**.\nYou have applied to **${(allApplications || []).length} application${(allApplications || []).length === 1 ? '' : 's'}** till today." and set data: null without verbose bullet lists.
+Maintain conversational continuity using CONVERSATION HISTORY. If user gives follow-up instructions (e.g. "show all", "list them", "where did i apply"), understand context from previous turns and list applications from PERSISTENT BACKEND DATABASE.
+Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": { ... } or null }.`;
 
     const recentHistory = Array.isArray(history) ? history.slice(-8) : [];
     const historyContext = recentHistory.length > 0
@@ -1543,11 +1325,7 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
    * Handles company research, interview prep, greetings, AND job parsing offline
    */
   extractWithHeuristics(text, existingJob = null, allApplications = [], userProfile = null, history = []) {
-    let trimmed = text.trim();
-    // Strip conversational introductory phrases like "do one thing", "see", "look here" per conversation_rules.json
-    if (/^(?:do\s+one\s+thing|see|look\s+here)[,:\s-]+/i.test(trimmed)) {
-      trimmed = trimmed.replace(/^(?:do\s+one\s+thing|see|look\s+here)[,:\s-]+/i, '').trim();
-    }
+    const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
     const isJD = this.isJobDescription(text);
     const isViewedNotification = this.isApplicationNotification(text);
@@ -1556,51 +1334,6 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
 
     // If NOT a job description AND not an application viewed notification, check for conversational shortcuts, greetings, and utility widgets
     if (!isJD && !isViewedNotification && !isFollowUpToViewed) {
-      // Intent: REQUEST_CORRECTION (from conversation_rules.json & MASTER_CONVERSATION_ENGINE.txt)
-      if (/\b(?:not\s+like\s+this|not\s+this\s+way|you\s+misunderstood|wrong\s+answer|that'?s\s+not\s+what\s+i\s+asked|that\s+is\s+not\s+what\s+i\s+asked|you\s+gave\s+the\s+wrong\s+answer|fix\s+it|redo\s+this)\b/i.test(lower)) {
-        return {
-          message: "Got it, my apologies for the misunderstanding! 🙏 Let's fix that right away. Could you clarify what specific detail was incorrect, or what you'd like me to update?",
-          data: null
-        };
-      }
-
-      // Intent: REQUEST_SIMPLIFICATION / REQUEST_BREVITY (from conversation_rules.json)
-      if (/^(?:give\s+easiest\s+code\s+possible|simplest\s+code|easy\s+code|make\s+it\s+simple|keep\s+it\s+simple|in\s+short|short\s+answer|just\s+the\s+answer|only\s+answer|no\s+explanation|give\s+only\s+answer)\b/i.test(lower)) {
-        return {
-          message: "Here is the quick summary:\n- **Track Job**: Paste the JD or URL.\n- **Mark Applied**: Say `Applied today` or `/apply`.\n- **Save Record**: Type `/store`.\n- **View List**: Type `Show all`.",
-          data: null
-        };
-      }
-
-      // Intent: REPORT_CONFUSION (from conversation_rules.json)
-      if (/^(?:i\s+don'?t\s+understand|i\s+am\s+confused|didn'?t\s+get\s+it|unclear)\b/i.test(lower)) {
-        return {
-          message: "No worries at all! Here is how simple it is:\n\n1. **Paste any Job Description (JD)** from LinkedIn, Indeed, or careers page.\n2. **I automatically extract** company, role, salary, location, and skills.\n3. **Type `/store`** to permanently save it to your database.\n4. **Type `/stats`** or ask *'How many applications?'* to view your progress.\n\nWhat would you like to try first?",
-          data: null
-        };
-      }
-
-      // Intent: REQUEST_RESTART (from conversation_rules.json)
-      if (/^(?:from\s+start|start\s+from\s+the\s+beginning|start\s+over|from\s+the\s+beginning)\b/i.test(lower)) {
-        return {
-          message: "Starting fresh from step 1! 🚀 What company or job would you like to track? Paste the JD or job link whenever you're ready!",
-          data: null
-        };
-      }
-
-      // Intent: REQUEST_CONTINUATION (from conversation_rules.json)
-      if (/^(?:continue|go\s+on|next|proceed)\b/i.test(lower)) {
-        if (existingJob && (existingJob.companyName || existingJob.roleTitle)) {
-          return {
-            message: `Continuing with **${existingJob.companyName}** (${existingJob.roleTitle})! You can type **/store** to save this to your database, or ask for interview preparation tips.`,
-            data: null
-          };
-        }
-        return {
-          message: "Ready to proceed! You can paste another Job Description to track, inspect your saved applications with *'Show all'*, or update your About Me profile.",
-          data: null
-        };
-      }
       // 0. Check for /compare command
       const isCompareCommand = /^\/(?:compare|cmp)\b/i.test(trimmed) || /^(?:compare\s+(?:me|my\s+profile|profile)\b)/i.test(lower);
       if (isCompareCommand) {
@@ -1609,10 +1342,22 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
       }
 
       // 1. Check for greetings
-      const isGreeting = /^(hi|hello|hey|hiya|howdy|good\s*(morning|afternoon|evening)|sup|yo|hola)\b[!?. ]*$/i.test(trimmed);
+      const isGreeting = /^(?:hi|hello|hey|hiya|howdy|good\s*(?:morning|afternoon|evening)|sup|yo|hola)(?:\s+zuno)?\b[!?. ]*$/i.test(trimmed);
       if (isGreeting) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        const appsList = (Array.isArray(allApplications) && allApplications.length > 0)
+          ? allApplications
+          : (typeof window !== 'undefined' && Array.isArray(window.app?.applications) ? window.app.applications : []);
+        const totalApps = appsList.length;
+
+        const countText = totalApps === 0
+          ? "You haven't applied to any applications yet."
+          : `You have applied to **${totalApps} application${totalApps === 1 ? '' : 's'}** till today.`;
+
         return {
-          message: "👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nHere is how I can help you:\n- **Track Applications**: Paste any Job Description to extract and track.\n- **About Me Profile**: Tell me your projects (*\"Add project: JobTracker with React, link github.com...\"*), semester marks (*\"Add sem 5 marks: 8.9\"*), or certifications!\n- **Query Applications**: Ask *\"How many jobs have I applied to?\"*, *\"Show my applications\"*, or *\"Did I apply to Stripe?\"*\n- **Ask About Any Company**: e.g. *'Tell me about Samsung'*, *'What does Google expect?'*\n- **Interview Preparation**: Ask for interview questions, preparation tips, or role breakdowns.",
+          message: `👋 **Hello!** I'm **Zuno**, your **JobTrackerAI** assistant.\n\nToday is **${dateStr}** and the current time is **${timeStr}**.\n${countText}`,
           data: null
         };
       }
@@ -1628,7 +1373,7 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
       // 3. Check for "How are you"
       if (/\b(how are you|how's it going|how are you doing)\b/i.test(lower)) {
         return {
-          message: "I'm **Zuno**, doing great and fully energized to help you land your dream job! 🚀\n\nYou can:\n- Paste a **Job Description** to extract and track it.\n- Tell me about your **projects, certifications, or semester marks** to update your profile.\n- Ask me about your **saved applications** (*\"Show my applications\"* or *\"How many jobs did I apply to?\"*).\n- Ask me about any company (e.g. **Samsung**, **Google**, **Stripe**).\n- Ask for **interview questions** and preparation advice for any role.\n\nWhat would you like to explore?",
+          message: "I'm **Zuno**, doing great and ready to help you track your applications and prep for interviews! 🚀 How can I help you today?",
           data: null
         };
       }
@@ -2900,12 +2645,34 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
       }
     }
 
-    // If no concrete job signals found and creating new job, do NOT create a dummy record
-    if (isNewJob && !data.companyName && !data.roleTitle && foundUrls.length === 0 && !extractedSalary) {
+    // If creating a new job, attempt URL company extraction if companyName is not yet set
+    if (isNewJob && !data.companyName) {
+      const urlCo = extractCompanyFromUrl(data.applicationUrl || data.sourceUrl);
+      if (urlCo && !EXTRACTION_BLACKLIST.has(urlCo.toLowerCase())) {
+        data.companyName = urlCo;
+      }
+    }
+
+    const hasCompany = Boolean(
+      data.companyName && !['target company', 'company', 'unknown', 'n/a', 'company name', ''].includes(data.companyName.trim().toLowerCase())
+    );
+    const hasRole = Boolean(
+      data.roleTitle && !['professional role', 'job title', 'undisclosed', 'role', 'n/a', ''].includes(data.roleTitle.trim().toLowerCase())
+    );
+
+    // If no identifiable company AND no identifiable role, NEVER create a dummy record
+    if (isNewJob && !hasCompany && !hasRole) {
       // If it looks like a question or conversational prompt
       if (/[?]|^(what|how|why|can|could|tell|explain|give|describe|advice|tips|guide|suggest|prepare|interview|resume|portfolio|salary)/i.test(trimmed)) {
         return {
-          message: `### 🤖 Career Advisor & Interview Assistant\n\nI'm here to help with your career questions and job search!\n\nHere are key recommendations regarding your query:\n- **Strategic Preparation**: Focus on high-frequency interview patterns (System Design, DSA, and behavioral STAR stories).\n- **Application Tracking**: Whenever you apply to a role or find an open vacancy, paste the **Job Description** or URL here to automatically track it on your board with interview status updates.\n- **Company Intelligence**: Ask about any company (e.g., *'Tell me about Paytm'*, *'Tell me about Samsung'*, *'Google'*) for detailed tech stacks and interview breakdowns.\n\n💡 *Tip: You can also connect your own Gemini API key or OpenAI key in **Settings (⚙️)** for unlimited live AI conversations!`,
+          message: `### 🤖 Career Advisor & Interview Assistant\n\nI'm here to help with your career questions and job search!\n\nHere are key recommendations regarding your query:\n- **Strategic Preparation**: Focus on high-frequency interview patterns (System Design, DSA, and behavioral STAR stories).\n- **Application Tracking**: Whenever you apply to a role or find an open vacancy, paste the **Job Description** or URL here to automatically track it on your board with interview status updates.\n- **Company Intelligence**: Ask about any company (e.g., *'Tell me about Paytm'*, *'Tell me about Samsung'*, *'Google'*) for detailed tech stacks and interview breakdowns.\n\n💡 *Tip: You can also connect your own Gemini API key in **Settings (⚙️)** for unlimited live AI conversations!`,
+          data: null
+        };
+      }
+
+      if (foundUrls.length > 0) {
+        return {
+          message: `🔗 I detected the job link (${foundUrls[0]}), but couldn't identify the **Company Name** and **Role Title** from the URL alone.\n\nPlease reply with the company and role (e.g. *"Company: Stripe, Role: Backend Engineer"*) so I can track it on your board!`,
           data: null
         };
       }
@@ -2920,17 +2687,26 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
       }
 
       return {
-        message: "I didn't detect any job details in that message.\n\nTo track a job, simply paste a **Job Description**, an application email, or a job link. You can also ask me about any company (e.g. *'Tell me about Paytm'*, *'Tell me about Samsung'*) or ask for interview preparation tips!",
+        message: "I didn't detect sufficient job details (Company Name or Role Title) in that message.\n\nTo track an application, simply paste a **Job Description**, an application email, or a job link (e.g. *\"SDE 1 at Razorpay\"*). You can also ask me about any company or type **/stats** to inspect your applications!",
         data: null
       };
     }
 
-    // Fallbacks if only partial info
+    // Resolve partial information gracefully without dummy "Target Company"
     if (!data.companyName) {
-      data.companyName = existingJob?.companyName || 'Target Company';
+      if (existingJob?.companyName) {
+        data.companyName = existingJob.companyName;
+      } else {
+        // If role is known but company is completely absent, ask the user
+        return {
+          message: `I recognized the position **${data.roleTitle}**, but couldn't detect the company name.\n\nWhich company is this role with (e.g. *"Company: Google"* or *"at Microsoft"*)?`,
+          data: null
+        };
+      }
     }
+
     if (!data.roleTitle) {
-      data.roleTitle = existingJob?.roleTitle || 'Professional Role';
+      data.roleTitle = existingJob?.roleTitle || 'Software Professional';
     }
 
     if (data.skills && data.skills.length > 0) {
@@ -3195,3 +2971,5 @@ ${certs.length > 0 ? certs.map((c, i) => `  [Cert #${i + 1}] Name: "${c.name}" |
     };
   }
 };
+
+export default AiExtractor;

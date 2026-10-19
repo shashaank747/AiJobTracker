@@ -223,7 +223,6 @@
                 <svg class="engine-inline-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
                 <select id="chatAiEngineSelect" class="chat-engine-inline-select" title="Switch Extraction Engine">
                   <option value="gemini">Gemini</option>
-                  <option value="openai">ChatGPT</option>
                   <option value="heuristic">Offline</option>
                 </select>
               </div>
@@ -437,17 +436,8 @@
           <div class="profile-top-bar">
             <div class="profile-title-group">
               <h2 class="profile-page-title">Candidate Profile & Dossier</h2>
-              <p class="profile-page-subtitle">Your personal background, 10th & 12th scores, semester-wise college marks, certifications, and portfolio projects. You can edit here manually or just tell Zuno in chat!</p>
             </div>
             <div class="profile-top-actions">
-              <button id="btnProfileCompare" class="btn btn-outline" title="Compare profile vs active company requirements (/compare)">
-                <span class="btn-icon">⚖️</span>
-                <span>Compare vs Job (/compare)</span>
-              </button>
-              <button id="btnProfTalkZuno" class="btn btn-secondary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                <span>Ask Zuno</span>
-              </button>
               <button id="btnSaveProfile" class="btn btn-primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
                 <span>Save Profile</span>
@@ -865,13 +855,12 @@
         <div class="settings-section">
           <div class="section-badge">AI Engine</div>
           <h3 class="section-title">AI Extraction Provider</h3>
-          <p class="section-desc">Choose between Gemini, OpenAI, or the built-in Smart NLP extractor.</p>
+          <p class="section-desc">Choose between Google Gemini API or the built-in Smart NLP extractor.</p>
 
           <div class="form-group">
             <label for="selectAiProvider">Extraction Engine</label>
             <select id="selectAiProvider" class="select-dropdown full-width">
               <option value="gemini">Google Gemini API (Recommended)</option>
-              <option value="openai">OpenAI ChatGPT API</option>
               <option value="heuristic">Smart NLP Heuristics (Offline / Free)</option>
             </select>
           </div>
@@ -880,11 +869,6 @@
             <label for="inputGeminiKey">Google Gemini API Key</label>
             <input type="password" id="inputGeminiKey" placeholder="AIzaSy..." />
             <span class="field-hint">Used to extract and parse job details from raw text. Get one at Google AI Studio.</span>
-          </div>
-
-          <div id="openaiConfigGroup" class="form-group" style="display: none;">
-            <label for="inputOpenAiKey">OpenAI API Key</label>
-            <input type="password" id="inputOpenAiKey" placeholder="sk-..." />
           </div>
         </div>
       </div>

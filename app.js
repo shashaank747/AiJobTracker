@@ -803,14 +803,9 @@ class JobTrackerApp {
 
         const providerNames = {
           gemini: 'Google Gemini API (Recommended)',
-          openai: 'OpenAI ChatGPT API',
           heuristic: 'Smart NLP Heuristics (Offline / Free)'
         };
         this.showToast(`Switched engine to ${providerNames[newProvider] || newProvider}`, 'info');
-
-        if (newProvider === 'openai' && !currentSettings.openaiKey) {
-          this.showToast('Note: If calling client directly, set your OpenAI key in Settings (⚙️)', 'info');
-        }
       });
     }
 
@@ -895,8 +890,12 @@ class JobTrackerApp {
 
     this.selectAiProvider.addEventListener('change', (e) => {
       const val = e.target.value;
-      this.geminiConfigGroup.style.display = val === 'gemini' ? 'flex' : 'none';
-      this.openaiConfigGroup.style.display = val === 'openai' ? 'flex' : 'none';
+      if (this.geminiConfigGroup) {
+        this.geminiConfigGroup.style.display = val === 'gemini' ? 'flex' : 'none';
+      }
+      if (this.openaiConfigGroup) {
+        this.openaiConfigGroup.style.display = 'none';
+      }
     });
 
     // File Upload & OCR
@@ -2286,13 +2285,20 @@ class JobTrackerApp {
         await this.applyAiProfileUpdate(result.profileUpdate);
       }
 
-      if (result.data) {
+      // Validate that result.data contains meaningful job identity (not empty dummy placeholders)
+      const coVal = (result.data?.companyName || '').trim().toLowerCase();
+      const roleVal = (result.data?.roleTitle || '').trim().toLowerCase();
+      const isDummyCo = !coVal || ['target company', 'company', 'unknown', 'n/a', 'company name needed', ''].includes(coVal);
+      const isDummyRole = !roleVal || ['professional role', 'job title', 'role', 'undisclosed', 'n/a', ''].includes(roleVal);
+      const hasValidJobData = Boolean(result.data && (!isDummyCo || !isDummyRole));
+
+      if (hasValidJobData) {
         const activeCo = (this.activeApplication?.companyName || '').trim().toLowerCase();
         const newCo = (result.data?.companyName || '').trim().toLowerCase();
         const isSameCompany = Boolean(
           activeCo && newCo &&
           (activeCo === newCo || activeCo.includes(newCo) || newCo.includes(activeCo)) &&
-          !['full', 'target company'].includes(activeCo)
+          !['full', 'target company', 'company'].includes(activeCo)
         );
 
         // Detect if matching job already exists in stored database applications
@@ -3941,12 +3947,16 @@ class JobTrackerApp {
     this.inputSupabaseUrl.value = settings.supabaseUrl;
     this.inputSupabaseKey.value = settings.supabaseKey;
     this.inputSupabaseTable.value = settings.supabaseTable;
-    this.selectAiProvider.value = settings.aiProvider;
-    this.inputGeminiKey.value = settings.geminiKey;
-    this.inputOpenAiKey.value = settings.openaiKey;
+    this.selectAiProvider.value = settings.aiProvider === 'openai' ? 'gemini' : (settings.aiProvider || 'gemini');
+    this.inputGeminiKey.value = settings.geminiKey || '';
+    if (this.inputOpenAiKey) this.inputOpenAiKey.value = settings.openaiKey || '';
 
-    this.geminiConfigGroup.style.display = settings.aiProvider === 'gemini' ? 'flex' : 'none';
-    this.openaiConfigGroup.style.display = settings.aiProvider === 'openai' ? 'flex' : 'none';
+    if (this.geminiConfigGroup) {
+      this.geminiConfigGroup.style.display = (settings.aiProvider === 'gemini' || !settings.aiProvider) ? 'flex' : 'none';
+    }
+    if (this.openaiConfigGroup) {
+      this.openaiConfigGroup.style.display = 'none';
+    }
 
     this.supabaseTestResult.textContent = '';
     this.settingsModal.classList.add('open');
@@ -3962,8 +3972,7 @@ class JobTrackerApp {
       supabaseKey: this.inputSupabaseKey.value,
       supabaseTable: this.inputSupabaseTable.value,
       aiProvider: this.selectAiProvider.value,
-      geminiKey: this.inputGeminiKey.value,
-      openaiKey: this.inputOpenAiKey.value
+      geminiKey: this.inputGeminiKey.value
     });
 
     this.updateAiModelTag();
@@ -4008,14 +4017,13 @@ class JobTrackerApp {
   updateAiModelTag() {
     const settings = Config.getSettings();
     let text = 'Model: Smart Heuristics (Offline)';
-    if (settings.aiProvider === 'gemini') {
+    const effectiveProvider = (settings.aiProvider === 'openai' ? 'gemini' : settings.aiProvider) || 'gemini';
+    if (effectiveProvider === 'gemini') {
       text = 'Model: Google Gemini API';
-    } else if (settings.aiProvider === 'openai') {
-      text = 'Model: OpenAI ChatGPT API';
     }
     if (this.activeAiModelTag) this.activeAiModelTag.textContent = text;
-    if (this.chatAiEngineSelect) this.chatAiEngineSelect.value = settings.aiProvider || 'gemini';
-    if (this.selectAiProvider) this.selectAiProvider.value = settings.aiProvider || 'gemini';
+    if (this.chatAiEngineSelect) this.chatAiEngineSelect.value = effectiveProvider;
+    if (this.selectAiProvider) this.selectAiProvider.value = effectiveProvider;
   }
 
   // ==========================================
