@@ -2449,7 +2449,7 @@ class JobTrackerApp {
           isStored: isStored
         };
 
-        this.activeApplication = appData;
+        this.activeApplication = this.sanitizeJobData(appData);
 
         // Auto-save application to database immediately so it is tracked in the tracker
         try {
@@ -3536,9 +3536,51 @@ class JobTrackerApp {
     });
   }
 
+  sanitizeJobField(str) {
+    if (!str || typeof str !== 'string') return '';
+    return str
+      .replace(/^[\s*#_~`>•\-\d.)]+/, '')
+      .replace(/[\s*#_~`]+$/, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/__/g, '')
+      .replace(/`/g, '')
+      .trim();
+  }
+
+  sanitizeSkill(str) {
+    if (!str || typeof str !== 'string') return '';
+    let s = this.sanitizeJobField(str);
+    s = s.replace(/^(?:basic\s+knowledge\s+of|good\s+knowledge\s+of|working\s+knowledge\s+of|knowledge\s+of|experience\s+with|experience\s+in|hands-on\s+experience\s+with|proficiency\s+in|proficient\s+in|familiarity\s+with|understanding\s+of|strong\s+understanding\s+of|skills?\s*(?:in|with)?)\s+/i, '');
+    return s.trim();
+  }
+
+  sanitizeJobData(raw) {
+    if (!raw) return null;
+    const clean = { ...raw };
+    if (clean.companyName) clean.companyName = this.sanitizeJobField(clean.companyName);
+    if (clean.roleTitle) clean.roleTitle = this.sanitizeJobField(clean.roleTitle);
+    if (clean.location) clean.location = this.sanitizeJobField(clean.location);
+    if (clean.salary) clean.salary = this.sanitizeJobField(clean.salary);
+    if (clean.workMode) clean.workMode = this.sanitizeJobField(clean.workMode);
+    if (clean.jobType) clean.jobType = this.sanitizeJobField(clean.jobType);
+    if (clean.source) clean.source = this.sanitizeJobField(clean.source);
+    if (clean.portalName) clean.portalName = this.sanitizeJobField(clean.portalName);
+    if (Array.isArray(clean.skills)) {
+      clean.skills = clean.skills
+        .map(s => this.sanitizeSkill(s))
+        .filter(s => s && s.length > 1 && !/^(?:etc|and|or|plus)$/i.test(s));
+    }
+    return clean;
+  }
+
   createExtractionCardHtml(data) {
-    const initial = (data.companyName || 'C').charAt(0).toUpperCase();
-    const rawStatus = (data.status || 'Applied').trim();
+    const cleanData = this.sanitizeJobData(data) || {};
+    const cleanCompany = cleanData.companyName || 'Company';
+    const cleanRole = cleanData.roleTitle || 'Job Title';
+    const initial = cleanCompany.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || 'C';
+
+    const rawStatus = (cleanData.status || 'Applied').trim();
     let statusClass = `status-${rawStatus.toLowerCase()}`;
     let displayStatus = rawStatus;
     if (rawStatus.toLowerCase() === 'saved') {
@@ -3546,102 +3588,147 @@ class JobTrackerApp {
       statusClass = 'status-opportunity';
     }
 
-    // Skills tags
-    const skillsHtml = (data.skills && data.skills.length > 0)
-      ? `<div class="card-skills-row">
-          ${data.skills.map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
-         </div>`
-      : '';
-
-    // External links (clean buttons, no filler text if none)
+    // External links
     let linksHtml = '';
-    if (data.applicationUrl) {
-      const applyBtnText = data.portalName ? `Apply (${this.escapeHtml(data.portalName)})` : 'Apply Portal';
+    if (cleanData.applicationUrl) {
+      const applyBtnText = cleanData.portalName ? `Apply (${this.escapeHtml(cleanData.portalName)})` : 'Apply Portal';
       linksHtml += `
-        <a href="${this.escapeHtml(data.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(data.portalName || 'Portal')})">
+        <a href="${this.escapeHtml(cleanData.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(cleanData.portalName || 'Portal')})">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
           <span>${applyBtnText}</span>
         </a>
       `;
     }
-    if (data.sourceUrl) {
-      const sourceBtnText = data.source ? `Job Post (${this.escapeHtml(data.source)})` : 'Job Post';
+    if (cleanData.sourceUrl) {
+      const sourceBtnText = cleanData.source ? `Job Post (${this.escapeHtml(cleanData.source)})` : 'Job Post';
       linksHtml += `
-        <a href="${this.escapeHtml(data.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="View Original Post on ${this.escapeHtml(data.source || 'Platform')}">
+        <a href="${this.escapeHtml(cleanData.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="View Original Post on ${this.escapeHtml(cleanData.source || 'Platform')}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
           <span>${sourceBtnText}</span>
         </a>
       `;
     }
 
-    // Meaningful meta chips only — filter out empty/generic fillers
-    const metaChips = [];
-    if (data.salary && !/^(?:not\s+disclosed|not\s+specified|n\/?a|undisclosed|none|-)$/i.test(data.salary.trim())) {
-      metaChips.push(`<span class="meta-chip chip-salary">💰 <strong>${this.escapeHtml(data.salary)}</strong></span>`);
+    // Specs Bar items
+    const specItems = [];
+    if (cleanData.workMode && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(cleanData.workMode)) {
+      const modeIcon = /remote/i.test(cleanData.workMode) ? '🏠' : (/hybrid/i.test(cleanData.workMode) ? '🔄' : '🏢');
+      specItems.push(`
+        <div class="spec-item spec-mode">
+          <span class="spec-icon">${modeIcon}</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.workMode)}</span>
+        </div>
+      `);
     }
-    if (data.workMode && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(data.workMode.trim())) {
-      const modeIcon = /remote/i.test(data.workMode) ? '🏠' : (/hybrid/i.test(data.workMode) ? '🔄' : '🏢');
-      metaChips.push(`<span class="meta-chip chip-mode">${modeIcon} <strong>${this.escapeHtml(data.workMode)}</strong></span>`);
+    if (cleanData.jobType && !/^(?:not\s+specified|n\/?a|-)$/i.test(cleanData.jobType)) {
+      specItems.push(`
+        <div class="spec-item spec-type">
+          <span class="spec-icon">💼</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.jobType)}</span>
+        </div>
+      `);
     }
-    if (data.location && !/^(?:not\s+specified|n\/?a|none|unknown|-)$/i.test(data.location.trim())) {
-      metaChips.push(`<span class="meta-chip">📍 ${this.escapeHtml(data.location)}</span>`);
+    if (cleanData.salary && !/^(?:not\s+disclosed|not\s+specified|n\/?a|undisclosed|none|-)$/i.test(cleanData.salary)) {
+      specItems.push(`
+        <div class="spec-item spec-salary">
+          <span class="spec-icon">💰</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.salary)}</span>
+        </div>
+      `);
     }
-    if (data.jobType && !/^(?:not\s+specified|n\/?a|-)$/i.test(data.jobType.trim())) {
-      metaChips.push(`<span class="meta-chip">💼 ${this.escapeHtml(data.jobType)}</span>`);
+    if (cleanData.appliedDate && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(cleanData.appliedDate)) {
+      specItems.push(`
+        <div class="spec-item spec-date">
+          <span class="spec-icon">📅</span>
+          <span class="spec-label">Applied: ${this.escapeHtml(cleanData.appliedDate)}</span>
+        </div>
+      `);
     }
-    if (data.appliedDate && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(data.appliedDate.trim())) {
-      metaChips.push(`<span class="meta-chip">📅 Applied: <strong>${this.escapeHtml(data.appliedDate)}</strong></span>`);
+    if (cleanData.source && !/^(?:portal|direct\s+portal|online|web|direct)$/i.test(cleanData.source)) {
+      specItems.push(`
+        <div class="spec-item spec-source">
+          <span class="spec-icon">🌐</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.source)}</span>
+        </div>
+      `);
+    } else if (cleanData.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(cleanData.portalName)) {
+      specItems.push(`
+        <div class="spec-item spec-portal">
+          <span class="spec-icon">📝</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.portalName)}</span>
+        </div>
+      `);
     }
-    if (data.source && !/^(?:portal|direct\s+portal|online|web|direct)$/i.test(data.source.trim())) {
-      metaChips.push(`<span class="meta-chip chip-source">🌐 ${this.escapeHtml(data.source)}</span>`);
-    } else if (data.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(data.portalName)) {
-      metaChips.push(`<span class="meta-chip chip-portal">📝 ${this.escapeHtml(data.portalName)}</span>`);
+    if (cleanData.viewedAt || (cleanData.notes && cleanData.notes.includes('Recruiter viewed application'))) {
+      specItems.push(`
+        <div class="spec-item spec-viewed" style="color: #38bdf8;">
+          <span class="spec-icon">👀</span>
+          <span class="spec-label">Recruiter Viewed: <strong>${this.escapeHtml(cleanData.viewedAt || 'Yes')}</strong></span>
+        </div>
+      `);
     }
-    if (data.viewedAt || (data.notes && data.notes.includes('Recruiter viewed application'))) {
-      metaChips.push(`<span class="meta-chip chip-viewed" style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35);">👀 Recruiter Viewed: <strong>${this.escapeHtml(data.viewedAt || 'Yes')}</strong></span>`);
-    }
-    const chipsHtml = metaChips.length > 0 ? `<div class="card-meta-chips">${metaChips.join('')}</div>` : '';
+
+    const specsBarHtml = specItems.length > 0 ? `<div class="card-specs-bar">${specItems.join('')}</div>` : '';
+
+    // Skills Section
+    const skillsHtml = (cleanData.skills && cleanData.skills.length > 0)
+      ? `<div class="card-skills-section">
+          <div class="skills-section-header">
+            <span class="skills-label">Required Skills</span>
+            <span class="skills-count">${cleanData.skills.length}</span>
+          </div>
+          <div class="card-skills-row">
+            ${cleanData.skills.map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
+          </div>
+         </div>`
+      : '';
 
     return `
       <div class="ai-extraction-card">
         <div class="card-header-row">
           <div class="card-company-identity">
             <div class="company-badge-icon">${initial}</div>
-            <div>
-              <h3 class="card-job-title">${this.escapeHtml(data.roleTitle || 'Job Title')}</h3>
-              <p class="card-company-name">${this.escapeHtml(data.companyName || 'Company')}</p>
+            <div class="company-info-text">
+              <h3 class="card-job-title">${this.escapeHtml(cleanRole)}</h3>
+              <div class="card-company-sub">
+                <span class="company-name-bold">${this.escapeHtml(cleanCompany)}</span>
+                ${cleanData.location ? `<span class="company-sub-dot">•</span><span class="company-location-sub">📍 ${this.escapeHtml(cleanData.location)}</span>` : ''}
+              </div>
             </div>
           </div>
           <div class="card-status-wrapper">
-            <span class="status-pill ${statusClass}" title="Pipeline Status: ${displayStatus}">${displayStatus}</span>
+            <span class="status-pill ${statusClass}" title="Status: ${displayStatus}">
+              <span class="status-dot"></span>
+              <span>${displayStatus}</span>
+            </span>
           </div>
         </div>
 
-        ${chipsHtml}
+        ${specsBarHtml}
 
         ${skillsHtml}
 
-        ${(data.recruiterName || data.callNotes || (data.interviewQuestions && data.interviewQuestions.length > 0)) ? `
+        ${(cleanData.recruiterName || cleanData.callNotes || (cleanData.interviewQuestions && cleanData.interviewQuestions.length > 0)) ? `
           <div class="card-call-notes-box">
             <div class="call-notes-header">
               <div class="call-notes-title-group">
                 <span class="call-header-icon">📞</span>
                 <span class="call-header-title">Recruiter / Interview Call Log</span>
               </div>
-              ${data.recruiterName ? `<span class="recruiter-badge">👤 Recruiter: <strong>${this.escapeHtml(data.recruiterName)}</strong></span>` : ''}
+              ${cleanData.recruiterName ? `<span class="recruiter-badge">👤 Recruiter: <strong>${this.escapeHtml(cleanData.recruiterName)}</strong></span>` : ''}
             </div>
-            ${(data.interviewQuestions && data.interviewQuestions.length > 0) ? `
+            ${(cleanData.interviewQuestions && cleanData.interviewQuestions.length > 0) ? `
               <div class="call-questions-block">
                 <span class="block-label">💡 Questions Asked in Call:</span>
                 <ul class="call-questions-items">
-                  ${data.interviewQuestions.map(q => `<li>${this.escapeHtml(q)}</li>`).join('')}
+                  ${cleanData.interviewQuestions.map(q => `<li>${this.escapeHtml(this.sanitizeJobField(q))}</li>`).join('')}
                 </ul>
               </div>
             ` : ''}
-            ${data.callNotes ? `
+            ${cleanData.callNotes ? `
               <div class="call-summary-block">
                 <span class="block-label">📝 Discussion & Details:</span>
-                <p class="call-summary-text">${this.escapeHtml(data.callNotes)}</p>
+                <p class="call-summary-text">${this.escapeHtml(cleanData.callNotes)}</p>
               </div>
             ` : ''}
           </div>
@@ -3651,7 +3738,7 @@ class JobTrackerApp {
           <div class="card-external-links">
             ${linksHtml}
           </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="card-buttons-group">
             ${(displayStatus === 'Opportunity') ? `
               <button class="btn btn-primary btn-sm btn-mark-applied-card" title="Mark this job as Applied today">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>

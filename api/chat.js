@@ -403,6 +403,11 @@ Special Card rules:
 - If asked how many applications applied today: set "cardType": "today_count", "cardData": { "count": <number applied today>, "date": "${fullDateStr}", "isoDate": "${today}" }
 - If asked how many applied last week/month or for a graph/chart: set "cardType": "graph", "cardData": { "range": 7 or 30 }
 - If asked to search applications or query /search: set "cardType": "search_results", "cardData": { "query": "<search keyword>", "results": <matching applications from database>, "totalCount": <total applications count> }
+STRICT RULE FOR DATA OBJECT STRINGS:
+- All string fields inside 'data' (companyName, roleTitle, location, salary, workMode, jobType, skills) MUST BE CLEAN PLAIN TEXT.
+- NEVER put Markdown asterisks, bolding, quotes, or markdown tags inside the 'data' JSON values (e.g., write "Analyst L1", NOT "**Analyst L1**"; write "ABC Technologies", NOT "**ABC Technologies**"; write "Bengaluru", NOT "**Bengaluru**").
+- You may use Markdown formatting ONLY in the "message" conversational field.
+
 Ensure output is valid JSON.`;
 
     // --- TRY OPENAI IF KEY PROVIDED ---
@@ -435,7 +440,7 @@ Ensure output is valid JSON.`;
             const parsed = JSON.parse(content);
             return res.status(200).json({
               message: parsed.message || 'Done',
-              data: parsed.data || null,
+              data: parsed.data ? sanitizeBackendData(parsed.data) : null,
               profileUpdate: parsed.profileUpdate || null,
               cardType: parsed.cardType || null,
               cardData: parsed.cardData || null,
@@ -597,7 +602,7 @@ Ensure output is valid JSON.`;
 
     return res.status(200).json({
       message: parsed.message || candidateText,
-      data: parsed.data || null,
+      data: parsed.data ? sanitizeBackendData(parsed.data) : null,
       profileUpdate: parsed.profileUpdate || null,
       cardType: parsed.cardType || null,
       cardData: parsed.cardData || null,
@@ -710,4 +715,36 @@ function parseJobSource(text) {
   if (/\b(?:(?:i\s+)?(?:had\s+)?applied\s+(?:on|through|via|from)\s+)?(?:direct\s+)?email\b/i.test(lower)) return 'Direct Email';
 
   return null;
+}
+
+function sanitizeBackendData(data) {
+  if (!data || typeof data !== 'object') return data;
+  const strip = (s) => {
+    if (!s || typeof s !== 'string') return s;
+    return s
+      .replace(/[*_#`~]+/g, '')
+      .replace(/^[\s•\-\u2022\u25E6\u25AA\u25BA\u2192:]+/, '')
+      .replace(/[\s:]+$/, '')
+      .trim();
+  };
+
+  const cleaned = { ...data };
+  if (cleaned.companyName) cleaned.companyName = strip(cleaned.companyName);
+  if (cleaned.roleTitle) cleaned.roleTitle = strip(cleaned.roleTitle);
+  if (cleaned.location) cleaned.location = strip(cleaned.location);
+  if (cleaned.salary) cleaned.salary = strip(cleaned.salary);
+  if (cleaned.workMode) cleaned.workMode = strip(cleaned.workMode);
+  if (cleaned.jobType) cleaned.jobType = strip(cleaned.jobType);
+  if (cleaned.source) cleaned.source = strip(cleaned.source);
+  if (cleaned.portalName) cleaned.portalName = strip(cleaned.portalName);
+  if (cleaned.status) cleaned.status = strip(cleaned.status);
+  if (cleaned.recruiterName) cleaned.recruiterName = strip(cleaned.recruiterName);
+
+  if (Array.isArray(cleaned.skills)) {
+    cleaned.skills = cleaned.skills
+      .map(sk => strip(sk).replace(/^(?:basic\s+knowledge\s+of|good\s+knowledge\s+of|experience\s+(?:with|in)|knowledge\s+of|proficiency\s+in|familiarity\s+with)\s+/i, ''))
+      .filter(sk => sk && sk.length > 0);
+  }
+
+  return cleaned;
 }
