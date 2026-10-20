@@ -393,9 +393,11 @@ const EXTRACTION_BLACKLIST = new Set([
 
 export function isSentence(str) {
   if (!str) return false;
-  const s = str.trim().toLowerCase();
+  const trimmed = str.trim();
+  const s = trimmed.toLowerCase();
+  const isAbbrEnd = /\b(?:ltd|inc|corp|co|pvt|llc)\.$/i.test(trimmed);
   return /\b(?:is|are|was|were|we|our|you|your|they|their|will|have|has|had|must|should|can|could|looking\s+for|seeking|join\s+our|welcome|excited\s+to|build|building|provide|providing|delivering|experience\s+with|proficient\s+in|responsible\s+for)\b/i.test(s) ||
-    /[.!?]$/.test(str.trim()) ||
+    (!isAbbrEnd && /[.!?]$/.test(trimmed)) ||
     s.split(/\s+/).length > 7;
 }
 
@@ -588,8 +590,8 @@ export function extractCompany(text) {
   }
 
   // 4. "Role at Company" pattern
-  // e.g. "Frontend Engineer at Swiggy", "SDE 1 at Razorpay", "Software Engineer at Google"
-  const atMatch = text.match(/\b(?:engineer|developer|architect|designer|manager|analyst|intern|sde|swe|specialist|consultant|lead|scientist|technician|role|position|job)\b[^\n\r,.]*?\s+(?:at|with|@)\s+([A-Z][A-Za-z0-9&.'\-]{1,30})(?:\s+(?:in|for|on|as)\b|[,.\n\r(]|$)/i);
+  // e.g. "Frontend Engineer at Swiggy", "Junior Data Analyst at ABC Technologies Pvt. Ltd., Bengaluru"
+  const atMatch = text.match(/\b(?:engineer|developer|architect|designer|manager|analyst|intern|sde|swe|specialist|consultant|lead|scientist|technician|role|position|job)\b[^\n\r,.]*?\s+(?:at|with|@)\s+([A-Z][A-Za-z0-9&.'\- ]{1,45}?)(?=\s*[,;\n\r]|\s+(?:in|for|on|as)\b|$)/i);
   if (atMatch) {
     const co = atMatch[1].trim();
     if (!EXTRACTION_BLACKLIST.has(co.toLowerCase()) && !isSentence(co) && co.length >= 2) {
@@ -698,6 +700,12 @@ export function extractRoleTitle(text) {
         return match[1].trim();
       }
     }
+  }
+
+  // 6. Direct role match in input text
+  const directMatch = text.match(boundedRoleRegex);
+  if (directMatch && !EXTRACTION_BLACKLIST.has(directMatch[1].toLowerCase().trim())) {
+    return directMatch[1].trim();
   }
 
   return null;
@@ -888,6 +896,91 @@ export function normalizeSkillList(skillsArray) {
 
 export function normalizeSkills(skillsArray) {
   return normalizeSkillList(skillsArray);
+}
+
+export function computeUpdatedSummary(previousJob, updatedJob) {
+  if (!previousJob || !updatedJob) return null;
+  const changes = [];
+
+  // Salary
+  const oldSalary = (previousJob.salary || previousJob.salary_text || '').trim();
+  const newSalary = (updatedJob.salary || updatedJob.salary_text || '').trim();
+  if (newSalary && newSalary !== oldSalary && !/^(?:not\s+disclosed|not\s+specified|n\/?a)$/i.test(newSalary)) {
+    changes.push('salary');
+  }
+
+  // Skills
+  const oldSkills = new Set((previousJob.skills || []).map(s => s.toLowerCase().trim()));
+  const newSkills = (updatedJob.skills || []).filter(s => !oldSkills.has(s.toLowerCase().trim()));
+  if (newSkills.length > 0) {
+    changes.push('skills');
+  }
+
+  // Status
+  const oldStatus = (previousJob.status || '').toLowerCase().trim();
+  const newStatus = (updatedJob.status || '').toLowerCase().trim();
+  if (newStatus && newStatus !== oldStatus) {
+    if (newStatus === 'applied') changes.push('status to Applied');
+    else if (newStatus === 'rejected') changes.push('status to Rejected');
+    else changes.push(`status to ${updatedJob.status}`);
+  }
+
+  // Applied Date
+  if (updatedJob.appliedDate && updatedJob.appliedDate !== previousJob.appliedDate) {
+    if (!changes.includes('status to Applied')) {
+      changes.push('applied date');
+    }
+  }
+
+  // Location
+  const oldLoc = (previousJob.location || '').trim();
+  const newLoc = (updatedJob.location || '').trim();
+  if (newLoc && newLoc !== oldLoc && !/^(?:not\s+specified|n\/?a)$/i.test(newLoc)) {
+    changes.push('location');
+  }
+
+  // Work Mode
+  const oldMode = (previousJob.workMode || previousJob.work_model || '').trim();
+  const newMode = (updatedJob.workMode || updatedJob.work_model || '').trim();
+  if (newMode && newMode !== oldMode && newMode !== 'Unknown') {
+    changes.push('work mode');
+  }
+
+  // Recruiter / Call notes
+  if (
+    (updatedJob.callNotes && updatedJob.callNotes !== previousJob.callNotes) ||
+    (updatedJob.recruiterName && updatedJob.recruiterName !== previousJob.recruiterName) ||
+    (updatedJob.interviewQuestions && updatedJob.interviewQuestions.length > (previousJob.interviewQuestions?.length || 0))
+  ) {
+    changes.push('interview notes');
+  }
+
+  // Links
+  if (
+    (updatedJob.applicationUrl && updatedJob.applicationUrl !== previousJob.applicationUrl) ||
+    (updatedJob.sourceUrl && updatedJob.sourceUrl !== previousJob.sourceUrl)
+  ) {
+    changes.push('links');
+  }
+
+  // Role
+  const oldRole = (previousJob.roleTitle || previousJob.job_title || '').trim();
+  const newRole = (updatedJob.roleTitle || updatedJob.job_title || '').trim();
+  if (newRole && newRole !== oldRole && !['job title', 'saved link', 'opportunity'].includes(oldRole.toLowerCase())) {
+    changes.push('role');
+  }
+
+  // Company
+  const oldCo = (previousJob.companyName || previousJob.company_name || '').trim();
+  const newCo = (updatedJob.companyName || updatedJob.company_name || '').trim();
+  if (newCo && newCo !== oldCo && !['pending details', 'target company'].includes(oldCo.toLowerCase())) {
+    changes.push('company');
+  }
+
+  if (changes.length === 0) return 'Updated draft details';
+  if (changes.length === 1) return `Added ${changes[0]}`;
+  if (changes.length === 2) return `Added ${changes[0]} & ${changes[1]}`;
+  return `Added ${changes.slice(0, -1).join(', ')} & ${changes[changes.length - 1]}`;
 }
 
 // Quick local extraction rules for Tier 3
@@ -2963,6 +3056,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     const extractedSkills = extractSkills(text);
 
     // Determine if this is a brand new application draft or updating an existing job
+    const isNewJobCommand = /^(https?:\/\/|\/new|job description:|role:)/i.test(text.trim());
     const isDifferentCompany = Boolean(
       existingJob && extractedCompany &&
       existingJob.companyName &&
@@ -2970,7 +3064,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       !['full', 'target company'].includes(existingJob.companyName.trim().toLowerCase())
     );
 
-    const isNewJob = !existingJob || isDifferentCompany || (isJD && Boolean(extractedCompany || extractedRole));
+    const isNewJob = !existingJob || (isNewJobCommand && (isDifferentCompany || isJD)) || (isDifferentCompany && isJD);
 
     let summaryNotes = [];
 
@@ -3361,7 +3455,8 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // Clean, simple commentary message without unsolicited interview questions
-    const cleanSkillsSummary = data.skills && data.skills.length > 0 ? data.skills.slice(0, 6).join(', ') : 'General software engineering';
+    // Clean, simple commentary message matching user's requested presentation
+    const cleanSkillsSummary = data.skills && data.skills.length > 0 ? data.skills.slice(0, 6).join(', ') : 'Not specified';
     let message = isNewJob
       ? (data.status === 'Applied'
           ? `📋 **Application Recorded: ${data.roleTitle} at ${data.companyName}**\n\n` +
@@ -3369,18 +3464,40 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
             `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
             `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
             `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
-            `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.\n\n` +
-            `💡 *Need interview prep?* Type **/interview Qs** anytime to generate targeted interview questions for this role!`
+            `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.`
           : `📋 **Job Opportunity Tracked: ${data.roleTitle} at ${data.companyName}**\n\n` +
             `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
             `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
             `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
             `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
-            `✅ Saved to your tracker board as an **Opportunity**.\n\n` +
-            `💡 *Need interview prep?* Type **/interview Qs** anytime to generate targeted interview questions for this role, or **/apply** when you submit your application!`)
+            `✅ Saved to your tracker board as an **Opportunity**.`)
       : (data.status === 'Rejected'
-          ? `Updated **${data.companyName}** (${data.roleTitle}) status to **Rejected** (Not selected by employer).\n\nJob search rejections are completely normal and part of the journey—don't let it discourage you! You're one step closer to the right opportunity.`
-          : `Updated **${data.companyName}** (${data.roleTitle}) with the latest details.`);
+          ? `📋 **Application Status Updated: ${data.roleTitle} at ${data.companyName}**\n\n` +
+            `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+            `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+            `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+            `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
+            `❌ Marked as **Rejected** (Not selected by employer).`
+          : (() => {
+              const summary = computeUpdatedSummary(existingJob, data);
+              data.updatedSummary = summary;
+              const titlePrefix = data.status === 'Applied'
+                ? `📋 **Application Recorded: ${data.roleTitle} at ${data.companyName}**`
+                : `📋 **Job Opportunity Tracked: ${data.roleTitle} at ${data.companyName}**`;
+              const statusLine = data.status === 'Applied'
+                ? `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.`
+                : `✅ Saved to your tracker board as an **Opportunity**.`;
+              return `${titlePrefix}\n\n` +
+                `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+                `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+                `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+                `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
+                `${statusLine}`;
+            })());
+
+    if (!isNewJob && existingJob && !data.updatedSummary) {
+      data.updatedSummary = computeUpdatedSummary(existingJob, data);
+    }
 
     return {
       message,

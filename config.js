@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   OPENAI_KEY: 'jobtracker_openai_key',
   APPLICATIONS: 'jobtracker_local_applications',
   ACTIVE_SESSION_ID: 'jobtracker_active_session_id',
+  ACTIVE_DRAFT_JOB_ID: 'jobtracker_active_draft_job_id',
   THEME: 'jobtracker_theme',
   PROFILE: 'jobtracker_user_profile'
 };
@@ -121,6 +122,18 @@ export const Config = {
       localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION_ID, id);
     } else {
       localStorage.removeItem(STORAGE_KEYS.ACTIVE_SESSION_ID);
+    }
+  },
+
+  getActiveDraftJobId() {
+    return localStorage.getItem(STORAGE_KEYS.ACTIVE_DRAFT_JOB_ID);
+  },
+
+  setActiveDraftJobId(id) {
+    if (id) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_DRAFT_JOB_ID, id);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_DRAFT_JOB_ID);
     }
   },
 

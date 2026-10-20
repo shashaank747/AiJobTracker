@@ -1,7 +1,10 @@
 // JobTrackerAI - Main Application Controller
 import { Config } from './config.js';
 import { SupabaseService } from './supabase-client.js';
-import { AiExtractor, handleUrlOnlyInput, cleanCompanyAndLocation, normalizeSkillList } from './ai-extractor.js';
+import { AiExtractor, handleUrlOnlyInput, cleanCompanyAndLocation, normalizeSkillList, computeUpdatedSummary } from './ai-extractor.js';
+
+// Active drafting session state
+let currentDraftJobId = null;
 
 // Interactive Slash Commands for Zuno
 const SLASH_COMMANDS = [
@@ -53,13 +56,6 @@ const SLASH_COMMANDS = [
     desc: 'Get targeted technical & behavioral interview questions for this job',
     icon: '💡',
     action: 'interview_qs'
-  },
-  {
-    cmd: '/interview',
-    label: 'Status: Interviewing',
-    desc: 'Mark application status as Interviewing in your tracker pipeline',
-    icon: '🎯',
-    action: 'interview'
   },
   {
     cmd: '/offer',
@@ -159,12 +155,15 @@ class JobTrackerApp {
   constructor() {
     this.applications = [];
     this.activeApplication = null;
+    this.activeDraftJobId = Config.getActiveDraftJobId() || null;
+    currentDraftJobId = this.activeDraftJobId;
     this.activeView = 'chat'; // 'chat' or 'dashboard'
     this.chatMessages = [];
     this.currentFilterStatus = 'all';
     this.currentFilterWorkMode = 'all';
     this.searchQuery = '';
 
+    window.__jobTrackerApp = this;
     this.initElements();
     this.bindEvents();
   }
@@ -1381,7 +1380,10 @@ class JobTrackerApp {
   // ==========================================
   startNewChatSession() {
     this.activeApplication = null;
+    this.activeDraftJobId = null;
+    currentDraftJobId = null;
     Config.setActiveSessionId(null);
+    Config.setActiveDraftJobId(null);
     this.chatMessages = [];
     this.topbarSessionMeta.style.display = 'none';
     this.chatMessagesEl.innerHTML = '';
@@ -1395,7 +1397,10 @@ class JobTrackerApp {
 
   selectApplication(app) {
     this.activeApplication = { ...app, isStored: true };
+    this.activeDraftJobId = app.id;
+    currentDraftJobId = app.id;
     Config.setActiveSessionId(app.id);
+    Config.setActiveDraftJobId(app.id);
 
     this.topbarSessionMeta.style.display = 'flex';
     this.topbarCompany.textContent = app.companyName;
@@ -2297,21 +2302,22 @@ class JobTrackerApp {
       return;
     }
 
-    // Slash command for interview questions: /interview Qs, /interview qs, /interview-qs, /questions
+    // Slash command for interview questions: /interview Qs, /interview, /questions
     if (
       lower === '/interview qs' || lower.startsWith('/interview qs ') ||
       lower === '/interview-qs' || lower.startsWith('/interview-qs ') ||
       lower === '/interviewqs' || lower.startsWith('/interviewqs ') ||
       lower === '/interview q' || lower.startsWith('/interview q ') ||
       lower === '/questions' || lower.startsWith('/questions ') ||
-      lower === '/interview questions' || lower.startsWith('/interview questions ')
+      lower === '/interview questions' || lower.startsWith('/interview questions ') ||
+      lower === '/interview' || lower.startsWith('/interview ')
     ) {
       await this.handleInterviewQuestionsCommand(text);
       return;
     }
 
     // Slash command to mark as interviewing
-    if (lower === '/interview' || lower.startsWith('/interview ')) {
+    if (lower === '/interviewing' || lower.startsWith('/interviewing ')) {
       await this.handleStatusCommand('Interviewing');
       return;
     }
@@ -2390,6 +2396,10 @@ class JobTrackerApp {
       // 1. Add to active memory & set active session application
       this.applications.unshift(newApp);
       this.activeApplication = newApp;
+      this.activeDraftJobId = newApp.id;
+      currentDraftJobId = newApp.id;
+      Config.setActiveDraftJobId(newApp.id);
+      Config.setActiveSessionId(newApp.id);
 
       // 2. Persist locally and sync to Supabase (if connected)
       try {
@@ -2428,6 +2438,13 @@ class JobTrackerApp {
 
     try {
       const effectiveProfile = this.getEffectiveUserProfile();
+
+      // Check if we are updating an existing draft or starting fresh
+      const isNewJobCommand = /^(https?:\/\/|\/new|job description:|role:)/i.test(text.trim());
+      if (!isNewJobCommand && this.activeDraftJobId && !this.activeApplication) {
+        this.activeApplication = this.applications.find(a => a.id === this.activeDraftJobId) || null;
+      }
+
       const result = await AiExtractor.processInput(
         text,
         this.activeApplication,
@@ -2450,31 +2467,14 @@ class JobTrackerApp {
       const hasValidJobData = Boolean(result.data && (!isDummyCo || !isDummyRole));
 
       if (hasValidJobData) {
-        const activeCo = (this.activeApplication?.companyName || '').trim().toLowerCase();
-        const newCo = (result.data?.companyName || '').trim().toLowerCase();
-        const isSameCompany = Boolean(
-          activeCo && newCo &&
-          (activeCo === newCo || activeCo.includes(newCo) || newCo.includes(activeCo)) &&
-          !['full', 'target company', 'company'].includes(activeCo)
-        );
-
-        // Detect if matching job already exists in stored database applications
-        const existingApp = this.applications.find(a => 
-          (result.data.companyName && result.data.roleTitle &&
-           (a.companyName || '').trim().toLowerCase() === result.data.companyName.trim().toLowerCase() &&
-           (a.roleTitle || '').trim().toLowerCase() === result.data.roleTitle.trim().toLowerCase()) ||
-          (isSameCompany && this.activeApplication?.id && a.id === this.activeApplication.id)
-        );
-
-        const isNewDraft = !isSameCompany && !existingApp;
-        const prevApp = isNewDraft ? {} : (this.activeApplication || existingApp || {});
-
-        const isStored = Boolean(
-          existingApp ? (existingApp.isStored !== false) : (isSameCompany && this.activeApplication?.isStored)
-        );
-
-        const appId = existingApp?.id || (isSameCompany ? this.activeApplication?.id : null) || crypto.randomUUID();
-        const createdAt = existingApp?.createdAt || (isSameCompany ? this.activeApplication?.createdAt : null) || new Date().toISOString();
+        const isUpdatingDraft = Boolean(!isNewJobCommand && (this.activeDraftJobId || this.activeApplication));
+        const prevApp = isUpdatingDraft ? (this.activeApplication || {}) : {};
+        const appId = isUpdatingDraft
+          ? (this.activeDraftJobId || this.activeApplication?.id || crypto.randomUUID())
+          : crypto.randomUUID();
+        const createdAt = isUpdatingDraft
+          ? (this.activeApplication?.createdAt || new Date().toISOString())
+          : new Date().toISOString();
 
         const mergedSourceUrl = result.data.sourceUrl || prevApp.sourceUrl || '';
         const mergedApplicationUrl = result.data.applicationUrl || prevApp.applicationUrl || '';
@@ -2496,12 +2496,23 @@ class JobTrackerApp {
           : (prevApp.interviewQuestions || []);
         const mergedViewedAt = result.data.viewedAt || prevApp.viewedAt || '';
 
+        const mergedSkills = Array.from(new Set([
+          ...(prevApp.skills || []),
+          ...(result.data.skills || [])
+        ]));
+
+        const updatedSummary = isUpdatingDraft
+          ? (result.data.updatedSummary || computeUpdatedSummary(prevApp, result.data))
+          : null;
+
         const appData = {
-          ...(isNewDraft ? {} : (existingApp || {})),
-          ...(isNewDraft ? {} : (this.activeApplication || {})),
+          ...prevApp,
           ...result.data,
           id: appId,
           createdAt: createdAt,
+          updatedAt: new Date().toISOString(),
+          skills: mergedSkills,
+          updatedSummary: updatedSummary,
           sourceUrl: mergedSourceUrl,
           applicationUrl: mergedApplicationUrl,
           portalName: mergedPortalName,
@@ -2513,20 +2524,42 @@ class JobTrackerApp {
           interviewQuestions: mergedQuestions,
           viewedAt: mergedViewedAt,
           appliedTime: result.data.appliedTime || (prevApp.appliedTime || this.formatTimeOnly(new Date())),
-          isStored: isStored
+          isStored: true
         };
 
         this.activeApplication = this.sanitizeJobData(appData);
+        this.activeDraftJobId = appId;
+        currentDraftJobId = appId;
+        Config.setActiveDraftJobId(appId);
+        Config.setActiveSessionId(appId);
+
+        // Update this.applications without creating duplicate
+        const existingIdx = this.applications.findIndex(a => a.id === appId);
+        if (existingIdx !== -1) {
+          this.applications[existingIdx] = { ...this.activeApplication };
+        } else {
+          this.applications.unshift({ ...this.activeApplication });
+        }
+        Config.saveLocalApplications(this.applications);
 
         // Auto-save application to database immediately so it is tracked in the tracker
         try {
           const saveRes = await SupabaseService.saveApplication(this.activeApplication);
-          this.activeApplication = { ...saveRes.data, isStored: true };
-          await this.loadApplications();
-          this.highlightActiveHistoryItem();
+          if (saveRes?.data) {
+            this.activeApplication = { ...this.activeApplication, ...saveRes.data, isStored: true };
+            const savedIdx = this.applications.findIndex(a => a.id === appId);
+            if (savedIdx !== -1) {
+              this.applications[savedIdx] = { ...this.activeApplication };
+              Config.saveLocalApplications(this.applications);
+            }
+          }
         } catch (saveErr) {
           console.warn('Auto-save application notice:', saveErr);
         }
+
+        this.renderApplicationsGrid();
+        this.updateStats();
+        this.highlightActiveHistoryItem();
 
         const assistantTimestamp = new Date().toISOString();
         const assistantMsg = {
@@ -2536,7 +2569,7 @@ class JobTrackerApp {
           timestamp: assistantTimestamp
         };
 
-        if (isNewDraft) {
+        if (!isUpdatingDraft) {
           this.chatMessages = [];
         }
         this.chatMessages.push({ role: 'user', text, timestamp: userTimestamp });
@@ -2779,9 +2812,7 @@ class JobTrackerApp {
     msgDiv.className = 'chat-msg assistant';
 
     let cardHtml = '';
-    if (jobData) {
-      cardHtml = this.createExtractionCardHtml(jobData);
-    } else if (specialCard) {
+    if (specialCard) {
       if (specialCard.type === 'time_date') {
         cardHtml = this.createTimeDateCardHtml(specialCard.data);
       } else if (specialCard.type === 'today_count') {
@@ -3670,210 +3701,36 @@ class JobTrackerApp {
   }
 
   createExtractionCardHtml(data) {
-    const cleanData = this.sanitizeJobData(data) || {};
-    const { cleanComp, cleanLoc } = cleanCompanyAndLocation(cleanData.companyName, cleanData.location);
-    const cleanRole = cleanData.roleTitle || 'Job Title';
-    const initial = cleanComp.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || 'C';
-    const cleanSkills = normalizeSkillList(cleanData.skills);
-
-    const rawStatus = (cleanData.status || 'Applied').trim();
-    let statusClass = `status-${rawStatus.toLowerCase()}`;
-    let displayStatus = rawStatus;
-    if (rawStatus.toLowerCase() === 'saved') {
-      displayStatus = 'Opportunity';
-      statusClass = 'status-opportunity';
-    }
-
-    // External links (supports both snake_case and camelCase)
-    const appUrl = cleanData.applicationUrl || cleanData.application_url;
-    const srcUrl = cleanData.sourceUrl || cleanData.source_url;
-    let linksHtml = '';
-    if (appUrl) {
-      const applyBtnText = cleanData.portalName ? `Apply (${this.escapeHtml(cleanData.portalName)})` : 'Apply Portal';
-      linksHtml += `
-        <a href="${this.escapeHtml(appUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(cleanData.portalName || 'Portal')})">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-          <span>${applyBtnText}</span>
-        </a>
-      `;
-    }
-    if (srcUrl) {
-      const sourceBtnText = cleanData.source ? `Job Post (${this.escapeHtml(cleanData.source)})` : 'Job Post';
-      linksHtml += `
-        <a href="${this.escapeHtml(srcUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="View Original Post on ${this.escapeHtml(cleanData.source || 'Platform')}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          <span>${sourceBtnText}</span>
-        </a>
-      `;
-    }
-
-    // Specs Bar items
-    const specItems = [];
-    if (cleanData.workMode && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(cleanData.workMode)) {
-      const modeIcon = /remote/i.test(cleanData.workMode) ? '🏠' : (/hybrid/i.test(cleanData.workMode) ? '🔄' : '🏢');
-      specItems.push(`
-        <div class="spec-item spec-mode">
-          <span class="spec-icon">${modeIcon}</span>
-          <span class="spec-label">${this.escapeHtml(cleanData.workMode)}</span>
-        </div>
-      `);
-    }
-    if (cleanData.jobType && !/^(?:not\s+specified|n\/?a|-)$/i.test(cleanData.jobType)) {
-      specItems.push(`
-        <div class="spec-item spec-type">
-          <span class="spec-icon">💼</span>
-          <span class="spec-label">${this.escapeHtml(cleanData.jobType)}</span>
-        </div>
-      `);
-    }
-    if (cleanData.salary && !/^(?:not\s+disclosed|not\s+specified|n\/?a|undisclosed|none|-)$/i.test(cleanData.salary)) {
-      specItems.push(`
-        <div class="spec-item spec-salary">
-          <span class="spec-icon">💰</span>
-          <span class="spec-label">${this.escapeHtml(cleanData.salary)}</span>
-        </div>
-      `);
-    }
-    if (cleanData.is_fresher_eligible || cleanData.isFresherEligible || cleanData.min_years === 0 || cleanData.minYears === 0) {
-      specItems.push(`
-        <div class="spec-item spec-exp">
-          <span class="spec-icon">🎓</span>
-          <span class="spec-label">Fresher Eligible</span>
-        </div>
-      `);
-    } else if (cleanData.min_years || cleanData.minYears) {
-      const yrs = cleanData.min_years || cleanData.minYears;
-      specItems.push(`
-        <div class="spec-item spec-exp">
-          <span class="spec-icon">💼</span>
-          <span class="spec-label">${yrs}+ yrs exp</span>
-        </div>
-      `);
-    }
-    if (cleanData.appliedDate && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(cleanData.appliedDate)) {
-      specItems.push(`
-        <div class="spec-item spec-date">
-          <span class="spec-icon">📅</span>
-          <span class="spec-label">Applied: ${this.escapeHtml(cleanData.appliedDate)}</span>
-        </div>
-      `);
-    }
-    if (cleanData.source && !/^(?:portal|direct\s+portal|online|web|direct)$/i.test(cleanData.source)) {
-      specItems.push(`
-        <div class="spec-item spec-source">
-          <span class="spec-icon">🌐</span>
-          <span class="spec-label">${this.escapeHtml(cleanData.source)}</span>
-        </div>
-      `);
-    } else if (cleanData.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(cleanData.portalName)) {
-      specItems.push(`
-        <div class="spec-item spec-portal">
-          <span class="spec-icon">📝</span>
-          <span class="spec-label">${this.escapeHtml(cleanData.portalName)}</span>
-        </div>
-      `);
-    }
-    if (cleanData.viewedAt || (cleanData.notes && cleanData.notes.includes('Recruiter viewed application'))) {
-      specItems.push(`
-        <div class="spec-item spec-viewed" style="color: #38bdf8;">
-          <span class="spec-icon">👀</span>
-          <span class="spec-label">Recruiter Viewed: <strong>${this.escapeHtml(cleanData.viewedAt || 'Yes')}</strong></span>
-        </div>
-      `);
-    }
-
-    const specsBarHtml = specItems.length > 0 ? `<div class="card-specs-bar">${specItems.join('')}</div>` : '';
-
-    // Skills Section
-    const skillsHtml = (cleanSkills && cleanSkills.length > 0)
-      ? `<div class="card-skills-section">
-          <div class="skills-section-header">
-            <span class="skills-label">Required Skills</span>
-            <span class="skills-count">${cleanSkills.length}</span>
-          </div>
-          <div class="skills-wrap">
-            ${cleanSkills.map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
-          </div>
-         </div>`
-      : '';
-
-    return `
-      <div class="ai-extraction-card">
-        <div class="card-header-row">
-          <div class="card-company-identity">
-            <div class="company-badge-icon">${initial}</div>
-            <div class="company-info-text">
-              <h3 class="card-job-title">${this.escapeHtml(cleanRole)}</h3>
-              <div class="company-subline">
-                <span class="company-name-bold">${this.escapeHtml(cleanComp)}</span>
-                ${cleanLoc ? `<span class="divider">•</span><span class="company-location-sub">📍 ${this.escapeHtml(cleanLoc)}</span>` : ''}
-              </div>
-            </div>
-          </div>
-          <div class="card-status-wrapper">
-            <span class="status-pill ${statusClass}" title="Status: ${displayStatus}">
-              <span class="status-dot"></span>
-              <span>${displayStatus}</span>
-            </span>
-          </div>
-        </div>
-
-        ${specsBarHtml}
-
-        ${skillsHtml}
-
-        ${(cleanData.recruiterName || cleanData.callNotes || (cleanData.interviewQuestions && cleanData.interviewQuestions.length > 0)) ? `
-          <div class="card-call-notes-box">
-            <div class="call-notes-header">
-              <div class="call-notes-title-group">
-                <span class="call-header-icon">📞</span>
-                <span class="call-header-title">Recruiter / Interview Call Log</span>
-              </div>
-              ${cleanData.recruiterName ? `<span class="recruiter-badge">👤 Recruiter: <strong>${this.escapeHtml(cleanData.recruiterName)}</strong></span>` : ''}
-            </div>
-            ${(cleanData.interviewQuestions && cleanData.interviewQuestions.length > 0) ? `
-              <div class="call-questions-block">
-                <span class="block-label">💡 Questions Asked in Call:</span>
-                <ul class="call-questions-items">
-                  ${cleanData.interviewQuestions.map(q => `<li>${this.escapeHtml(this.sanitizeJobField(q))}</li>`).join('')}
-                </ul>
-              </div>
-            ` : ''}
-            ${cleanData.callNotes ? `
-              <div class="call-summary-block">
-                <span class="block-label">📝 Discussion & Details:</span>
-                <p class="call-summary-text">${this.escapeHtml(cleanData.callNotes)}</p>
-              </div>
-            ` : ''}
-          </div>
-        ` : ''}
-
-        <div class="card-actions-row">
-          <div class="card-external-links">
-            ${linksHtml}
-          </div>
-          <div class="card-buttons-group">
-            ${(displayStatus === 'Opportunity') ? `
-              <button class="btn btn-primary btn-sm btn-mark-applied-card" title="Mark this job as Applied today">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span>Mark as Applied</span>
-              </button>
-            ` : ''}
-            <button class="btn btn-secondary btn-sm btn-interview-qs-card" title="Generate tailored interview questions for this role (/interview Qs)">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-              <span>Interview Qs</span>
-            </button>
-            <button class="btn btn-secondary btn-sm btn-view-in-dash" title="View in Applications Tracker">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-              <span>View in Tracker</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
+    // Card presentation completely removed per user request
+    return '';
   }
 
   bindCardEvents(msgDiv, jobData) {
+    const btnActionApply = msgDiv.querySelector('.btn-action-apply');
+    if (btnActionApply) {
+      btnActionApply.addEventListener('click', async () => {
+        this.activeApplication = jobData;
+        await this.handleApplyCommand();
+        btnActionApply.innerHTML = '<span>✓ Applied</span>';
+        btnActionApply.style.opacity = '0.7';
+      });
+    }
+
+    const btnClearDraft = msgDiv.querySelector('.btn-action-clear-draft');
+    if (btnClearDraft) {
+      btnClearDraft.addEventListener('click', () => {
+        this.startNewChatSession();
+        this.showToast('Active draft cleared. Ready for a new listing! (/new)', 'info');
+      });
+    }
+
+    const btnOpenBoard = msgDiv.querySelector('.btn-action-open-board');
+    if (btnOpenBoard) {
+      btnOpenBoard.addEventListener('click', () => {
+        this.switchView('dashboard');
+      });
+    }
+
     const btnView = msgDiv.querySelector('.btn-view-in-dash');
     if (btnView) {
       btnView.addEventListener('click', async () => {
@@ -5546,3 +5403,11 @@ window.addEventListener('DOMContentLoaded', () => {
   const app = new JobTrackerApp();
   app.init();
 });
+
+export async function handleUserInput(text) {
+  const isNewJobCommand = /^(https?:\/\/|\/new|job description:|role:)/i.test(text.trim());
+  if (window.__jobTrackerApp) {
+    window.__jobTrackerApp.chatInput.value = text;
+    return await window.__jobTrackerApp.handleSendMessage();
+  }
+}

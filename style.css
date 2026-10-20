@@ -1834,21 +1834,9 @@ body {
   padding-left: 2px;
 }
 
-/* Structured AI Extraction Card inside Chat - Executive Redesign */
+/* Structured AI Extraction Card inside Chat - Completely removed per user request */
 .ai-extraction-card {
-  background: linear-gradient(145deg, rgba(24, 27, 36, 0.98), rgba(15, 18, 25, 0.98));
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-top: 1px solid rgba(99, 102, 241, 0.35);
-  border-radius: 16px;
-  padding: 20px 22px;
-  box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  position: relative;
-  overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  display: none !important;
 }
 
 .ai-extraction-card:hover {
@@ -2263,6 +2251,103 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Draft Live Updating Banner & Quick Action Chips */
+.draft-update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: #6ee7b7;
+  font-weight: 600;
+  animation: fadeInDraftUpdate 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.draft-update-banner .update-icon {
+  font-size: 0.95rem;
+  display: inline-block;
+  animation: spinOnce 0.6s ease;
+}
+
+@keyframes spinOnce {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeInDraftUpdate {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.draft-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+.btn-action-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn-action-chip.btn-action-apply {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+}
+
+.btn-action-chip.btn-action-apply:hover {
+  background: rgba(99, 102, 241, 0.28);
+  border-color: #818cf8;
+  color: #ffffff;
+}
+
+.btn-action-chip.btn-action-clear-draft {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.btn-action-chip.btn-action-clear-draft:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: #ef4444;
+  color: #fecaca;
+}
+
+.btn-action-chip.btn-action-open-board {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+.btn-action-chip.btn-action-open-board:hover {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #e0f2fe;
 }
 
 /* Thinking / Loading Animation */

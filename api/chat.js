@@ -242,7 +242,7 @@ You are Zuno's extraction core for JobTrackerAI.
 Given any raw text, HTML snippet, or job description, extract the structured information strictly matching the requested JSON format.
 
 RULES:
-1. Return ONLY raw, valid JSON. Never enclose with markdown code blocks (```json ... ```) unless specifically asked.
+1. Return ONLY raw, valid JSON. Never enclose with markdown code blocks (\`\`\`json ... \`\`\`) unless specifically asked.
 2. COMPANY NAME (STRICT SEPARATION):
    - Extract only the clean organization or business name.
    - Do NOT include location prefixes, divider characters (·, |, •, -), or strings like "Location: Bengaluru".
@@ -432,15 +432,24 @@ CRITICAL INSTRUCTION FOR APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Rec
 - When the user pastes a Job Description (JD), job opening, careers post, or vacancy details to track or save:
   1. STRICTLY FORBIDDEN: DO NOT GENERATE INTERVIEW QUESTIONS, CODING QUESTIONS, INTERVIEW PROCESS ROUNDS, OR INTERVIEW PREPARATION IN THIS TURN!
      The user did NOT ask for interview questions. Generating unsolicited interview questions when pasting a JD is strictly prohibited.
-  2. In "message", present the job in a SIMPLE, CLEAN, ELEGANT BREAKDOWN that is immediately understandable at a glance:
-     * A friendly 1-line confirmation: "📋 Here is a simple breakdown of the job details from your JD:"
-     * Clean bullet points:
-       • 🏢 **Role & Company:** [roleTitle] at **[companyName]**
-       • 📍 **Location & Work Mode:** [location] ([workMode])
-       • 💰 **Compensation:** [salary]
-       • 🛠️ **Key Skills & Tech:** [concise list of 4-6 primary skills required]
-     * A short, helpful closing action note:
-       "✅ Saved to your tracker board as an **Opportunity**.\n\n💡 *Need interview prep?* Type **/interview Qs** anytime to generate targeted technical and behavioral interview questions for this role, or **/apply** when you submit your application!"
+  2. In "message", present the job in EXACTLY this clean, concise presentation format (no conversation filler, no extra interview tips):
+     📋 **Job Opportunity Tracked: [roleTitle] at [companyName]**
+
+     • 🏢 **Role & Company:** [roleTitle] at **[companyName]**
+     • 📍 **Location & Mode:** [location] ([workMode])
+     • 💰 **Compensation:** [salary]
+     • 🛠️ **Key Skills:** [concise list of 4-6 primary skills required]
+
+     ✅ Saved to your tracker board as an **Opportunity**.
+     (Or if user explicitly stated they applied:
+     📋 **Application Recorded: [roleTitle] at [companyName]**
+
+     • 🏢 **Role & Company:** [roleTitle] at **[companyName]**
+     • 📍 **Location & Mode:** [location] ([workMode])
+     • 💰 **Compensation:** [salary]
+     • 🛠️ **Key Skills:** [concise list of 4-6 primary skills required]
+
+     ✅ Marked as **Applied**.)
   3. Set "interviewQuestions": [] in "data" unless the user explicitly logs a real recruiter call where questions were asked.
 
 7. INTERVIEW QUESTIONS COMMAND ("/interview Qs" or EXPLICIT INTERVIEW QUESTIONS REQUEST):
@@ -538,7 +547,9 @@ Ensure output is valid JSON.`;
               { role: 'system', content: systemPrompt },
               {
                 role: 'user',
-                content: `${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nActive Job in Session: ${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message: "${text}"`
+                content: existingJob
+                  ? `${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nYou are updating an existing job record in JobTrackerAI.\nCURRENT RECORD:\n${JSON.stringify(existingJob, null, 2)}\n\nUSER'S NEW MESSAGE:\n"${text}"\n\nTASK:\n1. Merge any newly provided details (salary, skills, company, location, status, interview notes).\n2. Retain all existing fields that weren't mentioned in the new message.\n3. If user mentions applying ("applied", "/apply", "applied today"), update status to "Applied" and set appliedDate to "${today}".\n4. Output the complete updated JSON record strictly in the "data" field.`
+                  : `${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nActive Job in Session: None\n\nUser Message: "${text}"`
               }
             ],
             response_format: { type: "json_object" },
@@ -551,6 +562,26 @@ Ensure output is valid JSON.`;
           const content = oaiData.choices?.[0]?.message?.content;
           if (content) {
             const parsed = JSON.parse(content);
+            if (existingJob && parsed.data) {
+              const mergedSkills = Array.from(new Set([
+                ...(Array.isArray(existingJob.skills) ? existingJob.skills : []),
+                ...(Array.isArray(parsed.data.skills) ? parsed.data.skills : [])
+              ]));
+              const mergedRecord = {
+                ...existingJob,
+                ...parsed.data,
+                id: existingJob.id || parsed.data.id,
+                createdAt: existingJob.createdAt || parsed.data.createdAt,
+                skills: mergedSkills
+              };
+              const summary = computeUpdatedSummary(existingJob, mergedRecord);
+              mergedRecord.updatedSummary = summary;
+              parsed.data = sanitizeBackendData(mergedRecord);
+              parsed.data.updatedSummary = summary;
+              if (!parsed.message || parsed.message === 'Done' || parsed.message.startsWith('Extracted job:')) {
+                parsed.message = `🔄 **Updated draft!**\n\n${summary ? `**${summary}** for **${parsed.data.companyName}** (${parsed.data.roleTitle}).` : `Updated details for **${parsed.data.companyName}**.`}`;
+              }
+            }
             return res.status(200).json({
               message: parsed.message || 'Done',
               data: parsed.data ? sanitizeBackendData(parsed.data) : null,
@@ -642,7 +673,8 @@ Ensure output is valid JSON.`;
               items: { type: "STRING" }
             },
             callNotes: { type: "STRING", nullable: true },
-            notes: { type: "STRING", nullable: true }
+            notes: { type: "STRING", nullable: true },
+            updatedSummary: { type: "STRING", nullable: true }
           }
         }
       },
@@ -655,7 +687,9 @@ Ensure output is valid JSON.`;
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${cleanedText}"`
+              text: existingJob
+                ? `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nYou are updating an existing job record in JobTrackerAI.\nCURRENT RECORD:\n${JSON.stringify(existingJob, null, 2)}\n\nUSER'S NEW MESSAGE:\n"${cleanedText}"\n\nTASK:\n1. Merge any newly provided details (salary, skills, company, location, status, interview notes).\n2. Retain all existing fields that weren't mentioned in the new message.\n3. If the user mentions applying ("applied", "/apply", "applied today"), update status to "Applied" and set appliedDate to "${today}".\n4. Merge new skills with existing skills (do not discard existing skills unless contradicted).\n5. Output the complete updated JSON record strictly in the "data" field.`
+                : `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nCurrent Active Job in Session: None\n\nUser Message:\n"${cleanedText}"`
             }
           ]
         }
@@ -758,16 +792,51 @@ Ensure output is valid JSON.`;
     const detectedDate = !isQuestionOrProfile ? parseAppliedDate(text, null) : null;
     const detectedSource = !isQuestionOrProfile ? parseJobSource(text) : null;
 
-    if (!isQuestionOrProfile && existingJob && (detectedDate || detectedSource || isRejectedSignal)) {
-      if (!parsed.data) {
-        parsed.data = { ...existingJob };
+    if (existingJob) {
+      if (parsed.data) {
+        const mergedSkills = Array.from(new Set([
+          ...(Array.isArray(existingJob.skills) ? existingJob.skills : []),
+          ...(Array.isArray(parsed.data.skills) ? parsed.data.skills : [])
+        ]));
+        const mergedRecord = {
+          ...existingJob,
+          ...parsed.data,
+          id: existingJob.id || parsed.data.id,
+          createdAt: existingJob.createdAt || parsed.data.createdAt,
+          skills: mergedSkills
+        };
+        if (detectedDate) {
+          mergedRecord.appliedDate = detectedDate;
+          if (mergedRecord.status === 'Saved') mergedRecord.status = 'Applied';
+        }
+        if (detectedSource) mergedRecord.source = detectedSource;
+        if (isRejectedSignal) mergedRecord.status = 'Rejected';
+
+        const summary = computeUpdatedSummary(existingJob, mergedRecord);
+        mergedRecord.updatedSummary = summary;
+        parsed.data = sanitizeBackendData(mergedRecord);
+        parsed.data.updatedSummary = summary;
+        if (!parsed.message || parsed.message === 'Done' || parsed.message.startsWith('Extracted job:')) {
+          parsed.message = `🔄 **Updated draft!**\n\n${summary ? `**${summary}** for **${parsed.data.companyName}** (${parsed.data.roleTitle}).` : `Updated details for **${parsed.data.companyName}**.`}`;
+        }
+      } else if (!isQuestionOrProfile && (detectedDate || detectedSource || isRejectedSignal)) {
+        const mergedRecord = { ...existingJob };
+        if (detectedDate) {
+          mergedRecord.appliedDate = detectedDate;
+          mergedRecord.status = 'Applied';
+        }
+        if (detectedSource) mergedRecord.source = detectedSource;
+        if (isRejectedSignal) mergedRecord.status = 'Rejected';
+
+        const summary = computeUpdatedSummary(existingJob, mergedRecord);
+        mergedRecord.updatedSummary = summary;
+        parsed.data = sanitizeBackendData(mergedRecord);
+        parsed.data.updatedSummary = summary;
         parsed.message = parsed.message || (isRejectedSignal
           ? `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) status to **Rejected** (Not selected by employer).\n\nJob search rejections are completely normal and part of the journey—don't let it discourage you! You're one step closer to the right opportunity.`
-          : `Updated **${existingJob.companyName}** (${existingJob.roleTitle}) with the latest details.`);
+          : `Updated **${existingJob.companyName}** (${existingJob.roleTitle}): ${summary}.`);
       }
-    }
-
-    if (parsed.data) {
+    } else if (parsed.data) {
       if (isRejectedSignal) {
         parsed.data.status = 'Rejected';
       }
@@ -881,6 +950,91 @@ function parseAppliedDate(text, defaultDate = undefined) {
   }
 
   return defaultDate !== undefined ? defaultDate : now.toISOString().split('T')[0];
+}
+
+export function computeUpdatedSummary(previousJob, updatedJob) {
+  if (!previousJob || !updatedJob) return null;
+  const changes = [];
+
+  // Salary
+  const oldSalary = (previousJob.salary || previousJob.salary_text || '').trim();
+  const newSalary = (updatedJob.salary || updatedJob.salary_text || '').trim();
+  if (newSalary && newSalary !== oldSalary && !/^(?:not\s+disclosed|not\s+specified|n\/?a)$/i.test(newSalary)) {
+    changes.push('salary');
+  }
+
+  // Skills
+  const oldSkills = new Set((previousJob.skills || []).map(s => s.toLowerCase().trim()));
+  const newSkills = (updatedJob.skills || []).filter(s => !oldSkills.has(s.toLowerCase().trim()));
+  if (newSkills.length > 0) {
+    changes.push('skills');
+  }
+
+  // Status
+  const oldStatus = (previousJob.status || '').toLowerCase().trim();
+  const newStatus = (updatedJob.status || '').toLowerCase().trim();
+  if (newStatus && newStatus !== oldStatus) {
+    if (newStatus === 'applied') changes.push('status to Applied');
+    else if (newStatus === 'rejected') changes.push('status to Rejected');
+    else changes.push(`status to ${updatedJob.status}`);
+  }
+
+  // Applied Date
+  if (updatedJob.appliedDate && updatedJob.appliedDate !== previousJob.appliedDate) {
+    if (!changes.includes('status to Applied')) {
+      changes.push('applied date');
+    }
+  }
+
+  // Location
+  const oldLoc = (previousJob.location || '').trim();
+  const newLoc = (updatedJob.location || '').trim();
+  if (newLoc && newLoc !== oldLoc && !/^(?:not\s+specified|n\/?a)$/i.test(newLoc)) {
+    changes.push('location');
+  }
+
+  // Work Mode
+  const oldMode = (previousJob.workMode || previousJob.work_model || '').trim();
+  const newMode = (updatedJob.workMode || updatedJob.work_model || '').trim();
+  if (newMode && newMode !== oldMode && newMode !== 'Unknown') {
+    changes.push('work mode');
+  }
+
+  // Recruiter / Call notes
+  if (
+    (updatedJob.callNotes && updatedJob.callNotes !== previousJob.callNotes) ||
+    (updatedJob.recruiterName && updatedJob.recruiterName !== previousJob.recruiterName) ||
+    (updatedJob.interviewQuestions && updatedJob.interviewQuestions.length > (previousJob.interviewQuestions?.length || 0))
+  ) {
+    changes.push('interview notes');
+  }
+
+  // Links
+  if (
+    (updatedJob.applicationUrl && updatedJob.applicationUrl !== previousJob.applicationUrl) ||
+    (updatedJob.sourceUrl && updatedJob.sourceUrl !== previousJob.sourceUrl)
+  ) {
+    changes.push('links');
+  }
+
+  // Role
+  const oldRole = (previousJob.roleTitle || previousJob.job_title || '').trim();
+  const newRole = (updatedJob.roleTitle || updatedJob.job_title || '').trim();
+  if (newRole && newRole !== oldRole && !['job title', 'saved link', 'opportunity'].includes(oldRole.toLowerCase())) {
+    changes.push('role');
+  }
+
+  // Company
+  const oldCo = (previousJob.companyName || previousJob.company_name || '').trim();
+  const newCo = (updatedJob.companyName || updatedJob.company_name || '').trim();
+  if (newCo && newCo !== oldCo && !['pending details', 'target company'].includes(oldCo.toLowerCase())) {
+    changes.push('company');
+  }
+
+  if (changes.length === 0) return 'Updated draft details';
+  if (changes.length === 1) return `Added ${changes[0]}`;
+  if (changes.length === 2) return `Added ${changes[0]} & ${changes[1]}`;
+  return `Added ${changes.slice(0, -1).join(', ')} & ${changes[changes.length - 1]}`;
 }
 
 function parseJobSource(text) {
