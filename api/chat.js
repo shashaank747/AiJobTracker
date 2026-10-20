@@ -44,6 +44,45 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Message text is required.' });
     }
 
+    // Tier 1 Fast-Path: Quick URL-save shortcut (Bypasses LLM, sub-5ms response)
+    const trimmedInput = text.trim();
+    const urlPattern = /^(https?:\/\/[^\s]+)$/i;
+    const urlMatch = trimmedInput.match(urlPattern);
+    if (urlMatch) {
+      const cleanUrl = stripTrackingParams(urlMatch[1]);
+      const parsedMeta = parseSlugMetadata(cleanUrl);
+      const compName = parsedMeta.company ? (parsedMeta.company.charAt(0).toUpperCase() + parsedMeta.company.slice(1)) : "Pending Details";
+      const jobTitle = parsedMeta.title || "Saved Link";
+
+      return res.status(200).json({
+        message: `🔖 **Saved link to database!**\n\n- **Source:** ${cleanUrl}\n- **Status:** Marked as \`Saved\` lead.\n\n*You can open the card anytime from your tracker to paste the full JD or add notes when you're ready to apply.*`,
+        data: {
+          company_name: compName,
+          companyName: compName,
+          job_title: jobTitle,
+          roleTitle: jobTitle,
+          source_url: cleanUrl,
+          sourceUrl: cleanUrl,
+          application_url: null,
+          applicationUrl: null,
+          status: "Saved",
+          applied_date: null,
+          appliedDate: null,
+          work_model: "Unknown",
+          workMode: "Unknown",
+          is_incomplete: true,
+          isIncomplete: true,
+          skills: [],
+          notes: `Bookmarked from ${parsedMeta.source} on ${new Date().toLocaleDateString('en-US')}`
+        },
+        profileUpdate: null,
+        cardType: null,
+        cardData: null,
+        is_url_shortcut: true,
+        provider: 'fast-path-url'
+      });
+    }
+
     const effectiveGeminiKey = (clientApiKey && !clientApiKey.startsWith('sk-')) ? clientApiKey : geminiKey;
     const effectiveOpenaiKey = (clientApiKey && clientApiKey.startsWith('sk-')) ? clientApiKey : openaiKey;
 
@@ -199,6 +238,28 @@ CORE CAPABILITIES:
     - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
 
 4. JOB APPLICATION EXTRACTION & TRACKING:
+You are Zuno's extraction core for JobTrackerAI.
+Given any raw text, HTML snippet, or job description, extract the structured information strictly matching the requested JSON format.
+
+RULES:
+1. Return ONLY raw, valid JSON. Never enclose with markdown code blocks (```json ... ```) unless specifically asked.
+2. COMPANY NAME (STRICT SEPARATION):
+   - Extract only the clean organization or business name.
+   - Do NOT include location prefixes, divider characters (·, |, •, -), or strings like "Location: Bengaluru".
+   - Never let location bleed into company name.
+3. SKILLS & TOOLS (HIGH-LEVEL ONLY):
+   - Extract only standard top-level software, libraries, languages, and core methodologies (e.g., "Excel", "SQL", "Power BI", "Python", "Tableau", "Manual Testing", "Jira", "Docker", "Figma").
+   - NEVER extract individual function or formula names (e.g., do NOT extract "IF", "SUMIFS", "VLOOKUP", "XLOOKUP", "SELECT", "WHERE", "JOINs", "Power Query", "DAX", "PivotTables").
+   - Strip prefixes such as "Microsoft Excel: VLOOKUP" down to just "Excel".
+4. LOCATION & WORK MODEL:
+   - Extract "location" cleanly (e.g., "Bengaluru, India" or "San Francisco, CA"). Do not include prefix "Location:".
+   - Detect work_model as "On-site", "Hybrid", or "Remote".
+5. EXPERIENCE & FRESHER:
+   - If experience states "0-1 year", "Fresher", "entry-level", or mentions upcoming graduate batches (2024/2025/2026), set "is_fresher_eligible": true and "min_years": 0. If minimum years like "3+ years" are specified, set "is_fresher_eligible": false and "min_years": 3.
+6. Extract both "source_url" and "application_url" if present in the text (also populate "sourceUrl" and "applicationUrl").
+7. If salary is mentioned as LPA (e.g., "6 LPA"), convert to annual numeric values (e.g., 600000) with currency "INR", and provide formatted salary string.
+8. Never invent information: if a field like salary or deadline is not mentioned, set it to null.
+
 - Whenever the user pastes a job description (JD), job link, application confirmation email, or asks to track a job:
   Extract structured details into "data":
   {
@@ -207,23 +268,75 @@ CORE CAPABILITIES:
     "jobType": "Full-time" | "Internship" | "Contract" | "Part-time",
     "workMode": "Remote" | "Hybrid" | "On-site",
     "location": "City, Country or Remote",
-    "salary": "Disclosed salary or 'Not disclosed'",
+    "salary": "Formatted salary string (e.g. '₹6,00,000 / year (6 LPA)' or '$120,000 / year') or null",
+    "salary_numeric": 600000 or null,
+    "currency": "INR" or "USD" or null,
     "source": "Discovery platform where user saw the post (e.g. Indeed, LinkedIn, Glassdoor, Naukri, Wellfound)",
     "portalName": "Portal or platform where user filled/applied (e.g. Company Portal, Greenhouse, Workday, Lever, Ashby)",
     "applicationUrl": "Direct portal or ATS URL where application was filled or submitted",
+    "application_url": "Direct portal or ATS URL where application was filled or submitted",
     "sourceUrl": "Listing URL on the discovery platform where job was originally seen",
+    "source_url": "Listing URL on the discovery platform where job was originally seen",
     "status": "Saved" | "Applied" | "Interviewing" | "Offer" | "Rejected",
     "isBookmarked": false,
+    "is_fresher_eligible": true | false,
+    "min_years": 0 or number or null,
     "appliedDate": "YYYY-MM-DD" or null,
     "appliedTime": "HH:MM AM/PM" or null,
-    "skills": ["Skill1", "Skill2", ...],
-    "recruiterName": "Recruiter or caller name if mentioned (e.g. Priya)",
-    "recruiterEmail": "Recruiter email if mentioned",
-    "recruiterPhone": "Recruiter phone number if mentioned",
+    "deadline": "YYYY-MM-DD" or null,
+    "skills": ["Excel", "PostgreSQL", ...],
+    "recruiterName": "Recruiter or caller name if mentioned or null",
+    "recruiterEmail": "Recruiter email if mentioned or null",
+    "recruiterPhone": "Recruiter phone number if mentioned or null",
     "interviewQuestions": ["Questions or topics asked in the call"],
     "callNotes": "Summary of discussion, HR details, notice period, and next interview round",
     "notes": "Full notes (including formatted call log with questions and dates)"
   }
+
+FEW-SHOT EXTRACTION EXAMPLES & EDGE CASES:
+Example 1 (Indian Salary LPA):
+Input: "Package: 4.5 to 6.5 LPA. Location: Bengaluru"
+Output:
+{
+  "salary": {
+    "is_disclosed": true,
+    "min_amount": 450000,
+    "max_amount": 650000,
+    "currency": "INR",
+    "period": "yearly"
+  },
+  "salary_text": "₹4,50,000 - ₹6,50,000 / year (4.5-6.5 LPA)"
+}
+
+Example 2 (Freshers via Degree Batches / Passouts):
+Input: "Inviting applications from 2024 / 2025 passouts for Graduate Engineer Trainee"
+Output:
+{
+  "is_fresher_eligible": true,
+  "min_experience_years": 0,
+  "min_years": 0,
+  "job_title": "Graduate Engineer Trainee"
+}
+
+Example 3 (Hybrid Work Rules):
+Input: "Work from our Indiranagar office 3 days a week"
+Output:
+{
+  "work_model": "Hybrid",
+  "workMode": "Hybrid"
+}
+
+Example 4 (Dual Links Aggregator vs Portal):
+Input: "Saw this on linkedin: https://www.linkedin.com/jobs/view/123 but filled application on Workday: https://acme.wd3.myworkdayjobs.com/apply/456"
+Output:
+{
+  "source_url": "https://www.linkedin.com/jobs/view/123",
+  "sourceUrl": "https://www.linkedin.com/jobs/view/123",
+  "application_url": "https://acme.wd3.myworkdayjobs.com/apply/456",
+  "applicationUrl": "https://acme.wd3.myworkdayjobs.com/apply/456",
+  "source": "LinkedIn",
+  "portalName": "Workday"
+}
 
 CRITICAL INSTRUCTION FOR DUAL LINKS (DISCOVERY / WHERE SEEN vs APPLICATION / WHERE FILLED):
 - Users frequently discover a job on an aggregator or job board (e.g., Indeed, LinkedIn, Glassdoor, Naukri, Wellfound) but actually fill out and submit the application on an official company career portal or ATS (e.g., Greenhouse, Workday, Lever, Ashby, Taleo, company website careers page).
@@ -472,17 +585,86 @@ Ensure output is valid JSON.`;
     let candidateText = null;
     const modelErrors = {};
 
+    const cleanedText = cleanRawJD(text);
+
+    const structuredResponseSchema = {
+      type: "OBJECT",
+      properties: {
+        message: { type: "STRING" },
+        cardType: { type: "STRING", nullable: true },
+        cardData: { type: "OBJECT", nullable: true },
+        profileUpdate: { type: "OBJECT", nullable: true },
+        data: {
+          type: "OBJECT",
+          nullable: true,
+          properties: {
+            company_name: { type: "STRING" },
+            job_title: { type: "STRING" },
+            companyName: { type: "STRING" },
+            roleTitle: { type: "STRING" },
+            work_model: { type: "STRING", enum: ["Remote", "Hybrid", "On-site", "Unknown"] },
+            workMode: { type: "STRING" },
+            jobType: { type: "STRING" },
+            location: { type: "STRING", nullable: true },
+            min_experience_years: { type: "NUMBER", nullable: true },
+            max_experience_years: { type: "NUMBER", nullable: true },
+            is_fresher_eligible: { type: "BOOLEAN", nullable: true },
+            salary: {
+              type: "OBJECT",
+              nullable: true,
+              properties: {
+                is_disclosed: { type: "BOOLEAN" },
+                min_amount: { type: "NUMBER", nullable: true },
+                max_amount: { type: "NUMBER", nullable: true },
+                currency: { type: "STRING", nullable: true },
+                period: { type: "STRING", enum: ["yearly", "monthly", "hourly", "unknown"] }
+              },
+              required: ["is_disclosed"]
+            },
+            salary_text: { type: "STRING", nullable: true },
+            skills: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            application_url: { type: "STRING", nullable: true },
+            source_url: { type: "STRING", nullable: true },
+            portalName: { type: "STRING", nullable: true },
+            source: { type: "STRING", nullable: true },
+            status: { type: "STRING", nullable: true },
+            appliedDate: { type: "STRING", nullable: true },
+            appliedTime: { type: "STRING", nullable: true },
+            deadline: { type: "STRING", nullable: true },
+            recruiterName: { type: "STRING", nullable: true },
+            recruiterEmail: { type: "STRING", nullable: true },
+            recruiterPhone: { type: "STRING", nullable: true },
+            interviewQuestions: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            callNotes: { type: "STRING", nullable: true },
+            notes: { type: "STRING", nullable: true }
+          }
+        }
+      },
+      required: ["message"]
+    };
+
     const requestBody = {
       contents: [
         {
           role: 'user',
           parts: [
             {
-              text: `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${text}"`
+              text: `${systemPrompt}\n\n${databaseContext}\n\n${profileContext}\n\n${historyContext}\n\nCurrent Active Job in Session:\n${existingJob ? JSON.stringify(existingJob, null, 2) : 'None'}\n\nUser Message:\n"${cleanedText}"`
             }
           ]
         }
-      ]
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: structuredResponseSchema,
+        temperature: 0.2
+      }
     };
 
     const serverStartTime = Date.now();
@@ -717,6 +899,271 @@ function parseJobSource(text) {
   return null;
 }
 
+function stripTrackingParams(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  try {
+    const cleanRaw = rawUrl.trim().replace(/[.,;!?)]+$/, '');
+    const url = new URL(cleanRaw);
+    const paramsToStrip = [
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'trackingId', 'refId', 'midToken', 'trk', 'fbclid', 'gclid', 'msclkid',
+      'origin', 'originalSubdomain'
+    ];
+    paramsToStrip.forEach(p => url.searchParams.delete(p));
+    return url.toString();
+  } catch {
+    return rawUrl.trim().replace(/[.,;!?)]+$/, '');
+  }
+}
+
+function parseSlugMetadata(cleanUrl) {
+  if (!cleanUrl || typeof cleanUrl !== 'string') {
+    return { source: 'Web Link', title: 'Saved Opportunity', company: null };
+  }
+  try {
+    const urlObj = new URL(cleanUrl);
+    const host = urlObj.hostname.toLowerCase();
+    const path = urlObj.pathname;
+
+    // LinkedIn Jobs
+    if (host.includes("linkedin.com")) {
+      const jobId = path.match(/\/jobs\/view\/(\d+)/)?.[1] || "";
+      const slugRole = path.match(/\/jobs\/view\/([a-z0-9-]+?)(?:-(\d+))?$/i);
+      let derivedTitle = jobId ? `LinkedIn Opportunity (#${jobId})` : "LinkedIn Opportunity";
+      let derivedCo = null;
+      if (slugRole && slugRole[1]) {
+        const parts = slugRole[1].split('-');
+        const atIdx = parts.indexOf('at');
+        if (atIdx > 0 && atIdx < parts.length - 1) {
+          derivedTitle = parts.slice(0, atIdx).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          derivedCo = parts.slice(atIdx + 1).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        }
+      }
+      return {
+        source: "LinkedIn",
+        title: derivedTitle,
+        company: derivedCo
+      };
+    }
+
+    // Naukri Jobs (e.g., /job-listings-data-analyst-abc-technologies-bangalore-12345)
+    if (host.includes("naukri.com")) {
+      const slugMatch = path.match(/\/job-listings-([a-z0-9-]+)/i);
+      if (slugMatch) {
+        const words = slugMatch[1].split("-").filter(w => !/^\d+$/.test(w));
+        return {
+          source: "Naukri",
+          title: words.slice(0, 3).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+          company: null
+        };
+      }
+      return { source: "Naukri", title: "Naukri Lead", company: null };
+    }
+
+    // Greenhouse ATS (boards.greenhouse.io/{company}/jobs/{id})
+    if (host.includes("greenhouse.io")) {
+      const parts = path.split('/').filter(Boolean);
+      const company = parts[0] && parts[0] !== 'embed' ? parts[0] : (parts[1] || null);
+      return {
+        source: "Greenhouse",
+        title: "Greenhouse Opportunity",
+        company: company ? (company.charAt(0).toUpperCase() + company.slice(1)) : null
+      };
+    }
+
+    // Lever ATS (jobs.lever.co/{company}/{id})
+    if (host.includes("lever.co")) {
+      const parts = path.split('/').filter(Boolean);
+      const company = parts[0] || null;
+      return {
+        source: "Lever",
+        title: "Lever Opportunity",
+        company: company ? (company.charAt(0).toUpperCase() + company.slice(1)) : null
+      };
+    }
+
+    // Ashby ATS (jobs.ashbyhq.com/{company}/{id})
+    if (host.includes("ashbyhq.com")) {
+      const parts = path.split('/').filter(Boolean);
+      const company = parts[0] || null;
+      return {
+        source: "Ashby",
+        title: "Ashby Opportunity",
+        company: company ? (company.charAt(0).toUpperCase() + company.slice(1)) : null
+      };
+    }
+
+    // Indeed
+    if (host.includes("indeed.com")) {
+      return {
+        source: "Indeed",
+        title: "Indeed Opportunity",
+        company: null
+      };
+    }
+
+    // Generic link
+    return {
+      source: host.replace(/^www\./i, ""),
+      title: "Saved Opportunity",
+      company: null
+    };
+  } catch {
+    return {
+      source: "Web Link",
+      title: "Saved Opportunity",
+      company: null
+    };
+  }
+}
+
+function cleanRawJD(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    // Remove repeated whitespace and blank lines
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    // Remove common copy-paste UI artifacts & job board buttons
+    .replace(/\b(?:Show more|Show less|Easy Apply|Report this job|Save job|Apply on company site|Apply now|Apply externally|Promoted by employer|Job alert created|Be an early applicant|Directly through employer|See more jobs like this)\b/gi, '')
+    // Strip URLs that are tracking beacons/images rather than links
+    .replace(/https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|svg|webp|ico)(?:\?[^\s]*)?/gi, '')
+    // Normalize unicode spaces and quotes
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim();
+}
+
+const CANONICAL_SKILLS = {
+  "ms excel": "Excel",
+  "microsoft excel": "Excel",
+  "advanced excel": "Excel",
+  "excel": "Excel",
+  "powerbi": "Power BI",
+  "power bi": "Power BI",
+  "power bi desktop": "Power BI",
+  "postgres": "PostgreSQL",
+  "postgresql": "PostgreSQL",
+  "py": "Python",
+  "python": "Python",
+  "python3": "Python",
+  "manual qa": "Manual Testing",
+  "qa testing": "Manual Testing",
+  "software testing": "Manual Testing",
+  "automation testing": "Automation Testing",
+  "react": "React",
+  "reactjs": "React",
+  "react.js": "React",
+  "node": "Node.js",
+  "nodejs": "Node.js",
+  "node.js": "Node.js",
+  "mongo": "MongoDB",
+  "mongodb": "MongoDB",
+  "k8s": "Kubernetes",
+  "kubernetes": "Kubernetes",
+  "docker": "Docker",
+  "aws": "AWS",
+  "amazon web services": "AWS",
+  "gcp": "Google Cloud (GCP)",
+  "google cloud": "Google Cloud (GCP)",
+  "azure": "Azure",
+  "golang": "Go",
+  "go": "Go",
+  "cpp": "C++",
+  "c++": "C++",
+  "c#": "C#",
+  "csharp": "C#",
+  "sql": "SQL",
+  "git": "Git",
+  "github": "GitHub",
+  "ts": "TypeScript",
+  "typescript": "TypeScript",
+  "js": "JavaScript",
+  "javascript": "JavaScript",
+  "spring": "Spring Boot",
+  "springboot": "Spring Boot",
+  "spring boot": "Spring Boot"
+};
+
+function cleanCompanyAndLocation(company, location) {
+  let cleanComp = (company || 'Unknown Company').trim();
+  let cleanLoc = (location || '').trim();
+
+  // Strip prefix "Location:" from location itself
+  cleanLoc = cleanLoc
+    .replace(/^Location:\s*/i, '')
+    .replace(/[·|•-]\s*$/, '')
+    .trim();
+
+  // Strip trailing "Location: ...", separators, or bullets from company
+  cleanComp = cleanComp
+    .replace(/[·|•-]\s*Location.*$/i, '')
+    .replace(/^Company:\s*/i, '')
+    .replace(/[·|•-]\s*$/, '')
+    .trim();
+
+  // Remove location from company name if it leaked inside
+  if (cleanLoc && cleanComp.toLowerCase().includes(cleanLoc.toLowerCase())) {
+    cleanComp = cleanComp.replace(new RegExp(`[·|•,-]?\\s*${cleanLoc.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}`, 'gi'), '').trim();
+    cleanComp = cleanComp.replace(/[·|•,-]\s*$/, '').trim();
+  }
+
+  if (!cleanComp) cleanComp = 'Unknown Company';
+  return { cleanComp, cleanLoc };
+}
+
+const EXCLUDE_FORMULAS = new Set([
+  'if', 'sumifs', 'sumif', 'vlookup', 'xlookup', 'hlookup', 'index match', 'index-match',
+  'pivottables', 'pivot tables', 'pivot table', 'select', 'where', 'joins', 'join',
+  'group by', 'order by', 'power query', 'dax', 'countif', 'countifs', 'average',
+  'formula', 'formulas'
+]);
+
+function normalizeSkillList(skillsArray) {
+  if (!Array.isArray(skillsArray)) return [];
+  const normalized = new Set();
+
+  skillsArray.forEach(raw => {
+    if (!raw || typeof raw !== 'string') return;
+    let clean = raw
+      .replace(/[*_#`~]+/g, '')
+      .replace(/^(?:basic\s+knowledge\s+of|good\s+knowledge\s+of|working\s+knowledge\s+of|knowledge\s+of|experience\s+with|experience\s+in|hands-on\s+experience\s+with|proficiency\s+in|proficient\s+in|familiarity\s+with|understanding\s+of|strong\s+understanding\s+of|skills?\s*(?:in|with)?)\s+/i, '')
+      .trim();
+
+    const lower = clean.toLowerCase();
+
+    // Skip formula and syntax fragments
+    if (EXCLUDE_FORMULAS.has(lower)) return;
+    if (/^(?:if|sumifs|vlookup|xlookup|select|where|joins?|dax|power\s*query)$/i.test(lower)) return;
+
+    // Deduplicate & Strip Prefixes: Clean items like "Microsoft Excel: VLOOKUP" down to just "Excel"
+    if (/excel/i.test(clean)) clean = 'Excel';
+    else if (/power\s*bi/i.test(clean)) clean = 'Power BI';
+    else if (/^sql/i.test(clean) || /\bsql\b/i.test(clean)) clean = 'SQL';
+    else if (/python/i.test(clean)) clean = 'Python';
+    else if (/jira/i.test(clean)) clean = 'Jira';
+    else if (/manual\s*testing/i.test(clean) || /\bqa\s*testing\b/i.test(clean)) clean = 'Manual Testing';
+    else if (/postgres/i.test(clean)) clean = 'PostgreSQL';
+    else if (/docker/i.test(clean)) clean = 'Docker';
+    else if (/figma/i.test(clean)) clean = 'Figma';
+    else if (/tableau/i.test(clean)) clean = 'Tableau';
+    else {
+      clean = CANONICAL_SKILLS[lower] || clean;
+    }
+
+    if (clean && clean.length > 1 && !/^(?:etc|and|or|plus)$/i.test(clean)) {
+      normalized.add(clean);
+    }
+  });
+
+  return Array.from(normalized);
+}
+
+function normalizeSkills(skillsArray) {
+  return normalizeSkillList(skillsArray);
+}
+
 function sanitizeBackendData(data) {
   if (!data || typeof data !== 'object') return data;
   const strip = (s) => {
@@ -729,10 +1176,23 @@ function sanitizeBackendData(data) {
   };
 
   const cleaned = { ...data };
-  if (cleaned.companyName) cleaned.companyName = strip(cleaned.companyName);
+
+  // Map snake_case / schema properties to camelCase
+  if (cleaned.company_name && !cleaned.companyName) cleaned.companyName = cleaned.company_name;
+  if (cleaned.job_title && !cleaned.roleTitle) cleaned.roleTitle = cleaned.job_title;
+  if (cleaned.work_model && !cleaned.workMode) cleaned.workMode = cleaned.work_model;
+  if (cleaned.min_experience_years !== undefined && cleaned.min_years === undefined) {
+    cleaned.min_years = cleaned.min_experience_years;
+    cleaned.minYears = cleaned.min_experience_years;
+  }
+
+  // Strict entity separation (prevent company / location bleed)
+  const { cleanComp, cleanLoc } = cleanCompanyAndLocation(cleaned.company_name || cleaned.companyName, cleaned.location);
+  cleaned.companyName = strip(cleanComp);
+  cleaned.company_name = strip(cleanComp);
+  cleaned.location = strip(cleanLoc);
+
   if (cleaned.roleTitle) cleaned.roleTitle = strip(cleaned.roleTitle);
-  if (cleaned.location) cleaned.location = strip(cleaned.location);
-  if (cleaned.salary) cleaned.salary = strip(cleaned.salary);
   if (cleaned.workMode) cleaned.workMode = strip(cleaned.workMode);
   if (cleaned.jobType) cleaned.jobType = strip(cleaned.jobType);
   if (cleaned.source) cleaned.source = strip(cleaned.source);
@@ -740,10 +1200,69 @@ function sanitizeBackendData(data) {
   if (cleaned.status) cleaned.status = strip(cleaned.status);
   if (cleaned.recruiterName) cleaned.recruiterName = strip(cleaned.recruiterName);
 
+  // Map URLs both ways
+  const finalSourceUrl = cleaned.source_url || cleaned.sourceUrl || null;
+  const finalAppUrl = cleaned.application_url || cleaned.applicationUrl || null;
+  cleaned.source_url = finalSourceUrl;
+  cleaned.sourceUrl = finalSourceUrl;
+  cleaned.application_url = finalAppUrl;
+  cleaned.applicationUrl = finalAppUrl;
+
+  // Structured salary handling from Gemini Structured Outputs
+  if (cleaned.salary && typeof cleaned.salary === 'object') {
+    const sObj = cleaned.salary;
+    if (sObj.is_disclosed) {
+      cleaned.salary_numeric = sObj.min_amount || null;
+      cleaned.currency = sObj.currency || 'INR';
+      if (sObj.min_amount) {
+        if (sObj.currency === 'INR') {
+          const minLpa = (sObj.min_amount / 100000).toFixed(1).replace(/\.0$/, '');
+          const maxLpa = sObj.max_amount ? (sObj.max_amount / 100000).toFixed(1).replace(/\.0$/, '') : minLpa;
+          cleaned.salary = (minLpa === maxLpa)
+            ? `₹${sObj.min_amount.toLocaleString('en-IN')} / year (${minLpa} LPA)`
+            : `₹${sObj.min_amount.toLocaleString('en-IN')} - ₹${(sObj.max_amount || sObj.min_amount).toLocaleString('en-IN')} / year (${minLpa}-${maxLpa} LPA)`;
+        } else {
+          cleaned.salary = `${sObj.currency || '$'}${sObj.min_amount.toLocaleString()} / ${sObj.period || 'year'}`;
+        }
+      } else {
+        cleaned.salary = cleaned.salary_text || 'Disclosed';
+      }
+    } else {
+      cleaned.salary = null;
+      cleaned.salary_numeric = null;
+    }
+  } else if (cleaned.salary && typeof cleaned.salary === 'string') {
+    cleaned.salary = strip(cleaned.salary);
+    const lpaMatch = cleaned.salary.match(/\b(\d+(?:\.\d+)?)\s*(?:-|to)?\s*(\d+(?:\.\d+)?)?\s*LPA\b/i);
+    if (lpaMatch) {
+      const minLpa = parseFloat(lpaMatch[1]);
+      const maxLpa = lpaMatch[2] ? parseFloat(lpaMatch[2]) : minLpa;
+      const minAnnual = Math.round(minLpa * 100000);
+      const maxAnnual = Math.round(maxLpa * 100000);
+      cleaned.salary_numeric = minAnnual;
+      cleaned.currency = 'INR';
+      if (minLpa === maxLpa) {
+        cleaned.salary = `₹${minAnnual.toLocaleString('en-IN')} / year (${minLpa} LPA)`;
+      } else {
+        cleaned.salary = `₹${minAnnual.toLocaleString('en-IN')} - ₹${maxAnnual.toLocaleString('en-IN')} / year (${minLpa}-${maxLpa} LPA)`;
+      }
+    }
+  } else if (!cleaned.salary) {
+    cleaned.salary = null;
+    cleaned.salary_numeric = null;
+  }
+
+  // Normalize skills with alias dictionary
   if (Array.isArray(cleaned.skills)) {
-    cleaned.skills = cleaned.skills
-      .map(sk => strip(sk).replace(/^(?:basic\s+knowledge\s+of|good\s+knowledge\s+of|experience\s+(?:with|in)|knowledge\s+of|proficiency\s+in|familiarity\s+with)\s+/i, ''))
-      .filter(sk => sk && sk.length > 0);
+    cleaned.skills = normalizeSkills(cleaned.skills);
+  }
+
+  // Experience & Fresher handling
+  if (cleaned.is_fresher_eligible !== undefined) {
+    cleaned.isFresherEligible = Boolean(cleaned.is_fresher_eligible);
+  }
+  if (cleaned.min_years !== undefined) {
+    cleaned.minYears = cleaned.min_years;
   }
 
   return cleaned;

@@ -3028,6 +3028,49 @@ body {
   font-weight: 500;
 }
 
+/* Fluid Card Presentation & Skills Chips */
+.company-subline {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.company-subline .company-name {
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.company-subline .location-text {
+  color: #94a3b8;
+}
+
+.company-subline .divider {
+  margin: 0 6px;
+  color: #64748b;
+}
+
+.skills-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.skill-tag {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
 /* Status selector right on the card */
 .job-status-select {
   appearance: none;

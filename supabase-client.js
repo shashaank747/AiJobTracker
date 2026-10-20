@@ -179,7 +179,9 @@ export const SupabaseService = {
       notes: appData.notes || '',
       viewedAt: appData.viewedAt || '',
       chatHistory: safeChatHistory,
-      isStored: true
+      isStored: true,
+      is_incomplete: Boolean(appData.is_incomplete ?? appData.isIncomplete),
+      isIncomplete: Boolean(appData.is_incomplete ?? appData.isIncomplete)
     };
 
     // Update local storage first
@@ -201,10 +203,10 @@ export const SupabaseService = {
 
       const primaryPayload = {
         id: appId,
-        company_name: appData.companyName || '',
-        job_title: appData.roleTitle || '',
+        company_name: appData.companyName || 'Pending Details',
+        job_title: appData.roleTitle || 'Saved Link',
         location: appData.location || '',
-        work_mode: appData.workMode || 'On-site',
+        work_mode: appData.workMode || 'Unknown',
         job_type: appData.jobType || 'Full-time',
         experience_required: appData.experienceRequired || '',
         salary_ctc: appData.salary || '',
@@ -219,7 +221,8 @@ export const SupabaseService = {
         company_link: appData.sourceUrl || '',
         website_link: appData.websiteLink || '',
         notes: appData.notes || (Array.isArray(appData.skills) && appData.skills.length ? 'Skills: ' + appData.skills.join(', ') : ''),
-        job_description: appData.jobDescription || JSON.stringify(safeChatHistory)
+        job_description: appData.jobDescription || JSON.stringify(safeChatHistory),
+        is_incomplete: normalizedApp.is_incomplete
       };
 
       try {
@@ -227,16 +230,23 @@ export const SupabaseService = {
           .from(supabaseTable)
           .upsert(primaryPayload, { onConflict: 'id' });
 
+        // If primary payload failed due to optional is_incomplete column missing in user table schema, retry without it
+        if (error && error.message.includes('is_incomplete')) {
+          delete primaryPayload.is_incomplete;
+          const retryRes = await client.from(supabaseTable).upsert(primaryPayload, { onConflict: 'id' });
+          error = retryRes.error;
+        }
+
         // If primary payload failed due to column mismatch, retry with alternative schema
         if (error && (error.message.includes('job_title') || error.message.includes('salary_ctc') || error.message.includes('date_added') || error.message.includes('is_bookmarked'))) {
           const fallbackPayload = {
             id: appId,
             created_at: appData.createdAt || now,
             updated_at: now,
-            company_name: appData.companyName || '',
-            role_title: appData.roleTitle || '',
+            company_name: appData.companyName || 'Pending Details',
+            role_title: appData.roleTitle || 'Saved Link',
             job_type: appData.jobType || 'Full-time',
-            work_mode: appData.workMode || 'On-site',
+            work_mode: appData.workMode || 'Unknown',
             location: appData.location || 'Not specified',
             salary: appData.salary || 'Not disclosed',
             source: formattedAppliedThrough,
@@ -246,10 +256,15 @@ export const SupabaseService = {
             applied_date: normalizedApp.appliedDate || null,
             skills: appData.skills || [],
             notes: appData.notes || '',
-            chat_history: safeChatHistory
+            chat_history: safeChatHistory,
+            is_incomplete: normalizedApp.is_incomplete
           };
 
-          const retryRes = await client.from(supabaseTable).upsert(fallbackPayload, { onConflict: 'id' });
+          let retryRes = await client.from(supabaseTable).upsert(fallbackPayload, { onConflict: 'id' });
+          if (retryRes.error && retryRes.error.message.includes('is_incomplete')) {
+            delete fallbackPayload.is_incomplete;
+            retryRes = await client.from(supabaseTable).upsert(fallbackPayload, { onConflict: 'id' });
+          }
           error = retryRes.error;
         }
 

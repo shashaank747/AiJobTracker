@@ -1,7 +1,7 @@
 // JobTrackerAI - Main Application Controller
 import { Config } from './config.js';
 import { SupabaseService } from './supabase-client.js';
-import { AiExtractor } from './ai-extractor.js';
+import { AiExtractor, handleUrlOnlyInput, cleanCompanyAndLocation, normalizeSkillList } from './ai-extractor.js';
 
 // Interactive Slash Commands for Zuno
 const SLASH_COMMANDS = [
@@ -2348,6 +2348,73 @@ class JobTrackerApp {
       this.stopVoiceDictation();
     }
 
+    // Tier 1 Fast-Path: Quick URL-save shortcut (Bypasses LLM, sub-5ms commit)
+    const quickLead = handleUrlOnlyInput(text);
+    if (quickLead) {
+      this.welcomeHero.style.display = 'none';
+      const userTimestamp = new Date().toISOString();
+      this.appendUserMessage(text, true, userTimestamp);
+      this.chatInput.value = '';
+      this.chatInput.style.height = 'auto';
+      this.chatInput.style.overflowY = 'hidden';
+
+      const leadData = quickLead.data;
+      const appId = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      const newApp = {
+        id: appId,
+        createdAt: now,
+        updatedAt: now,
+        companyName: leadData.companyName || 'Pending Details',
+        roleTitle: leadData.roleTitle || 'Saved Link',
+        jobType: 'Full-time',
+        workMode: leadData.workMode || 'Unknown',
+        location: 'Not specified',
+        salary: 'Not disclosed',
+        source: leadData.notes?.match(/Bookmarked from ([a-zA-Z0-9.\-_ ]+)/)?.[1] || 'Web Link',
+        portalName: '',
+        applicationUrl: leadData.applicationUrl || '',
+        sourceUrl: leadData.sourceUrl || '',
+        status: 'Saved',
+        isBookmarked: false,
+        appliedDate: null,
+        appliedTime: '',
+        skills: [],
+        notes: leadData.notes || '',
+        is_incomplete: true,
+        isIncomplete: true,
+        isStored: true
+      };
+
+      // 1. Add to active memory & set active session application
+      this.applications.unshift(newApp);
+      this.activeApplication = newApp;
+
+      // 2. Persist locally and sync to Supabase (if connected)
+      try {
+        await SupabaseService.saveApplication(newApp);
+      } catch (err) {
+        console.warn('Fast-path Supabase sync warning:', err);
+      }
+
+      // 3. Render confirmation bubble in chat
+      this.appendAssistantMessage(
+        `🔖 **Saved link to database!**\n\n` +
+        `- **Source:** ${leadData.sourceUrl}\n` +
+        `- **Status:** Marked as \`Saved\` lead.\n\n` +
+        `*You can open the card anytime from your tracker to paste the full JD or add notes when you're ready to apply.*`,
+        newApp
+      );
+      this.scrollToBottom();
+
+      // 4. Refresh applications grid and statistics
+      this.renderApplicationsGrid();
+      this.updateStats();
+      this.showToast('Bookmark saved to tracker!', 'success');
+      return;
+    }
+
     this.welcomeHero.style.display = 'none';
     const userTimestamp = new Date().toISOString();
     this.appendUserMessage(text, true, userTimestamp);
@@ -3552,33 +3619,62 @@ class JobTrackerApp {
     if (!str || typeof str !== 'string') return '';
     let s = this.sanitizeJobField(str);
     s = s.replace(/^(?:basic\s+knowledge\s+of|good\s+knowledge\s+of|working\s+knowledge\s+of|knowledge\s+of|experience\s+with|experience\s+in|hands-on\s+experience\s+with|proficiency\s+in|proficient\s+in|familiarity\s+with|understanding\s+of|strong\s+understanding\s+of|skills?\s*(?:in|with)?)\s+/i, '');
-    return s.trim();
+    const clean = s.trim();
+    const map = {
+      'ms excel': 'Excel',
+      'microsoft excel': 'Excel',
+      'excel': 'Excel',
+      'postgres': 'PostgreSQL',
+      'postgresql': 'PostgreSQL',
+      'js': 'JavaScript',
+      'javascript': 'JavaScript',
+      'ts': 'TypeScript',
+      'typescript': 'TypeScript',
+      'py': 'Python',
+      'python': 'Python',
+      'react': 'React',
+      'reactjs': 'React',
+      'react.js': 'React',
+      'node': 'Node.js',
+      'nodejs': 'Node.js',
+      'node.js': 'Node.js',
+      'mongo': 'MongoDB',
+      'mongodb': 'MongoDB'
+    };
+    return map[clean.toLowerCase()] || clean;
   }
 
   sanitizeJobData(raw) {
     if (!raw) return null;
     const clean = { ...raw };
-    if (clean.companyName) clean.companyName = this.sanitizeJobField(clean.companyName);
+    if (clean.company_name && !clean.companyName) clean.companyName = clean.company_name;
+    if (clean.job_title && !clean.roleTitle) clean.roleTitle = clean.job_title;
+    if (clean.work_model && !clean.workMode) clean.workMode = clean.work_model;
+
+    // Strict entity separation (prevent location from bleeding into company name)
+    const { cleanComp, cleanLoc } = cleanCompanyAndLocation(clean.companyName, clean.location);
+    clean.companyName = this.sanitizeJobField(cleanComp);
+    clean.company_name = clean.companyName;
+    clean.location = this.sanitizeJobField(cleanLoc);
+
     if (clean.roleTitle) clean.roleTitle = this.sanitizeJobField(clean.roleTitle);
-    if (clean.location) clean.location = this.sanitizeJobField(clean.location);
     if (clean.salary) clean.salary = this.sanitizeJobField(clean.salary);
     if (clean.workMode) clean.workMode = this.sanitizeJobField(clean.workMode);
     if (clean.jobType) clean.jobType = this.sanitizeJobField(clean.jobType);
     if (clean.source) clean.source = this.sanitizeJobField(clean.source);
     if (clean.portalName) clean.portalName = this.sanitizeJobField(clean.portalName);
     if (Array.isArray(clean.skills)) {
-      clean.skills = clean.skills
-        .map(s => this.sanitizeSkill(s))
-        .filter(s => s && s.length > 1 && !/^(?:etc|and|or|plus)$/i.test(s));
+      clean.skills = normalizeSkillList(clean.skills);
     }
     return clean;
   }
 
   createExtractionCardHtml(data) {
     const cleanData = this.sanitizeJobData(data) || {};
-    const cleanCompany = cleanData.companyName || 'Company';
+    const { cleanComp, cleanLoc } = cleanCompanyAndLocation(cleanData.companyName, cleanData.location);
     const cleanRole = cleanData.roleTitle || 'Job Title';
-    const initial = cleanCompany.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || 'C';
+    const initial = cleanComp.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || 'C';
+    const cleanSkills = normalizeSkillList(cleanData.skills);
 
     const rawStatus = (cleanData.status || 'Applied').trim();
     let statusClass = `status-${rawStatus.toLowerCase()}`;
@@ -3588,21 +3684,23 @@ class JobTrackerApp {
       statusClass = 'status-opportunity';
     }
 
-    // External links
+    // External links (supports both snake_case and camelCase)
+    const appUrl = cleanData.applicationUrl || cleanData.application_url;
+    const srcUrl = cleanData.sourceUrl || cleanData.source_url;
     let linksHtml = '';
-    if (cleanData.applicationUrl) {
+    if (appUrl) {
       const applyBtnText = cleanData.portalName ? `Apply (${this.escapeHtml(cleanData.portalName)})` : 'Apply Portal';
       linksHtml += `
-        <a href="${this.escapeHtml(cleanData.applicationUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(cleanData.portalName || 'Portal')})">
+        <a href="${this.escapeHtml(appUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(cleanData.portalName || 'Portal')})">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
           <span>${applyBtnText}</span>
         </a>
       `;
     }
-    if (cleanData.sourceUrl) {
+    if (srcUrl) {
       const sourceBtnText = cleanData.source ? `Job Post (${this.escapeHtml(cleanData.source)})` : 'Job Post';
       linksHtml += `
-        <a href="${this.escapeHtml(cleanData.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="View Original Post on ${this.escapeHtml(cleanData.source || 'Platform')}">
+        <a href="${this.escapeHtml(srcUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="View Original Post on ${this.escapeHtml(cleanData.source || 'Platform')}">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
           <span>${sourceBtnText}</span>
         </a>
@@ -3633,6 +3731,22 @@ class JobTrackerApp {
         <div class="spec-item spec-salary">
           <span class="spec-icon">💰</span>
           <span class="spec-label">${this.escapeHtml(cleanData.salary)}</span>
+        </div>
+      `);
+    }
+    if (cleanData.is_fresher_eligible || cleanData.isFresherEligible || cleanData.min_years === 0 || cleanData.minYears === 0) {
+      specItems.push(`
+        <div class="spec-item spec-exp">
+          <span class="spec-icon">🎓</span>
+          <span class="spec-label">Fresher Eligible</span>
+        </div>
+      `);
+    } else if (cleanData.min_years || cleanData.minYears) {
+      const yrs = cleanData.min_years || cleanData.minYears;
+      specItems.push(`
+        <div class="spec-item spec-exp">
+          <span class="spec-icon">💼</span>
+          <span class="spec-label">${yrs}+ yrs exp</span>
         </div>
       `);
     }
@@ -3671,14 +3785,14 @@ class JobTrackerApp {
     const specsBarHtml = specItems.length > 0 ? `<div class="card-specs-bar">${specItems.join('')}</div>` : '';
 
     // Skills Section
-    const skillsHtml = (cleanData.skills && cleanData.skills.length > 0)
+    const skillsHtml = (cleanSkills && cleanSkills.length > 0)
       ? `<div class="card-skills-section">
           <div class="skills-section-header">
             <span class="skills-label">Required Skills</span>
-            <span class="skills-count">${cleanData.skills.length}</span>
+            <span class="skills-count">${cleanSkills.length}</span>
           </div>
-          <div class="card-skills-row">
-            ${cleanData.skills.map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
+          <div class="skills-wrap">
+            ${cleanSkills.map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
           </div>
          </div>`
       : '';
@@ -3690,9 +3804,9 @@ class JobTrackerApp {
             <div class="company-badge-icon">${initial}</div>
             <div class="company-info-text">
               <h3 class="card-job-title">${this.escapeHtml(cleanRole)}</h3>
-              <div class="card-company-sub">
-                <span class="company-name-bold">${this.escapeHtml(cleanCompany)}</span>
-                ${cleanData.location ? `<span class="company-sub-dot">•</span><span class="company-location-sub">📍 ${this.escapeHtml(cleanData.location)}</span>` : ''}
+              <div class="company-subline">
+                <span class="company-name-bold">${this.escapeHtml(cleanComp)}</span>
+                ${cleanLoc ? `<span class="divider">•</span><span class="company-location-sub">📍 ${this.escapeHtml(cleanLoc)}</span>` : ''}
               </div>
             </div>
           </div>
@@ -3861,7 +3975,10 @@ class JobTrackerApp {
     const card = document.createElement('div');
     card.className = 'job-card';
 
-    const initial = (app.companyName || 'C').charAt(0).toUpperCase();
+    const { cleanComp, cleanLoc } = cleanCompanyAndLocation(app.companyName, app.location);
+    const initial = (cleanComp || 'C').charAt(0).toUpperCase();
+    const cleanSkills = normalizeSkillList(app.skills);
+
     const isSavedOnly = app.status === 'Saved' || (!app.appliedDate && app.status !== 'Applied');
     const daysAgoText = isSavedOnly
       ? 'Opportunity Lead • Not Applied'
@@ -3899,7 +4016,10 @@ class JobTrackerApp {
           <div class="job-logo-initial">${initial}</div>
           <div class="job-title-group">
             <h4 class="job-role-text" title="${this.escapeHtml(app.roleTitle)}">${this.escapeHtml(app.roleTitle)}</h4>
-            <p class="job-company-text">${this.escapeHtml(app.companyName)}</p>
+            <div class="company-subline">
+              <span class="company-name">${this.escapeHtml(cleanComp)}</span>
+              ${cleanLoc ? `<span class="divider">•</span><span class="location-text">📍 ${this.escapeHtml(cleanLoc)}</span>` : ''}
+            </div>
           </div>
         </div>
 
@@ -3913,6 +4033,9 @@ class JobTrackerApp {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
           <span>${daysAgoText}</span>
         </span>
+        ${(app.is_incomplete || app.isIncomplete) ? `
+        <span class="badge-incomplete" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 4px; padding: 1px 6px; font-size: 0.70rem; font-weight: 600;" title="Saved from link without full JD. Paste full job description anytime to enrich!">🔗 Link Saved</span>
+        ` : ''}
         ${app.appliedTime ? `
         <span class="badge-time" title="Applied Time: ${this.escapeHtml(app.appliedTime)}">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -3920,13 +4043,21 @@ class JobTrackerApp {
         </span>
         ` : ''}
         <span class="badge-workmode">${this.escapeHtml(app.workMode || 'On-site')}</span>
+        ${app.jobType && app.jobType !== 'Full-time' ? `<span class="badge-jobtype">💼 ${this.escapeHtml(app.jobType)}</span>` : ''}
         ${app.salary && app.salary !== 'Not disclosed' ? `<span class="badge-salary">${this.escapeHtml(app.salary)}</span>` : ''}
-        <span class="badge-location">📍 ${this.escapeHtml(app.location || 'Location')}</span>
+        ${(app.is_fresher_eligible || app.isFresherEligible || app.min_years === 0 || app.minYears === 0) ? `<span class="badge-fresher" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 0.70rem; font-weight: 600;">🎓 Fresher Eligible</span>` : (app.min_years ? `<span class="badge-exp">💼 ${app.min_years}+ yrs</span>` : '')}
         ${app.source && app.source !== 'Portal' && app.source !== 'Direct Portal' ? `<span class="badge-source" title="Discovered on ${this.escapeHtml(app.source)}">🌐 ${this.escapeHtml(app.source)}</span>` : ''}
         ${(app.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|yesturday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(app.portalName)) ? `<span class="badge-portal" title="Applied on ${this.escapeHtml(app.portalName)}">📝 ${this.escapeHtml(app.portalName)}</span>` : ''}
         ${app.recruiterName ? `<span class="badge-recruiter" title="Recruiter: ${this.escapeHtml(app.recruiterName)}">👤 ${this.escapeHtml(app.recruiterName)}</span>` : ''}
         ${(app.callNotes || (app.interviewQuestions && app.interviewQuestions.length > 0)) ? `<span class="badge-call" title="Has Recruiter & Interview Notes">📞 Call Log</span>` : ''}
       </div>
+
+      ${cleanSkills.length > 0 ? `
+        <div class="skills-wrap">
+          ${cleanSkills.slice(0, 8).map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
+          ${cleanSkills.length > 8 ? `<span class="skill-tag" style="opacity: 0.7;">+${cleanSkills.length - 8}</span>` : ''}
+        </div>
+      ` : ''}
 
       ${(app.callNotes || (app.interviewQuestions && app.interviewQuestions.length > 0)) ? `
         <div class="job-card-call-snippet">
