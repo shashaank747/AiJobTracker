@@ -2890,12 +2890,19 @@ class JobTrackerApp {
 
     // Specs Bar items
     const specItems = [];
-    if (cleanData.workMode && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(cleanData.workMode)) {
+    if (cleanData.workMode && !/^(?:not\s+specified|n\/?a|unknown|none|-)$/i.test(cleanData.workMode)) {
       const modeIcon = /remote/i.test(cleanData.workMode) ? '🏠' : (/hybrid/i.test(cleanData.workMode) ? '🔄' : '🏢');
       specItems.push(`
         <div class="spec-item spec-mode">
           <span class="spec-icon">${modeIcon}</span>
           <span class="spec-label">${this.escapeHtml(cleanData.workMode)}</span>
+        </div>
+      `);
+    } else {
+      specItems.push(`
+        <div class="spec-item spec-mode" style="opacity: 0.75;" title="Work mode not specified in posting">
+          <span class="spec-icon">❓</span>
+          <span class="spec-label">Mode: Unspecified</span>
         </div>
       `);
     }

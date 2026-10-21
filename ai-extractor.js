@@ -985,7 +985,7 @@ export function computeUpdatedSummary(previousJob, updatedJob) {
 
 // Quick local extraction rules for Tier 3
 export function extractCoreFieldsLocally(rawText) {
-  if (!rawText) return { isFresher: false, salaryMin: null, salaryMax: null, sourceUrl: null, appUrl: null, workModel: 'On-site' };
+  if (!rawText) return { isFresher: false, salaryMin: null, salaryMax: null, sourceUrl: null, appUrl: null, workModel: null };
 
   // 1. Detect Fresher status
   const isFresher = /\b(fresher|freshers|entry[- ]level|0\s*[-–to]\s*[012]?\s*years?|college grad(?:uate)?|passouts?|batch\s+of\s+202[34567]|graduates?\s+welcome)\b/i.test(rawText);
@@ -1004,12 +1004,14 @@ export function extractCoreFieldsLocally(rawText) {
     }
   }
 
-  // 3. Work model detection (e.g. "office 3 days a week")
-  let workModel = 'On-site';
+  // 3. Work model detection (only set if explicitly mentioned, never assume on-site)
+  let workModel = null;
   if (/\bremote\b|\bwork from home\b|\bwfh\b/i.test(rawText)) {
     workModel = 'Remote';
   } else if (/\bhybrid\b|(\d+\s*days?\s*(?:in|at|from)\s*(?:the\s+)?office|office\s*\d+\s*days?)/i.test(rawText)) {
     workModel = 'Hybrid';
+  } else if (/\bon-?site\b|\bin-?office\b|\bin-?person\b/i.test(rawText)) {
+    workModel = 'On-site';
   }
 
   // 4. Extract links
@@ -2992,7 +2994,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
             companyName: extractedCompany,
             roleTitle: extractedRole || 'Software Professional',
             jobType: 'Full-time',
-            workMode: 'On-site',
+            workMode: null,
             location: 'Not specified',
             salary: 'Not disclosed',
             source: parseJobSource(text) || 'Portal',
@@ -3077,7 +3079,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       companyName: extractedCompany || '',
       roleTitle: extractedRole || '',
       jobType: 'Full-time',
-      workMode: 'On-site',
+      workMode: null,
       location: (extractedLocation && extractedLocation !== 'Not specified') ? extractedLocation : 'Not specified',
       salary: extractedSalary || 'Not disclosed',
       source: detectedSource || 'Portal',
@@ -3399,9 +3401,12 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     data.application_url = data.applicationUrl || null;
 
     // Work model detection from coreLocal if not already set or refined
-    if (coreLocal.workModel && (!data.workMode || data.workMode === 'On-site')) {
+    if (coreLocal.workModel) {
       data.workMode = coreLocal.workModel;
       data.work_model = coreLocal.workModel;
+    } else if (!data.workMode) {
+      data.workMode = null;
+      data.work_model = null;
     }
     
     // Experience (Rule 3 & Fresher detection):
@@ -3519,14 +3524,65 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       eligSection = `\n\n### 🎓 Eligibility Criteria\n- ${eligibility}`;
     }
 
+    // Identify missing fields for conversational counter-questions
+    const missingQs = [];
+    const currentMode = (data.workMode || data.work_model || '').trim().toLowerCase();
+    if (!currentMode || currentMode === 'unknown' || currentMode === 'not specified') {
+      missingQs.push('• **Work Mode**: Is this position **On-site**, **Hybrid**, or **Remote**?');
+    }
+    const currentAppUrl = data.applicationUrl || data.application_url;
+    const currentSrcUrl = data.sourceUrl || data.source_url;
+    if (!currentAppUrl && !currentSrcUrl) {
+      missingQs.push('• **Application Link**: Do you have the careers page link or URL to apply?');
+    }
+    if (!data.deadline) {
+      missingQs.push('• **Application Deadline**: Did they mention a deadline or last date to apply?');
+    }
+    const currentSal = (data.salary || '').trim().toLowerCase();
+    if (!currentSal || currentSal === 'not disclosed' || currentSal === 'undisclosed') {
+      missingQs.push('• **Compensation**: Did the posting mention any salary, stipend, or CTC range?');
+    }
+
+    const counterQuestionsBlock = missingQs.length > 0
+      ? `\n\n❓ **A few details were missing from this posting:**\n` +
+        missingQs.join('\n') +
+        `\n\n*(You can reply naturally, e.g. "It's hybrid" or paste the application link, and I will update your tracker!)*`
+      : '';
+
+    const displayMode = data.workMode || 'Not specified';
+
     let message;
     if (!isNewJob && data.status === 'Rejected') {
       message = `📋 **Application Status Updated: ${data.roleTitle} at ${data.companyName}**\n\n` +
         `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
-        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${displayMode})\n` +
         `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
         `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
         `❌ Marked as **Rejected** (Not selected by employer).`;
+    } else if (!isNewJob && existingJob) {
+      const summaryChange = data.updatedSummary || computeUpdatedSummary(existingJob, data) || 'Updated details';
+      data.updatedSummary = summaryChange;
+      const stillNeededBlock = missingQs.length > 0
+        ? `\n\n❓ **Still needed to complete your application card:**\n` +
+          missingQs.join('\n') +
+          `\n\n*(Reply anytime to add them!)*`
+        : '';
+
+      const statusLine = data.status === 'Applied'
+        ? `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.`
+        : `✅ Saved in your tracker as an **Opportunity**.`;
+
+      message = `✨ **Updated ${data.roleTitle} at ${data.companyName}!** (${summaryChange})\n\n` +
+        `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${displayMode})\n` +
+        `• 💼 **Experience & Type:** ${data.jobType || 'Full-time'} · ${expLabel}\n` +
+        `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+        `• 🛠️ **Key Skills:** ${cleanSkillsSummary}` +
+        respSection +
+        processSection +
+        eligSection +
+        `\n\n${statusLine}` +
+        stillNeededBlock;
     } else {
       const titlePrefix = data.status === 'Applied'
         ? `📋 **Application Recorded: ${data.roleTitle} at ${data.companyName}**`
@@ -3537,14 +3593,15 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
 
       message = `${titlePrefix}\n\n` +
         `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
-        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${displayMode})\n` +
         `• 💼 **Experience & Type:** ${data.jobType || 'Full-time'} · ${expLabel}\n` +
         `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
         `• 🛠️ **Key Skills:** ${cleanSkillsSummary}` +
         respSection +
         processSection +
         eligSection +
-        `\n\n${statusSuffix}`;
+        `\n\n${statusSuffix}` +
+        counterQuestionsBlock;
     }
 
     if (!isNewJob && existingJob && !data.updatedSummary) {
