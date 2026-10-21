@@ -2502,8 +2502,32 @@ class JobTrackerApp {
         ]));
 
         const updatedSummary = isUpdatingDraft
-          ? (result.data.updatedSummary || computeUpdatedSummary(prevApp, result.data))
+          ? (result.data?.updatedSummary || computeUpdatedSummary(prevApp, result.data))
           : null;
+        const isSalaryExplicitUpdate = Boolean(result.data?.salary && result.data.salary !== 'Not disclosed' && result.data.salary !== 'Not specified');
+        const isSalaryClarifiedAbsent = result.data?.salary_status === 'user_confirmed_absent' || result.data?.salary_status === 'user_does_not_know';
+
+        const mergedSalary = isSalaryExplicitUpdate
+          ? result.data.salary
+          : (isSalaryClarifiedAbsent ? (result.data?.salary || null) : (prevApp.salary || result.data?.salary || 'Not disclosed'));
+
+        const mergedSalaryMin = (result.data?.salary_min !== undefined && result.data?.salary_min !== null)
+          ? result.data.salary_min
+          : (isSalaryClarifiedAbsent ? null : (prevApp.salary_min ?? null));
+
+        const mergedSalaryMax = (result.data?.salary_max !== undefined && result.data?.salary_max !== null)
+          ? result.data.salary_max
+          : (isSalaryClarifiedAbsent ? null : (prevApp.salary_max ?? null));
+
+        const mergedSalaryStatus = result.data?.salary_status || prevApp.salary_status || 'not_specified_in_jd';
+        const mergedWorkModeStatus = result.data?.work_mode_status || prevApp.work_mode_status || 'not_specified_in_jd';
+        const mergedDeadlineStatus = result.data?.deadline_status || prevApp.deadline_status || 'not_specified_in_jd';
+        const mergedAppUrlStatus = result.data?.application_url_status || prevApp.application_url_status || 'not_specified_in_jd';
+
+        const mergedResolvedClarifications = Array.from(new Set([
+          ...(prevApp.resolved_clarifications || []),
+          ...(result.data?.resolved_clarifications || [])
+        ]));
 
         const appData = {
           ...prevApp,
@@ -2512,6 +2536,21 @@ class JobTrackerApp {
           createdAt: createdAt,
           updatedAt: new Date().toISOString(),
           skills: mergedSkills,
+          salary: mergedSalary,
+          salary_min: mergedSalaryMin,
+          salary_max: mergedSalaryMax,
+          salary_status: mergedSalaryStatus,
+          work_mode_status: mergedWorkModeStatus,
+          deadline_status: mergedDeadlineStatus,
+          application_url_status: mergedAppUrlStatus,
+          resolved_clarifications: mergedResolvedClarifications,
+          pending_clarification: result.data?.pending_clarification ?? null,
+          experience_required: result.data?.experience_required || prevApp.experience_required || null,
+          experienceRequired: result.data?.experienceRequired || prevApp.experienceRequired || null,
+          employment_type: result.data?.employment_type || prevApp.employment_type || 'Full-time',
+          jobType: result.data?.jobType || prevApp.jobType || 'Full-time',
+          work_mode: result.data?.work_mode !== undefined ? result.data.work_mode : (prevApp.work_mode ?? null),
+          workMode: result.data?.workMode !== undefined ? result.data.workMode : (prevApp.workMode ?? null),
           updatedSummary: updatedSummary,
           sourceUrl: mergedSourceUrl,
           applicationUrl: mergedApplicationUrl,
@@ -2523,7 +2562,7 @@ class JobTrackerApp {
           callNotes: mergedCallNotes,
           interviewQuestions: mergedQuestions,
           viewedAt: mergedViewedAt,
-          appliedTime: result.data.appliedTime || (prevApp.appliedTime || this.formatTimeOnly(new Date())),
+          appliedTime: result.data?.appliedTime || (prevApp.appliedTime || this.formatTimeOnly(new Date())),
           isStored: true
         };
 
@@ -3935,7 +3974,17 @@ class JobTrackerApp {
     clean.work_model = clean.workMode || 'Unknown';
 
     if (clean.experience_required && !clean.experienceRequired) clean.experienceRequired = clean.experience_required;
+    if (clean.experienceRequired && !clean.experience_required) clean.experience_required = clean.experienceRequired;
     if (clean.employment_type && !clean.jobType) clean.jobType = clean.employment_type;
+    if (clean.jobType && !clean.employment_type) clean.employment_type = clean.jobType;
+    if (clean.salary_min !== undefined) clean.salary_min = clean.salary_min;
+    if (clean.salary_max !== undefined) clean.salary_max = clean.salary_max;
+    if (clean.salary_status) clean.salary_status = clean.salary_status;
+    if (clean.work_mode_status) clean.work_mode_status = clean.work_mode_status;
+    if (clean.deadline_status) clean.deadline_status = clean.deadline_status;
+    if (clean.application_url_status) clean.application_url_status = clean.application_url_status;
+    if (Array.isArray(clean.resolved_clarifications)) clean.resolved_clarifications = clean.resolved_clarifications;
+    if (clean.pending_clarification !== undefined) clean.pending_clarification = clean.pending_clarification;
     if (clean.application_url && !clean.applicationUrl) clean.applicationUrl = clean.application_url;
     if (clean.source_url && !clean.sourceUrl) clean.sourceUrl = clean.source_url;
     if (clean.original_job_posting_url && !clean.sourceUrl) clean.sourceUrl = clean.original_job_posting_url;

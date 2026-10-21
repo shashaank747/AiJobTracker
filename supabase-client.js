@@ -11,7 +11,7 @@ export const SupabaseService = {
       return null;
     }
 
-    if (window.supabase) {
+    if (typeof window !== 'undefined' && window.supabase) {
       try {
         if (!supabaseClient || supabaseClient._url !== supabaseUrl) {
           supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
@@ -93,9 +93,20 @@ export const SupabaseService = {
               companyName: item.company_name || 'Unknown Company',
               roleTitle: item.job_title || item.role_title || 'Undisclosed Role',
               jobType: item.job_type || 'Full-time',
-              workMode: item.work_mode || 'On-site',
+              employment_type: item.job_type || item.employment_type || 'Full-time',
+              experience_required: item.experience_required || '',
+              workMode: (item.work_mode && !['unknown', 'not specified'].includes(String(item.work_mode).toLowerCase())) ? item.work_mode : null,
+              work_mode: (item.work_mode && !['unknown', 'not specified'].includes(String(item.work_mode).toLowerCase())) ? item.work_mode : null,
               location: item.location || 'Not specified',
-              salary: item.salary_ctc || item.salary || 'Not disclosed',
+              salary: item.salary !== undefined ? item.salary : (item.salary_ctc && item.salary_ctc !== 'Not disclosed' ? item.salary_ctc : null),
+              salary_min: item.salary_min ?? null,
+              salary_max: item.salary_max ?? null,
+              salary_status: item.salary_status || 'not_specified_in_jd',
+              work_mode_status: item.work_mode_status || 'not_specified_in_jd',
+              deadline_status: item.deadline_status || 'not_specified_in_jd',
+              application_url_status: item.application_url_status || 'not_specified_in_jd',
+              resolved_clarifications: Array.isArray(item.resolved_clarifications) ? item.resolved_clarifications : [],
+              pending_clarification: item.pending_clarification || null,
               source: detectedSource,
               portalName: detectedPortal,
               applicationUrl: item.job_link || item.application_url || '',
@@ -153,6 +164,8 @@ export const SupabaseService = {
       } : null
     }));
 
+    const cleanWorkMode = (appData.workMode && !['unknown', 'not specified'].includes(String(appData.workMode).toLowerCase())) ? appData.workMode : null;
+
     const normalizedApp = {
       id: appId,
       createdAt: appData.createdAt || now,
@@ -160,9 +173,20 @@ export const SupabaseService = {
       companyName: appData.companyName || '',
       roleTitle: appData.roleTitle || '',
       jobType: appData.jobType || 'Full-time',
-      workMode: appData.workMode || 'On-site',
+      employment_type: appData.employment_type || appData.jobType || 'Full-time',
+      experience_required: appData.experience_required || appData.experienceRequired || '',
+      workMode: cleanWorkMode,
+      work_mode: cleanWorkMode,
       location: appData.location || 'Not specified',
-      salary: appData.salary || 'Not disclosed',
+      salary: appData.salary !== undefined ? appData.salary : null,
+      salary_min: appData.salary_min ?? null,
+      salary_max: appData.salary_max ?? null,
+      salary_status: appData.salary_status || 'not_specified_in_jd',
+      work_mode_status: appData.work_mode_status || 'not_specified_in_jd',
+      deadline_status: appData.deadline_status || 'not_specified_in_jd',
+      application_url_status: appData.application_url_status || 'not_specified_in_jd',
+      resolved_clarifications: Array.isArray(appData.resolved_clarifications) ? appData.resolved_clarifications : [],
+      pending_clarification: appData.pending_clarification || null,
       source: appData.source || 'Portal',
       portalName: appData.portalName || '',
       applicationUrl: appData.applicationUrl || '',
@@ -206,9 +230,9 @@ export const SupabaseService = {
         company_name: appData.companyName || 'Pending Details',
         job_title: appData.roleTitle || 'Saved Link',
         location: appData.location || '',
-        work_mode: appData.workMode || 'Unknown',
+        work_mode: cleanWorkMode || 'Not specified',
         job_type: appData.jobType || 'Full-time',
-        experience_required: appData.experienceRequired || '',
+        experience_required: appData.experience_required || appData.experienceRequired || '',
         salary_ctc: appData.salary || '',
         applied_through: formattedAppliedThrough,
         status: normalizedApp.status,
@@ -246,7 +270,7 @@ export const SupabaseService = {
             company_name: appData.companyName || 'Pending Details',
             role_title: appData.roleTitle || 'Saved Link',
             job_type: appData.jobType || 'Full-time',
-            work_mode: appData.workMode || 'Unknown',
+            work_mode: cleanWorkMode || 'Not specified',
             location: appData.location || 'Not specified',
             salary: appData.salary || 'Not disclosed',
             source: formattedAppliedThrough,

@@ -534,7 +534,8 @@ CRITICAL INSTRUCTION FOR APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Rec
 
      • 🏢 **Role & Company:** [roleTitle] at **[companyName]**
      • 📍 **Location & Mode:** [location] ([workMode or "Not specified"])
-     • 💼 **Experience & Type:** [jobType or "Full-time"] · [Experience / Fresher Eligibility]
+     • 🎓 **Experience:** [Experience Required or "Fresher (0–1 year)"]
+     • 💼 **Employment Type:** [jobType or "Full-time"]
      • 💰 **Compensation:** [salary or "Not disclosed"]
      • 🛠️ **Key Skills:** [concise list of 4-6 primary skills required]
 
@@ -1013,12 +1014,40 @@ Ensure output is valid JSON.`;
           ...(Array.isArray(existingJob.skills) ? existingJob.skills : []),
           ...(Array.isArray(parsed.data.skills) ? parsed.data.skills : [])
         ]));
+        const isSalaryExplicitUpdate = Boolean(parsed.data.salary && parsed.data.salary !== 'Not disclosed' && parsed.data.salary !== 'Not specified');
+        const isSalaryClarifiedAbsent = parsed.data.salary_status === 'user_confirmed_absent' || parsed.data.salary_status === 'user_does_not_know';
+
+        const mergedSalary = isSalaryExplicitUpdate
+          ? parsed.data.salary
+          : (isSalaryClarifiedAbsent ? (parsed.data.salary || null) : (existingJob.salary || parsed.data.salary || 'Not disclosed'));
+
+        const mergedSalaryMin = (parsed.data.salary_min !== undefined && parsed.data.salary_min !== null)
+          ? parsed.data.salary_min
+          : (isSalaryClarifiedAbsent ? null : (existingJob.salary_min ?? null));
+
+        const mergedSalaryMax = (parsed.data.salary_max !== undefined && parsed.data.salary_max !== null)
+          ? parsed.data.salary_max
+          : (isSalaryClarifiedAbsent ? null : (existingJob.salary_max ?? null));
+
         const mergedRecord = {
           ...existingJob,
           ...parsed.data,
           id: existingJob.id || parsed.data.id,
           createdAt: existingJob.createdAt || parsed.data.createdAt,
-          skills: mergedSkills
+          skills: mergedSkills,
+          salary: mergedSalary,
+          salary_min: mergedSalaryMin,
+          salary_max: mergedSalaryMax,
+          salary_status: parsed.data.salary_status || existingJob.salary_status || 'not_specified_in_jd',
+          work_mode_status: parsed.data.work_mode_status || existingJob.work_mode_status || 'not_specified_in_jd',
+          deadline_status: parsed.data.deadline_status || existingJob.deadline_status || 'not_specified_in_jd',
+          application_url_status: parsed.data.application_url_status || existingJob.application_url_status || 'not_specified_in_jd',
+          resolved_clarifications: Array.from(new Set([
+            ...(existingJob.resolved_clarifications || []),
+            ...(parsed.data.resolved_clarifications || [])
+          ])),
+          experience_required: parsed.data.experience_required || existingJob.experience_required || null,
+          employment_type: parsed.data.employment_type || existingJob.employment_type || 'Full-time'
         };
         if (detectedDate) {
           mergedRecord.appliedDate = detectedDate;
@@ -1738,13 +1767,16 @@ function sanitizeBackendData(data) {
     cleaned.verification_status = isSample ? 'Sample Data' : 'Job Posting';
   }
 
-  // Generate clarification questions & quick options if work_mode is missing
-  if (!cleaned.work_mode && (!cleaned.clarification_questions || cleaned.clarification_questions.length === 0)) {
+  const resolved = Array.isArray(cleaned.resolved_clarifications) ? cleaned.resolved_clarifications : [];
+  cleaned.resolved_clarifications = resolved;
+
+  // Generate clarification questions & quick options if work_mode is missing and unresolved
+  if (!cleaned.work_mode && !resolved.includes('work_mode') && (!cleaned.clarification_questions || cleaned.clarification_questions.length === 0)) {
     cleaned.clarification_questions = [
       "The job description doesn't specify the work mode. Do you know whether this role is On-site, Hybrid, or Remote? You can also skip this question."
     ];
   }
-  if (!cleaned.work_mode && (!cleaned.quick_options || cleaned.quick_options.length === 0)) {
+  if (!cleaned.work_mode && !resolved.includes('work_mode') && (!cleaned.quick_options || cleaned.quick_options.length === 0)) {
     cleaned.quick_options = [
       { label: '🏠 Remote', value: "It's Remote" },
       { label: '🔄 Hybrid', value: "It's Hybrid" },

@@ -548,6 +548,68 @@ export function extractExperience(text) {
   return { is_fresher_eligible: null, min_years: null };
 }
 
+export function parseSalaryRange(salaryStr) {
+  if (!salaryStr || typeof salaryStr !== 'string') return { min: null, max: null };
+  const str = salaryStr.trim();
+  const lpaMatch = str.match(/(\d+(?:\.\d+)?)\s*(?:-|to|–|—)?\s*(\d+(?:\.\d+)?)?\s*LPA/i);
+  if (lpaMatch) {
+    const minLpa = parseFloat(lpaMatch[1]);
+    const maxLpa = lpaMatch[2] ? parseFloat(lpaMatch[2]) : minLpa;
+    return {
+      min: Math.round(minLpa * 100000),
+      max: Math.round(maxLpa * 100000)
+    };
+  }
+  const digitsMatch = str.match(/[$₹€£]?\s*(\d[\d,]*)\s*(?:-|to|–|—)?\s*[$₹€£]?\s*(\d[\d,]*)?/);
+  if (digitsMatch) {
+    const minNum = parseInt(digitsMatch[1].replace(/,/g, ''), 10);
+    const maxNum = digitsMatch[2] ? parseInt(digitsMatch[2].replace(/,/g, ''), 10) : minNum;
+    if (!isNaN(minNum) && minNum > 1000) {
+      return { min: minNum, max: isNaN(maxNum) ? minNum : maxNum };
+    }
+  }
+  return { min: null, max: null };
+}
+
+export function detectPendingClarification(existingJob, history) {
+  if (existingJob?.pending_clarification) {
+    return existingJob.pending_clarification;
+  }
+  if (Array.isArray(history) && history.length > 0) {
+    const assistantMsgs = history.filter(m => m.role === 'assistant');
+    if (assistantMsgs.length > 0) {
+      const lastMsg = assistantMsgs[assistantMsgs.length - 1].text || '';
+      const lower = lastMsg.toLowerCase();
+      if (lower.includes('salary') || lower.includes('stipend') || lower.includes('ctc range')) {
+        return 'salary_ctc';
+      }
+      if (lower.includes('work mode') || lower.includes('on-site, hybrid') || lower.includes('on-site**, **hybrid')) {
+        return 'work_mode';
+      }
+      if (lower.includes('application link') || lower.includes('careers page link') || lower.includes('url to apply')) {
+        return 'application_url';
+      }
+      if (lower.includes('deadline') || lower.includes('cutoff date')) {
+        return 'application_deadline';
+      }
+    }
+  }
+  const resolved = Array.isArray(existingJob?.resolved_clarifications) ? existingJob.resolved_clarifications : [];
+  if (!resolved.includes('salary_ctc') && (!existingJob?.salary || existingJob?.salary === 'Not disclosed' || existingJob?.salary === 'Not specified')) {
+    return 'salary_ctc';
+  }
+  if (!resolved.includes('work_mode') && !existingJob?.workMode) {
+    return 'work_mode';
+  }
+  if (!resolved.includes('application_url') && !existingJob?.applicationUrl && !existingJob?.sourceUrl) {
+    return 'application_url';
+  }
+  if (!resolved.includes('application_deadline') && !existingJob?.deadline) {
+    return 'application_deadline';
+  }
+  return null;
+}
+
 export function extractCompany(text) {
   if (!text) return null;
 
@@ -2095,12 +2157,17 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       }
 
       // 5. Check for Casual affirmations, compliments & small talk
-      const isAffirmation = /^(?:nice(?:\s+(?:one|work|job|table|list))?|cool(?:\s+(?:thanks|one))?|great(?:\s+(?:job|work))?|awesome|sweet|super|superb|amazing|neat|wonderful|fantastic|brilliant|perfect|good(?:\s+(?:job|work|one))?|very\s+good|looks\s+good|sounds\s+good|love\s+it|loved\s+it|wow|woah|appreciated|much\s+appreciated|thanks(?:\s+a\s+lot|\s+so\s+much|\s+zuno)?|thank\s+you(?:\s+so\s+much|\s+very\s+much|\s+zuno)?|thx|ty|tysm|ok|okay|alright|all\s+right|fine|fair\s+enough|understood|got\s+it|gotcha|noted|makes\s+sense|i\s+see|clear|yep|yeah|yes|sure|definitely|absolutely|yup|haha|lol|lmao|hehe|good\s+bot|you('re|\s+are)\s+(?:awesome|great|cool|the\s+best))\b[!?. ]*$/i.test(trimmed);
+      const isAffirmation = /^(?:thanks|thank you|thx|cool|awesome|great|perfect|sounds good|ok|okay|got it|sure|alright|nice|superb|wonderful|fantastic|yay|cheers)(?:[\s!.,]|$)/i.test(lower.trim());
+      const lastAssistantMsg = Array.isArray(history) && history.length > 0
+        ? (history.filter(m => m.role === 'assistant').slice(-1)[0]?.text || '')
+        : '';
 
-      if (isAffirmation) {
-        const lastAssistantMsg = Array.isArray(history) && history.length > 0
-          ? (history.filter(m => m.role === 'assistant').slice(-1)[0]?.text || '')
-          : '';
+      const hasPendingClarification = Boolean(
+        existingJob && (existingJob.companyName || existingJob.roleTitle) &&
+        (existingJob.pending_clarification || /(?:❓|Did the posting mention|specify the work mode|Do you have the|Did they mention)/i.test(lastAssistantMsg))
+      );
+
+      if (isAffirmation && !hasPendingClarification) {
 
         const justShowedList = /(?:Stored Applications in Your Database|applications? in your (?:database|tracker)|Company.*Role.*Status)/i.test(lastAssistantMsg);
         const justShowedStats = /(?:Your Persistent Job Tracker Stats|Total Tracked Applications)/i.test(lastAssistantMsg);
@@ -3075,13 +3142,29 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     const initialStatus = hasAppliedSignal ? 'Applied' : (detectedDate ? 'Applied' : 'Saved');
     const initialAppliedDate = (hasAppliedSignal || detectedDate) ? (detectedDate || today) : null;
 
+    const existingResolved = Array.isArray(existingJob?.resolved_clarifications) ? [...existingJob.resolved_clarifications] : [];
+    let clarificationAcknowledgment = '';
+    let targetClarificationField = null;
+
     const data = isNewJob ? {
       companyName: extractedCompany || '',
       roleTitle: extractedRole || '',
       jobType: 'Full-time',
+      employment_type: 'Full-time',
+      experience_required: null,
+      experienceRequired: null,
       workMode: null,
+      work_mode: null,
       location: (extractedLocation && extractedLocation !== 'Not specified') ? extractedLocation : 'Not specified',
-      salary: extractedSalary || 'Not disclosed',
+      salary: extractedSalary || null,
+      salary_min: null,
+      salary_max: null,
+      salary_status: extractedSalary ? 'provided' : 'not_specified_in_jd',
+      work_mode_status: 'not_specified_in_jd',
+      deadline_status: 'not_specified_in_jd',
+      application_url_status: 'not_specified_in_jd',
+      resolved_clarifications: [],
+      pending_clarification: null,
       source: detectedSource || 'Portal',
       portalName: detectedPortal || '',
       applicationUrl: '',
@@ -3095,7 +3178,26 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       ...existingJob,
       companyName: extractedCompany || existingJob.companyName || '',
       roleTitle: extractedRole || existingJob.roleTitle || '',
-      salary: extractedSalary || existingJob.salary || 'Not disclosed',
+      salary: existingJob.salary !== undefined ? existingJob.salary : null,
+      salary_min: existingJob.salary_min ?? null,
+      salary_max: existingJob.salary_max ?? null,
+      salary_status: existingJob.salary_status || (existingJob.salary && !['not disclosed', 'undisclosed', 'not specified'].includes(String(existingJob.salary).toLowerCase()) ? 'provided' : 'not_specified_in_jd'),
+      work_mode: existingJob.work_mode !== undefined ? existingJob.work_mode : (existingJob.workMode ?? null),
+      workMode: existingJob.workMode !== undefined ? existingJob.workMode : (existingJob.work_mode ?? null),
+      work_mode_status: existingJob.work_mode_status || (existingJob.workMode ? 'provided' : 'not_specified_in_jd'),
+      deadline: existingJob.deadline || null,
+      deadline_status: existingJob.deadline_status || (existingJob.deadline ? 'provided' : 'not_specified_in_jd'),
+      applicationUrl: existingJob.applicationUrl || '',
+      application_url: existingJob.application_url || existingJob.applicationUrl || '',
+      sourceUrl: existingJob.sourceUrl || '',
+      source_url: existingJob.source_url || existingJob.sourceUrl || '',
+      application_url_status: existingJob.application_url_status || (existingJob.applicationUrl || existingJob.sourceUrl ? 'provided' : 'not_specified_in_jd'),
+      experience_required: existingJob.experience_required || existingJob.experienceRequired || null,
+      experienceRequired: existingJob.experienceRequired || existingJob.experience_required || null,
+      employment_type: existingJob.employment_type || existingJob.jobType || 'Full-time',
+      jobType: existingJob.jobType || existingJob.employment_type || 'Full-time',
+      resolved_clarifications: existingResolved,
+      pending_clarification: existingJob.pending_clarification || null,
       location: (extractedLocation && extractedLocation !== 'Not specified') ? extractedLocation : (existingJob.location || 'Not specified'),
       skills: (extractedSkills && extractedSkills.length > 0)
         ? Array.from(new Set([...(existingJob.skills || []), ...extractedSkills])).slice(0, 10)
@@ -3103,11 +3205,151 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     };
 
     if (existingJob && !isNewJob) {
+      const pendingField = detectPendingClarification(existingJob, history);
+      const isNegative = /^(?:no|nope|nah|not\s+really|negative|no\s+it\s+(?:wasn't|was\s+not|didn't|did\s+not)|no,\s*it\s+wasn't\s+mentioned|it\s+wasn't\s+mentioned|not\s+mentioned(?:\s+in\s+the\s+posting)?|didn't\s+mention\s+any|none|nothing\s+mentioned|no\s+salary|no\s+stipend|no\s+ctc|no\s+deadline|no\s+link|no\s+url)[.!]?$/i.test(trimmed) || /^(?:no|nope)[,.\s]/i.test(trimmed);
+      const isDontKnow = /^(?:i\s+don'?t\s+know|idk|not\s+sure|don'?t\s+know|no\s+idea|not\s+aware|can'?t\s+confirm|cannot\s+confirm|unaware)[.!]?$/i.test(trimmed);
+      const isNotYet = /^(?:not\s+yet|haven'?t\s+got\s+it\s+yet|don'?t\s+have\s+it\s+yet|later|not\s+right\s+now|still\s+waiting)[.!]?$/i.test(trimmed);
+      const isSkip = /^(?:skip|skip\s+this|pass|next|skip\s+question|prefer\s+not\s+to\s+say)[.!]?$/i.test(trimmed);
+      const isWorkModeExplicit = /\b(remote|work from home|wfh|hybrid|on-site|onsite|in-office|in-person)\b/i.test(trimmed);
+      const isSalaryExplicit = Boolean(extractedSalary || /\b(?:\d+(?:\.\d+)?\s*(?:-|to|–|—)?\s*\d*(?:\.\d+)?\s*(?:lpa|ctc|inr|rs\.?|₹|\$|k|per\s+month|per\s+annum))\b/i.test(trimmed) || /(?:salary|ctc|package|pay)\s*(?:is|:|=)\s*(.+)/i.test(trimmed));
+
+      if (isWorkModeExplicit) {
+        targetClarificationField = 'work_mode';
+      } else if (isSalaryExplicit) {
+        targetClarificationField = 'salary_ctc';
+      } else if (trimmed.startsWith('http') || (trimmed.match(/https?:\/\//i) && !isJD)) {
+        targetClarificationField = 'application_url';
+      } else if (isNegative || isDontKnow || isNotYet || isSkip) {
+        targetClarificationField = pendingField || (
+          !data.resolved_clarifications.includes('salary_ctc') && (!data.salary || data.salary === 'Not disclosed' || data.salary === 'Not specified') ? 'salary_ctc' :
+          (!data.resolved_clarifications.includes('work_mode') && !data.workMode ? 'work_mode' :
+          (!data.resolved_clarifications.includes('application_url') && !data.applicationUrl ? 'application_url' :
+          (!data.resolved_clarifications.includes('application_deadline') && !data.deadline ? 'application_deadline' : null)))
+        );
+      }
+
+      if (targetClarificationField === 'salary_ctc') {
+        if (isNegative) {
+          data.salary = null;
+          data.salary_min = null;
+          data.salary_max = null;
+          data.salary_status = 'user_confirmed_absent';
+          if (!data.resolved_clarifications.includes('salary_ctc')) data.resolved_clarifications.push('salary_ctc');
+          clarificationAcknowledgment = "Understood. I'll leave the salary as Not Specified and won't ask about it again unless you provide an update.";
+          summaryNotes.push("Salary marked as Not Specified (user confirmed absent).");
+        } else if (isDontKnow) {
+          data.salary = null;
+          data.salary_min = null;
+          data.salary_max = null;
+          data.salary_status = 'user_does_not_know';
+          if (!data.resolved_clarifications.includes('salary_ctc')) data.resolved_clarifications.push('salary_ctc');
+          clarificationAcknowledgment = "Understood. I've noted that the salary is unknown for now.";
+          summaryNotes.push("Salary marked as unknown.");
+        } else if (isSkip) {
+          data.salary_status = 'skipped';
+          if (!data.resolved_clarifications.includes('salary_ctc')) data.resolved_clarifications.push('salary_ctc');
+          clarificationAcknowledgment = "Skipped the salary question for now.";
+          summaryNotes.push("Salary question skipped.");
+        } else if (isSalaryExplicit) {
+          const parsedSal = extractedSalary || (trimmed.match(/(\d+(?:\.\d+)?\s*(?:-|to|–|—)?\s*\d*(?:\.\d+)?\s*LPA)/i)?.[1]) || (trimmed.match(/[$₹€£]?\s*\d[\d,]*(?:\s*(?:-|to)\s*[$₹€£]?\s*\d[\d,]*)?/)?.[0]) || trimmed;
+          data.salary = parsedSal;
+          const { min, max } = parseSalaryRange(data.salary);
+          data.salary_min = min;
+          data.salary_max = max;
+          data.salary_status = 'provided';
+          if (!data.resolved_clarifications.includes('salary_ctc')) data.resolved_clarifications.push('salary_ctc');
+          clarificationAcknowledgment = `Got it! Updated compensation to **${data.salary}**.`;
+          summaryNotes.push(`Updated salary to ${data.salary}.`);
+        }
+      } else if (targetClarificationField === 'work_mode') {
+        if (/\bremote\b|\bwork from home\b|\bwfh\b/i.test(trimmed)) {
+          data.workMode = 'Remote';
+          data.work_mode = 'Remote';
+          data.work_mode_status = 'provided';
+          if (!data.resolved_clarifications.includes('work_mode')) data.resolved_clarifications.push('work_mode');
+          clarificationAcknowledgment = "Got it! Updated work mode to **Remote**.";
+          summaryNotes.push("Set work mode to Remote.");
+        } else if (/\bhybrid\b/i.test(trimmed)) {
+          data.workMode = 'Hybrid';
+          data.work_mode = 'Hybrid';
+          data.work_mode_status = 'provided';
+          if (!data.resolved_clarifications.includes('work_mode')) data.resolved_clarifications.push('work_mode');
+          clarificationAcknowledgment = "Got it! Updated work mode to **Hybrid**.";
+          summaryNotes.push("Set work mode to Hybrid.");
+        } else if (/\bon-?site\b|\bin-?office\b|\bin-?person\b/i.test(trimmed)) {
+          data.workMode = 'On-site';
+          data.work_mode = 'On-site';
+          data.work_mode_status = 'provided';
+          if (!data.resolved_clarifications.includes('work_mode')) data.resolved_clarifications.push('work_mode');
+          clarificationAcknowledgment = "Got it! Updated work mode to **On-site**.";
+          summaryNotes.push("Set work mode to On-site.");
+        } else if (isSkip || isDontKnow || isNegative) {
+          data.workMode = null;
+          data.work_mode = null;
+          data.work_mode_status = isSkip ? 'skipped' : (isDontKnow ? 'user_does_not_know' : 'user_confirmed_absent');
+          if (!data.resolved_clarifications.includes('work_mode')) data.resolved_clarifications.push('work_mode');
+          clarificationAcknowledgment = "Understood. I'll leave the work mode as Not Specified.";
+          summaryNotes.push("Work mode retained as Not Specified.");
+        }
+      } else if (targetClarificationField === 'application_url') {
+        const foundU = trimmed.match(/https?:\/\/[^\s]+/i);
+        if (foundU) {
+          data.applicationUrl = foundU[0].replace(/[.,;!?)]+$/, '');
+          data.application_url = data.applicationUrl;
+          data.application_url_status = 'provided';
+          if (!data.resolved_clarifications.includes('application_url')) data.resolved_clarifications.push('application_url');
+          clarificationAcknowledgment = `Saved application link: [Apply Here](${data.applicationUrl})`;
+          summaryNotes.push("Added application URL.");
+        } else if (isNotYet) {
+          data.applicationUrl = null;
+          data.application_url = null;
+          data.application_url_status = 'user_does_not_know';
+          if (!data.resolved_clarifications.includes('application_url')) data.resolved_clarifications.push('application_url');
+          clarificationAcknowledgment = "Understood! No application link added yet. You can provide it whenever you're ready to apply.";
+          summaryNotes.push("Application link marked as not yet available.");
+        } else if (isSkip || isDontKnow || isNegative) {
+          data.applicationUrl = null;
+          data.application_url = null;
+          data.application_url_status = isSkip ? 'skipped' : (isDontKnow ? 'user_does_not_know' : 'user_confirmed_absent');
+          if (!data.resolved_clarifications.includes('application_url')) data.resolved_clarifications.push('application_url');
+          clarificationAcknowledgment = "Understood. I'll leave the application link empty for now.";
+          summaryNotes.push("Application link marked as empty.");
+        }
+      } else if (targetClarificationField === 'application_deadline') {
+        if (detectedDate) {
+          data.deadline = detectedDate;
+          data.application_deadline = detectedDate;
+          data.deadline_status = 'provided';
+          if (!data.resolved_clarifications.includes('application_deadline')) data.resolved_clarifications.push('application_deadline');
+          clarificationAcknowledgment = `Saved application deadline: **${data.deadline}**.`;
+          summaryNotes.push(`Set deadline to ${data.deadline}.`);
+        } else if (isDontKnow) {
+          data.deadline = null;
+          data.application_deadline = null;
+          data.deadline_status = 'user_does_not_know';
+          if (!data.resolved_clarifications.includes('application_deadline')) data.resolved_clarifications.push('application_deadline');
+          clarificationAcknowledgment = "Understood. I've recorded that the application deadline is unknown.";
+          summaryNotes.push("Application deadline marked as unknown.");
+        } else if (isNegative) {
+          data.deadline = null;
+          data.application_deadline = null;
+          data.deadline_status = 'user_confirmed_absent';
+          if (!data.resolved_clarifications.includes('application_deadline')) data.resolved_clarifications.push('application_deadline');
+          clarificationAcknowledgment = "Understood. I'll leave the application deadline as Not Specified.";
+          summaryNotes.push("Application deadline marked as Not Specified.");
+        } else if (isSkip) {
+          data.deadline_status = 'skipped';
+          if (!data.resolved_clarifications.includes('application_deadline')) data.resolved_clarifications.push('application_deadline');
+          clarificationAcknowledgment = "Skipped the application deadline question for now.";
+          summaryNotes.push("Application deadline skipped.");
+        }
+      }
+
       if (hasAppliedSignal && (!data.status || data.status === 'Saved')) {
         data.status = 'Applied';
         summaryNotes.push('Updated status to Applied.');
       }
-      if (detectedDate) {
+      if (detectedDate && !targetClarificationField) {
         data.appliedDate = detectedDate;
         data.status = 'Applied';
       }
@@ -3268,16 +3510,20 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     // Work Mode detection
     if (/\bremote\b|\bwork from home\b|\bwfh\b/i.test(text)) {
       data.workMode = 'Remote';
+      data.work_mode = 'Remote';
       summaryNotes.push('Set work mode to Remote.');
     } else if (/\bhybrid\b/i.test(text)) {
       data.workMode = 'Hybrid';
+      data.work_mode = 'Hybrid';
       summaryNotes.push('Set work mode to Hybrid.');
     } else if (/\bon-?site\b|\bin-?office\b|\bin-?person\b/i.test(text)) {
       data.workMode = 'On-site';
+      data.work_mode = 'On-site';
       summaryNotes.push('Set work mode to On-site.');
-    } else if (/\b(?:skip|not\s+specified|unspecified|don'?t\s+know|no\s+idea|none|n\/?a)\b/i.test(text)) {
+    } else if (targetClarificationField === 'work_mode' && /\b(?:skip|not\s+specified|unspecified|don'?t\s+know|no\s+idea|none|n\/?a)\b/i.test(text)) {
       if (data.workMode === null || !data.workMode) {
         data.workMode = 'Not Specified';
+        data.work_mode = null;
         summaryNotes.push('Work mode retained as Not Specified.');
       }
     }
@@ -3437,18 +3683,31 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // Salary (Rule 5 & 6):
-    const salDetails = parseSalaryDetails(extractedSalary);
-    data.salary = salDetails.salary;
-    data.salary_numeric = salDetails.salary_numeric;
-    data.currency = salDetails.currency;
+    if (isNewJob) {
+      const salDetails = parseSalaryDetails(extractedSalary);
+      data.salary = salDetails.salary;
+      data.salary_numeric = salDetails.salary_numeric;
+      data.currency = salDetails.currency;
 
-    if (coreLocal.salaryMin !== null && (!data.salary_numeric || data.salary === 'Not disclosed')) {
-      data.salary_numeric = coreLocal.salaryMin;
-      data.currency = 'INR';
-      if (!data.salary || data.salary === 'Not disclosed') {
+      if (coreLocal.salaryMin !== null && (!data.salary_numeric || !data.salary || data.salary === 'Not disclosed')) {
+        data.salary_numeric = coreLocal.salaryMin;
+        data.currency = 'INR';
         data.salary = coreLocal.salaryMin === coreLocal.salaryMax
           ? `₹${(coreLocal.salaryMin / 100000).toFixed(1)} LPA`
           : `₹${(coreLocal.salaryMin / 100000).toFixed(1)} - ₹${(coreLocal.salaryMax / 100000).toFixed(1)} LPA`;
+      }
+    } else {
+      // Existing job: only update salary if extractedSalary was explicitly found in the message
+      if (extractedSalary) {
+        const salDetails = parseSalaryDetails(extractedSalary);
+        data.salary = salDetails.salary;
+        data.salary_numeric = salDetails.salary_numeric;
+        data.currency = salDetails.currency;
+        const { min, max } = parseSalaryRange(data.salary);
+        if (min !== null) data.salary_min = min;
+        if (max !== null) data.salary_max = max;
+        data.salary_status = 'provided';
+        if (!data.resolved_clarifications.includes('salary_ctc')) data.resolved_clarifications.push('salary_ctc');
       }
     }
 
@@ -3603,12 +3862,14 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     // Synchronize snake_case and camelCase fields
+    const cleanExp = data.experience_required || data.experienceRequired || (data.is_fresher_eligible ? 'Fresher (0–1 year)' : (data.min_years ? `${data.min_years}+ years` : 'Not specified'));
+    const cleanType = data.employment_type || data.jobType || 'Full-time';
+    data.experience_required = cleanExp;
+    data.employment_type = cleanType;
     data.company_name = data.companyName;
     data.job_title = data.roleTitle;
     data.job_location = data.location;
     data.work_mode = data.workMode || null;
-    data.experience_required = data.experienceRequired || expLabel;
-    data.employment_type = data.jobType || 'Full-time';
     data.required_skills = data.skills;
     data.job_responsibilities = data.responsibilities;
     data.job_source_platform = data.source;
@@ -3620,48 +3881,69 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     data.personal_notes = data.notes || null;
 
     // Formulate targeted clarification questions and quick options
+    const isModeResolved = data.resolved_clarifications.includes('work_mode') || Boolean(data.workMode && data.workMode !== 'Not Specified');
+    const isSalaryResolved = data.resolved_clarifications.includes('salary_ctc') || Boolean(data.salary && data.salary !== 'Not disclosed' && data.salary !== 'Not specified');
+    const isAppUrlResolved = data.resolved_clarifications.includes('application_url') || Boolean(data.applicationUrl || data.sourceUrl);
+    const isDeadlineResolved = data.resolved_clarifications.includes('application_deadline') || Boolean(data.deadline);
+
     const missingQs = [];
+    const unresolvedFields = [];
+
+    // If only workMode is missing on brand new extraction: ask ONE concise question
+    if (isNewJob && !isModeResolved && isSalaryResolved && isAppUrlResolved && isDeadlineResolved) {
+      missingQs.push("The job description doesn't specify the work mode. Do you know whether this role is On-site, Hybrid, or Remote? You can also skip this question.");
+      unresolvedFields.push('work_mode');
+    } else {
+      if (!isModeResolved) {
+        missingQs.push('• **Work Mode**: Is this position **On-site**, **Hybrid**, or **Remote**? (or skip)');
+        unresolvedFields.push('work_mode');
+      }
+      if (!isAppUrlResolved) {
+        missingQs.push('• **Application Link**: Do you have the careers page link or URL to apply?');
+        unresolvedFields.push('application_url');
+      }
+      if (!isDeadlineResolved) {
+        missingQs.push('• **Application Deadline**: Did they mention a deadline or cutoff date to apply?');
+        unresolvedFields.push('application_deadline');
+      }
+      if (!isSalaryResolved) {
+        missingQs.push('• **Compensation**: Did the posting mention any salary, stipend, or CTC range?');
+        unresolvedFields.push('salary_ctc');
+      }
+    }
+
+    data.clarification_questions = missingQs;
+    data.pending_clarification = unresolvedFields.length > 0 ? unresolvedFields[0] : null;
+
     let quickOptions = [];
-
-    const currentMode = (data.workMode || '').trim().toLowerCase();
-    const isModeMissing = !currentMode || currentMode === 'unknown' || currentMode === 'not specified';
-    const isAppUrlMissing = !data.applicationUrl && !data.sourceUrl;
-    const isDeadlineMissing = !data.deadline;
-    const currentSal = (data.salary || '').trim().toLowerCase();
-    const isSalaryMissing = !currentSal || currentSal === 'not disclosed' || currentSal === 'undisclosed';
-
-    if (isModeMissing) {
+    if (data.pending_clarification === 'work_mode') {
       quickOptions = [
         { label: '🏠 Remote', value: "It's Remote" },
         { label: '🔄 Hybrid', value: "It's Hybrid" },
         { label: '🏢 On-site', value: "It's On-site" },
         { label: '⏭️ Skip', value: "Work mode not specified" }
       ];
+    } else if (data.pending_clarification === 'salary_ctc') {
+      quickOptions = [
+        { label: '❌ No salary mentioned', value: "No, it wasn't mentioned" },
+        { label: '❓ Not sure', value: "I don't know" },
+        { label: '⏭️ Skip', value: "Skip" }
+      ];
+    } else if (data.pending_clarification === 'application_url') {
+      quickOptions = [
+        { label: '⏳ Not yet', value: "Not yet" },
+        { label: '⏭️ Skip', value: "Skip" }
+      ];
+    } else if (data.pending_clarification === 'application_deadline') {
+      quickOptions = [
+        { label: '❓ Don\'t know', value: "I don't know" },
+        { label: '⏭️ Skip', value: "Skip" }
+      ];
     }
-
-    // If only workMode is missing (like the sample JD scenario): ask ONE concise question
-    if (isModeMissing && !isSalaryMissing && (!isAppUrlMissing || data.companyName)) {
-      missingQs.push("The job description doesn't specify the work mode. Do you know whether this role is On-site, Hybrid, or Remote? You can also skip this question.");
-    } else {
-      if (isModeMissing) {
-        missingQs.push('• **Work Mode**: Is this position **On-site**, **Hybrid**, or **Remote**? (or skip)');
-      }
-      if (isAppUrlMissing) {
-        missingQs.push('• **Application Link**: Do you have the careers page link or URL to apply?');
-      }
-      if (isDeadlineMissing) {
-        missingQs.push('• **Application Deadline**: Did they mention a deadline or cutoff date to apply?');
-      }
-      if (isSalaryMissing) {
-        missingQs.push('• **Compensation**: Did the posting mention any salary, stipend, or CTC range?');
-      }
-    }
-
-    data.clarification_questions = missingQs;
     data.quick_options = quickOptions;
 
     let counterQuestionsBlock = '';
-    if (missingQs.length === 1 && isModeMissing) {
+    if (missingQs.length === 1 && !isModeResolved) {
       counterQuestionsBlock = `\n\n❓ **${missingQs[0]}**\n\n*(You can reply naturally, e.g. "It's hybrid", click an option below, or skip!)*`;
     } else if (missingQs.length > 0) {
       counterQuestionsBlock = `\n\n❓ **A few details were missing from this posting:**\n` +
@@ -3670,15 +3952,38 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     }
 
     const displayMode = data.workMode || 'Not specified';
+    const displaySalary = (data.salary && data.salary !== 'Not disclosed' && data.salary !== 'Not specified')
+      ? data.salary
+      : (['user_confirmed_absent', 'user_does_not_know'].includes(data.salary_status) ? 'Not Specified' : 'Not disclosed');
 
     let message;
     if (!isNewJob && data.status === 'Rejected') {
       message = `📋 **Application Status Updated: ${data.roleTitle} at ${data.companyName}**\n\n` +
         `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
         `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${displayMode})\n` +
-        `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+        `• 🎓 **Experience:** ${cleanExp}\n` +
+        `• 💼 **Employment Type:** ${cleanType}\n` +
+        `• 💰 **Compensation:** ${displaySalary}\n` +
         `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
         `❌ Marked as **Rejected** (Not selected by employer).`;
+    } else if (clarificationAcknowledgment) {
+      const stillNeededBlock = missingQs.length > 0
+        ? `\n\n❓ **Still needed to complete your application card:**\n` +
+          missingQs.join('\n') +
+          `\n\n*(Reply anytime to add them!)*`
+        : '';
+
+      message = `${clarificationAcknowledgment}\n\n` +
+        `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${displayMode})\n` +
+        `• 🎓 **Experience:** ${cleanExp}\n` +
+        `• 💼 **Employment Type:** ${cleanType}\n` +
+        `• 💰 **Compensation:** ${displaySalary}\n` +
+        `• 🛠️ **Key Skills:** ${cleanSkillsSummary}` +
+        respSection +
+        processSection +
+        eligSection +
+        stillNeededBlock;
     } else if (!isNewJob && existingJob) {
       const summaryChange = data.updatedSummary || computeUpdatedSummary(existingJob, data) || 'Updated details';
       data.updatedSummary = summaryChange;
@@ -3695,8 +4000,9 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       message = `✨ **Updated ${data.roleTitle} at ${data.companyName}!** (${summaryChange})\n\n` +
         `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
         `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${displayMode})\n` +
-        `• 💼 **Experience & Type:** ${data.jobType || 'Full-time'} · ${expLabel}\n` +
-        `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+        `• 🎓 **Experience:** ${cleanExp}\n` +
+        `• 💼 **Employment Type:** ${cleanType}\n` +
+        `• 💰 **Compensation:** ${displaySalary}\n` +
         `• 🛠️ **Key Skills:** ${cleanSkillsSummary}` +
         respSection +
         processSection +
@@ -3714,8 +4020,9 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       message = `${titlePrefix}\n\n` +
         `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
         `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${displayMode})\n` +
-        `• 💼 **Experience & Type:** ${data.jobType || 'Full-time'} · ${expLabel}\n` +
-        `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+        `• 🎓 **Experience:** ${cleanExp}\n` +
+        `• 💼 **Employment Type:** ${cleanType}\n` +
+        `• 💰 **Compensation:** ${displaySalary}\n` +
         `• 🛠️ **Key Skills:** ${cleanSkillsSummary}` +
         respSection +
         processSection +
