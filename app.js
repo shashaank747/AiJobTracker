@@ -2715,10 +2715,10 @@ class JobTrackerApp {
     str = str.replace(/\[(.*?)\]\((https?:\/\/.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1 ↗</a>');
 
     // 8. Bullet list items (support •, -, *)
-    str = str.replace(/^[•\-\*]\s+(.*$)/gim, '<div class="md-bullet-line"><span class="md-bullet">•</span><span class="md-bullet-text">$1</span></div>');
+    str = str.replace(/^[•\-\*]\s+(.*$)/gim, '<div class="md-bullet-line"><span class="md-bullet">•</span> <span class="md-bullet-text">$1</span></div>');
 
     // 9. Numbered lists (1. , 2. )
-    str = str.replace(/^(\d+)\.\s+(.*$)/gim, '<div class="md-bullet-line"><span class="md-number">$1.</span><span class="md-bullet-text">$2</span></div>');
+    str = str.replace(/^(\d+)\.\s+(.*$)/gim, '<div class="md-bullet-line"><span class="md-number">$1.</span> <span class="md-bullet-text">$2</span></div>');
 
     // 10. Callout hints starting with 💡
     str = str.replace(/^💡\s*(.*$)/gim, '<div class="md-hint-chip"><span class="md-hint-icon">💡</span><span>$1</span></div>');
@@ -2812,7 +2812,9 @@ class JobTrackerApp {
     msgDiv.className = 'chat-msg assistant';
 
     let cardHtml = '';
-    if (specialCard) {
+    if (jobData && (jobData.companyName || jobData.roleTitle)) {
+      cardHtml = this.createExtractionCardHtml(jobData);
+    } else if (specialCard) {
       if (specialCard.type === 'time_date') {
         cardHtml = this.createTimeDateCardHtml(specialCard.data);
       } else if (specialCard.type === 'today_count') {
@@ -2845,6 +2847,203 @@ class JobTrackerApp {
       this.bindWidgetCardEvents(msgDiv, specialCard);
     }
     return msgDiv;
+  }
+
+  createExtractionCardHtml(data) {
+    if (!data || (!data.companyName && !data.roleTitle)) return '';
+    const cleanData = this.sanitizeJobData(data) || {};
+    const { cleanComp, cleanLoc } = cleanCompanyAndLocation(cleanData.companyName, cleanData.location);
+    const cleanRole = cleanData.roleTitle || 'Job Title';
+    const initial = cleanComp.replace(/[^a-zA-Z0-9]/g, '').charAt(0).toUpperCase() || 'C';
+    const cleanSkills = normalizeSkillList(cleanData.skills);
+
+    const rawStatus = (cleanData.status || 'Applied').trim();
+    let statusClass = `status-${rawStatus.toLowerCase()}`;
+    let displayStatus = rawStatus;
+    if (rawStatus.toLowerCase() === 'saved') {
+      displayStatus = 'Opportunity';
+      statusClass = 'status-opportunity';
+    }
+
+    // External links (supports both snake_case and camelCase)
+    const appUrl = cleanData.applicationUrl || cleanData.application_url;
+    const srcUrl = cleanData.sourceUrl || cleanData.source_url;
+    let linksHtml = '';
+    if (appUrl) {
+      const applyBtnText = cleanData.portalName ? `Apply (${this.escapeHtml(cleanData.portalName)})` : 'Apply Portal';
+      linksHtml += `
+        <a href="${this.escapeHtml(appUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="Open Application Link (${this.escapeHtml(cleanData.portalName || 'Portal')})">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <span>${applyBtnText}</span>
+        </a>
+      `;
+    }
+    if (srcUrl) {
+      const sourceBtnText = cleanData.source ? `Job Post (${this.escapeHtml(cleanData.source)})` : 'Job Post';
+      linksHtml += `
+        <a href="${this.escapeHtml(srcUrl)}" target="_blank" rel="noopener noreferrer" class="link-button" title="View Original Post on ${this.escapeHtml(cleanData.source || 'Platform')}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          <span>${sourceBtnText}</span>
+        </a>
+      `;
+    }
+
+    // Specs Bar items
+    const specItems = [];
+    if (cleanData.workMode && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(cleanData.workMode)) {
+      const modeIcon = /remote/i.test(cleanData.workMode) ? '🏠' : (/hybrid/i.test(cleanData.workMode) ? '🔄' : '🏢');
+      specItems.push(`
+        <div class="spec-item spec-mode">
+          <span class="spec-icon">${modeIcon}</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.workMode)}</span>
+        </div>
+      `);
+    }
+    if (cleanData.jobType && !/^(?:not\s+specified|n\/?a|-)$/i.test(cleanData.jobType)) {
+      specItems.push(`
+        <div class="spec-item spec-type">
+          <span class="spec-icon">💼</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.jobType)}</span>
+        </div>
+      `);
+    }
+    if (cleanData.salary && !/^(?:not\s+disclosed|not\s+specified|n\/?a|undisclosed|none|-)$/i.test(cleanData.salary)) {
+      specItems.push(`
+        <div class="spec-item spec-salary">
+          <span class="spec-icon">💰</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.salary)}</span>
+        </div>
+      `);
+    }
+    if (cleanData.is_fresher_eligible || cleanData.isFresherEligible || cleanData.min_years === 0 || cleanData.minYears === 0) {
+      specItems.push(`
+        <div class="spec-item spec-exp">
+          <span class="spec-icon">🎓</span>
+          <span class="spec-label">Fresher Eligible</span>
+        </div>
+      `);
+    } else if (cleanData.min_years || cleanData.minYears) {
+      const yrs = cleanData.min_years || cleanData.minYears;
+      specItems.push(`
+        <div class="spec-item spec-exp">
+          <span class="spec-icon">💼</span>
+          <span class="spec-label">${yrs}+ yrs exp</span>
+        </div>
+      `);
+    }
+    if (cleanData.appliedDate && !/^(?:not\s+specified|n\/?a|none|-)$/i.test(cleanData.appliedDate)) {
+      specItems.push(`
+        <div class="spec-item spec-date">
+          <span class="spec-icon">📅</span>
+          <span class="spec-label">Applied: ${this.escapeHtml(cleanData.appliedDate)}</span>
+        </div>
+      `);
+    }
+    if (cleanData.source && !/^(?:portal|direct\s+portal|online|web|direct)$/i.test(cleanData.source)) {
+      specItems.push(`
+        <div class="spec-item spec-source">
+          <span class="spec-icon">🌐</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.source)}</span>
+        </div>
+      `);
+    } else if (cleanData.portalName && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|today|yesterday|\d{1,2}(?:st|nd|rd|th)?)\b/i.test(cleanData.portalName)) {
+      specItems.push(`
+        <div class="spec-item spec-portal">
+          <span class="spec-icon">📝</span>
+          <span class="spec-label">${this.escapeHtml(cleanData.portalName)}</span>
+        </div>
+      `);
+    }
+
+    const specsBarHtml = specItems.length > 0 ? `<div class="card-specs-bar">${specItems.join('')}</div>` : '';
+
+    // Skills Section
+    const skillsHtml = (cleanSkills && cleanSkills.length > 0)
+      ? `<div class="card-skills-section">
+          <div class="skills-section-header">
+            <span class="skills-label">Required Skills</span>
+            <span class="skills-count">${cleanSkills.length}</span>
+          </div>
+          <div class="skills-wrap">
+            ${cleanSkills.map(s => `<span class="skill-tag">${this.escapeHtml(s)}</span>`).join('')}
+          </div>
+         </div>`
+      : '';
+
+    return `
+      <div class="ai-extraction-card">
+        <div class="card-header-row">
+          <div class="card-company-identity">
+            <div class="company-badge-icon">${initial}</div>
+            <div class="company-info-text">
+              <h3 class="card-job-title">${this.escapeHtml(cleanRole)}</h3>
+              <div class="company-subline">
+                <span class="company-name-bold">${this.escapeHtml(cleanComp)}</span>
+                ${cleanLoc ? `<span class="divider">•</span><span class="company-location-sub">📍 ${this.escapeHtml(cleanLoc)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="card-status-wrapper">
+            <span class="status-pill ${statusClass}" title="Status: ${displayStatus}">
+              <span class="status-dot"></span>
+              <span>${displayStatus}</span>
+            </span>
+          </div>
+        </div>
+
+        ${specsBarHtml}
+
+        ${skillsHtml}
+
+        ${(cleanData.recruiterName || cleanData.callNotes || (cleanData.interviewQuestions && cleanData.interviewQuestions.length > 0)) ? `
+          <div class="card-call-notes-box">
+            <div class="call-notes-header">
+              <div class="call-notes-title-group">
+                <span class="call-header-icon">📞</span>
+                <span class="call-header-title">Recruiter / Interview Call Log</span>
+              </div>
+              ${cleanData.recruiterName ? `<span class="recruiter-badge">👤 Recruiter: <strong>${this.escapeHtml(cleanData.recruiterName)}</strong></span>` : ''}
+            </div>
+            ${(cleanData.interviewQuestions && cleanData.interviewQuestions.length > 0) ? `
+              <div class="call-questions-block">
+                <span class="block-label">💡 Questions Asked in Call:</span>
+                <ul class="call-questions-items">
+                  ${cleanData.interviewQuestions.map(q => `<li>${this.escapeHtml(this.sanitizeJobField(q))}</li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+            ${cleanData.callNotes ? `
+              <div class="call-summary-block">
+                <span class="block-label">📝 Discussion & Details:</span>
+                <p class="call-summary-text">${this.escapeHtml(cleanData.callNotes)}</p>
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+
+        <div class="card-actions-row">
+          <div class="card-external-links">
+            ${linksHtml}
+          </div>
+          <div class="card-buttons-group">
+            ${(displayStatus === 'Opportunity') ? `
+              <button class="btn btn-primary btn-sm btn-mark-applied-card" title="Mark this job as Applied today">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Mark as Applied</span>
+              </button>
+            ` : ''}
+            <button class="btn btn-secondary btn-sm btn-interview-qs-card" title="Generate tailored interview questions for this role (/interview Qs)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <span>Interview Qs</span>
+            </button>
+            <button class="btn btn-secondary btn-sm btn-view-in-dash" title="View in Applications Tracker">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              <span>View in Tracker</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   createTimeDateCardHtml(cardData) {

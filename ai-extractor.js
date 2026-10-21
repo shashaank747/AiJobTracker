@@ -3454,46 +3454,98 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       summaryNotes.push(`Identified ${data.skills.length} skill(s).`);
     }
 
-    // Clean, simple commentary message without unsolicited interview questions
-    // Clean, simple commentary message matching user's requested presentation
+    // Extract Responsibilities
+    const respMatch = text.match(/(?:key\s+responsibilities|responsibilities|what\s+you(?:'ll|\s+will)\s+do|duties|role\s+responsibilities)\s*[:\-]?\s*\n([\s\S]*?)(?=\n\s*(?:required\s+skills|skills|eligibility|requirements|qualifications|selection\s+process|about\s+us|benefits|salary|$))/i);
+    let responsibilities = [];
+    if (respMatch) {
+      responsibilities = respMatch[1]
+        .split('\n')
+        .map(l => l.replace(/^[•\-\*\d.]+\s*/, '').trim())
+        .filter(l => l.length > 5 && !/^(?:key\s+responsibilities|responsibilities)$/i.test(l))
+        .slice(0, 8);
+    }
+    data.responsibilities = responsibilities;
+
+    // Extract Selection Process / Rounds
+    const processMatch = text.match(/(?:selection\s+process|interview\s+process|hiring\s+process|interview\s+rounds|evaluation\s+rounds)\s*[:\-]?\s*\n([\s\S]+)/i);
+    let selectionProcess = [];
+    if (processMatch) {
+      const block = processMatch[1].split(/\n\s*(?:required\s+skills|skills|eligibility|requirements|qualifications|about\s+us|benefits|salary|key\s+responsibilities)/i)[0];
+      selectionProcess = block
+        .split('\n')
+        .map(l => l.replace(/^[•\-\*]+\s*/, '').trim())
+        .filter(l => l.length > 3 && !/^(?:selection\s+process|interview\s+process)$/i.test(l))
+        .slice(0, 8);
+    }
+    data.selectionProcess = selectionProcess;
+
+    // Extract Eligibility
+    const eligMatch = text.match(/(?:eligibility|qualifications|minimum\s+qualifications|education|requirements)\s*[:\-]?\s*\n([\s\S]*?)(?=\n\s*(?:selection\s+process|interview\s+process|responsibilities|about\s+us|benefits|salary|$))/i);
+    let eligibility = '';
+    if (eligMatch) {
+      eligibility = eligMatch[1]
+        .split('\n')
+        .map(l => l.replace(/^[•\-\*]+\s*/, '').trim())
+        .filter(l => l.length > 5)
+        .slice(0, 3)
+        .join(' · ');
+    }
+    data.eligibility = eligibility || null;
+
+    // Preserve in notes
+    if (responsibilities.length > 0 && (!data.notes || !data.notes.includes('[Key Responsibilities]'))) {
+      data.notes = (data.notes ? `${data.notes}\n\n` : '') + `[Key Responsibilities]:\n` + responsibilities.map(r => `• ${r}`).join('\n');
+    }
+    if (selectionProcess.length > 0 && (!data.notes || !data.notes.includes('[Selection Process]'))) {
+      data.notes = (data.notes ? `${data.notes}\n\n` : '') + `[Selection Process]:\n` + selectionProcess.map((p, idx) => `${idx + 1}. ${p.replace(/^\d+\.\s*/, '')}`).join('\n');
+    }
+    if (eligibility && (!data.notes || !data.notes.includes('[Eligibility]'))) {
+      data.notes = (data.notes ? `${data.notes}\n\n` : '') + `[Eligibility]: ${eligibility}`;
+    }
+
     const cleanSkillsSummary = data.skills && data.skills.length > 0 ? data.skills.slice(0, 6).join(', ') : 'Not specified';
-    let message = isNewJob
-      ? (data.status === 'Applied'
-          ? `📋 **Application Recorded: ${data.roleTitle} at ${data.companyName}**\n\n` +
-            `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
-            `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
-            `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
-            `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
-            `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.`
-          : `📋 **Job Opportunity Tracked: ${data.roleTitle} at ${data.companyName}**\n\n` +
-            `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
-            `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
-            `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
-            `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
-            `✅ Saved to your tracker board as an **Opportunity**.`)
-      : (data.status === 'Rejected'
-          ? `📋 **Application Status Updated: ${data.roleTitle} at ${data.companyName}**\n\n` +
-            `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
-            `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
-            `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
-            `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
-            `❌ Marked as **Rejected** (Not selected by employer).`
-          : (() => {
-              const summary = computeUpdatedSummary(existingJob, data);
-              data.updatedSummary = summary;
-              const titlePrefix = data.status === 'Applied'
-                ? `📋 **Application Recorded: ${data.roleTitle} at ${data.companyName}**`
-                : `📋 **Job Opportunity Tracked: ${data.roleTitle} at ${data.companyName}**`;
-              const statusLine = data.status === 'Applied'
-                ? `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.`
-                : `✅ Saved to your tracker board as an **Opportunity**.`;
-              return `${titlePrefix}\n\n` +
-                `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
-                `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
-                `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
-                `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
-                `${statusLine}`;
-            })());
+    const expLabel = data.is_fresher_eligible ? 'Fresher (0–1 year)' : (data.min_years ? `${data.min_years}+ years` : (data.jobType || 'Full-time'));
+    
+    let respSection = '';
+    if (responsibilities.length > 0) {
+      respSection = `\n\n### 📝 Key Responsibilities\n` + responsibilities.map(r => `- ${r}`).join('\n');
+    }
+    let processSection = '';
+    if (selectionProcess.length > 0) {
+      processSection = `\n\n### 🎯 Selection Process (${selectionProcess.length} Rounds)\n` + selectionProcess.map((p, idx) => `${idx + 1}. ${p.replace(/^\d+\.\s*/, '')}`).join('\n');
+    }
+    let eligSection = '';
+    if (eligibility) {
+      eligSection = `\n\n### 🎓 Eligibility Criteria\n- ${eligibility}`;
+    }
+
+    let message;
+    if (!isNewJob && data.status === 'Rejected') {
+      message = `📋 **Application Status Updated: ${data.roleTitle} at ${data.companyName}**\n\n` +
+        `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+        `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+        `• 🛠️ **Key Skills:** ${cleanSkillsSummary}\n\n` +
+        `❌ Marked as **Rejected** (Not selected by employer).`;
+    } else {
+      const titlePrefix = data.status === 'Applied'
+        ? `📋 **Application Recorded: ${data.roleTitle} at ${data.companyName}**`
+        : `📋 **Job Opportunity Tracked: ${data.roleTitle} at ${data.companyName}**`;
+      const statusSuffix = data.status === 'Applied'
+        ? `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.`
+        : `✅ Saved to your tracker board as an **Opportunity**.\n\n💡 *Ready to apply or prepare?* When you submit your application, type **/apply** to mark it as Applied today, or type **/interview Qs** anytime to generate targeted practice questions for this role!`;
+
+      message = `${titlePrefix}\n\n` +
+        `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
+        `• 📍 **Location & Mode:** ${data.location || 'Not specified'} (${data.workMode || 'On-site'})\n` +
+        `• 💼 **Experience & Type:** ${data.jobType || 'Full-time'} · ${expLabel}\n` +
+        `• 💰 **Compensation:** ${data.salary || 'Not disclosed'}\n` +
+        `• 🛠️ **Key Skills:** ${cleanSkillsSummary}` +
+        respSection +
+        processSection +
+        eligSection +
+        `\n\n${statusSuffix}`;
+    }
 
     if (!isNewJob && existingJob && !data.updatedSummary) {
       data.updatedSummary = computeUpdatedSummary(existingJob, data);

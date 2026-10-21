@@ -428,29 +428,53 @@ CRITICAL INSTRUCTION FOR APPLICATION VIEWED / RECRUITER SEEN NOTIFICATIONS ("Rec
     7. ⚠️ **Gaps & Actionable Prep Recommendations** (How to bridge or defend missing requirements)
   * Set "data": null and "profileUpdate": null.
 
-6. CRITICAL RULE FOR JOB DESCRIPTION (JD) EXTRACTION & PRESENTATION (STRICTLY NO UNSOLICITED INTERVIEW QUESTIONS):
+6. JOB DESCRIPTION (JD) EXTRACTION & PRESENTATION:
 - When the user pastes a Job Description (JD), job opening, careers post, or vacancy details to track or save:
-  1. STRICTLY FORBIDDEN: DO NOT GENERATE INTERVIEW QUESTIONS, CODING QUESTIONS, INTERVIEW PROCESS ROUNDS, OR INTERVIEW PREPARATION IN THIS TURN!
-     The user did NOT ask for interview questions. Generating unsolicited interview questions when pasting a JD is strictly prohibited.
-  2. In "message", present the job in EXACTLY this clean, concise presentation format (no conversation filler, no extra interview tips):
+  1. FULL EXTRACTION INTO "data":
+     - Extract clean organization into "companyName" and role into "roleTitle".
+     - Extract "location" and "workMode" ("On-site", "Hybrid", or "Remote").
+     - Extract "salary", "salary_numeric", and "currency".
+     - Extract all standard high-level skills into "skills".
+     - Extract experience requirements into "is_fresher_eligible" (true/false) and "min_years".
+     - Extract "responsibilities": array of core responsibilities / duties stated in the JD.
+     - Extract "selectionProcess": array of interview / selection rounds if stated in the JD (e.g. ["1. Aptitude assessment", "2. Technical interview (Excel, SQL, Power BI)", "3. Practical data analysis task", "4. HR interview"]).
+     - Extract "eligibility": degree, branch, eligibility or academic requirements stated in the JD.
+     - Format and preserve these in "notes" as well (including Key Responsibilities, Selection Process, and Eligibility) so they persist in the database.
+  2. THOROUGH, INTELLIGENT & BEAUTIFULLY STRUCTURED PRESENTATION IN "message":
+     Give the user a complete, valuable breakdown capturing everything from their pasted JD:
      📋 **Job Opportunity Tracked: [roleTitle] at [companyName]**
 
      • 🏢 **Role & Company:** [roleTitle] at **[companyName]**
      • 📍 **Location & Mode:** [location] ([workMode])
+     • 💼 **Experience & Type:** [jobType] · [Experience / Fresher Eligibility]
      • 💰 **Compensation:** [salary]
      • 🛠️ **Key Skills:** [concise list of 4-6 primary skills required]
+
+     (If key responsibilities exist in the JD, include them:)
+     ### 📝 Key Responsibilities
+     - [Responsibility 1]
+     - [Responsibility 2]
+     ...
+
+     (If selection process or interview stages are in the JD, include them:)
+     ### 🎯 Selection Process ([N] Rounds)
+     1. [Round 1]
+     2. [Round 2]
+     ...
+
+     (If eligibility criteria exist in the JD, include them:)
+     ### 🎓 Eligibility Criteria
+     - [Degree / Fresher details]
 
      ✅ Saved to your tracker board as an **Opportunity**.
+     💡 *Ready to apply or prepare?* When you submit your application, type **/apply** to mark it as Applied today, or type **/interview Qs** to generate targeted practice questions for the upcoming interview rounds!
      (Or if user explicitly stated they applied:
      📋 **Application Recorded: [roleTitle] at [companyName]**
-
-     • 🏢 **Role & Company:** [roleTitle] at **[companyName]**
-     • 📍 **Location & Mode:** [location] ([workMode])
-     • 💰 **Compensation:** [salary]
-     • 🛠️ **Key Skills:** [concise list of 4-6 primary skills required]
-
-     ✅ Marked as **Applied**.)
-  3. Set "interviewQuestions": [] in "data" unless the user explicitly logs a real recruiter call where questions were asked.
+     ...
+     ✅ Marked as **Applied** on [appliedDate].)
+  3. REAL SELECTION ROUNDS vs UNSOLICITED CODING QUESTIONS:
+     - DO NOT invent generic unsolicited coding problems or random interview questions unless explicitly asked by the user or triggered by /interview Qs.
+     - BUT IF the JD explicitly lists actual "Selection Process" or "Interview Rounds" (e.g. Round 1: Aptitude, Round 2: Tech, Round 3: Practical task, Round 4: HR), ALWAYS accurately extract and display those real selection rounds under "🎯 Selection Process"!
 
 7. INTERVIEW QUESTIONS COMMAND ("/interview Qs" or EXPLICIT INTERVIEW QUESTIONS REQUEST):
 - STRICT REQUIREMENT: Only provide in-depth interview questions when the user explicitly triggers the command "/interview Qs", "/interview questions", or explicitly asks for interview questions for a role/company.
@@ -672,6 +696,15 @@ Ensure output is valid JSON.`;
               type: "ARRAY",
               items: { type: "STRING" }
             },
+            responsibilities: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            selectionProcess: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            eligibility: { type: "STRING", nullable: true },
             callNotes: { type: "STRING", nullable: true },
             notes: { type: "STRING", nullable: true },
             updatedSummary: { type: "STRING", nullable: true }
@@ -1417,6 +1450,26 @@ function sanitizeBackendData(data) {
   }
   if (cleaned.min_years !== undefined) {
     cleaned.minYears = cleaned.min_years;
+  }
+
+  // Preserve Responsibilities, Selection Process & Eligibility in notes
+  if (Array.isArray(cleaned.responsibilities) && cleaned.responsibilities.length > 0) {
+    const respText = cleaned.responsibilities.map(r => `• ${strip(r)}`).join('\n');
+    if (!cleaned.notes || !cleaned.notes.includes('[Key Responsibilities]')) {
+      cleaned.notes = (cleaned.notes ? `${cleaned.notes}\n\n` : '') + `[Key Responsibilities]:\n${respText}`;
+    }
+  }
+  if (Array.isArray(cleaned.selectionProcess) && cleaned.selectionProcess.length > 0) {
+    const processText = cleaned.selectionProcess.map((p, idx) => `${idx + 1}. ${strip(p)}`).join('\n');
+    if (!cleaned.notes || !cleaned.notes.includes('[Selection Process]')) {
+      cleaned.notes = (cleaned.notes ? `${cleaned.notes}\n\n` : '') + `[Selection Process]:\n${processText}`;
+    }
+  }
+  if (cleaned.eligibility) {
+    const eligText = strip(cleaned.eligibility);
+    if (!cleaned.notes || !cleaned.notes.includes('[Eligibility]')) {
+      cleaned.notes = (cleaned.notes ? `${cleaned.notes}\n\n` : '') + `[Eligibility]: ${eligText}`;
+    }
   }
 
   return cleaned;
