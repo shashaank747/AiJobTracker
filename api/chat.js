@@ -237,63 +237,148 @@ CORE CAPABILITIES:
     - If user provides a Portfolio or personal website link, assign it to "portfolioUrl" in update_personal. NEVER put it in "bio"!
     - The "bio" field is ONLY for professional summary / self-introduction text. Do NOT dump URLs into "bio".
 
-4. JOB APPLICATION EXTRACTION & TRACKING:
-You are Zuno's extraction core for JobTrackerAI.
-Given any raw text, HTML snippet, or job description, extract the structured information strictly matching the requested JSON format.
+4. JOB APPLICATION EXTRACTION & MISSING INFORMATION HANDLING:
+You are an intelligent Job Description (JD) extraction assistant and career tracker for JobTrackerAI.
+Your task is to extract structured information from job descriptions, identify missing fields, ask relevant clarification questions, and prepare an accurate job record for tracking.
 
-RULES:
-1. Return ONLY raw, valid JSON. Never enclose with markdown code blocks (\`\`\`json ... \`\`\`) unless specifically asked.
-2. COMPANY NAME (STRICT SEPARATION):
-   - Extract only the clean organization or business name.
-   - Do NOT include location prefixes, divider characters (·, |, •, -), or strings like "Location: Bengaluru".
-   - Never let location bleed into company name.
-3. SKILLS & TOOLS (HIGH-LEVEL ONLY):
-   - Extract only standard top-level software, libraries, languages, and core methodologies (e.g., "Excel", "SQL", "Power BI", "Python", "Tableau", "Manual Testing", "Jira", "Docker", "Figma").
-   - NEVER extract individual function or formula names (e.g., do NOT extract "IF", "SUMIFS", "VLOOKUP", "XLOOKUP", "SELECT", "WHERE", "JOINs", "Power Query", "DAX", "PivotTables").
-   - Strip prefixes such as "Microsoft Excel: VLOOKUP" down to just "Excel".
-4. LOCATION & WORK MODEL (STRICT RULE - NEVER GUESS OR DEFAULT TO ON-SITE):
-   - Extract "location" cleanly (e.g., "Bengaluru, India" or "San Francisco, CA"). Do not include prefix "Location:".
-   - Set "workMode" and "work_model" to "Remote", "Hybrid", or "On-site" ONLY if explicitly mentioned in the text (e.g. "remote", "wfh", "hybrid", "office 3 days", "on-site", "in-person").
-   - IF WORK MODE IS NOT EXPLICITLY STATED IN THE TEXT, SET "workMode": null and "work_model": "Unknown"! NEVER default to "On-site" merely because a city or location like "Bengaluru" was mentioned.
-5. EXPERIENCE & FRESHER:
-   - If experience states "0-1 year", "Fresher", "entry-level", or mentions upcoming graduate batches (2024/2025/2026), set "is_fresher_eligible": true and "min_years": 0. If minimum years like "3+ years" are specified, set "is_fresher_eligible": false and "min_years": 3.
-6. Extract both "source_url" and "application_url" if present in the text (also populate "sourceUrl" and "applicationUrl").
-7. If salary is mentioned as LPA (e.g., "6 LPA"), convert to annual numeric values (e.g., 600000) with currency "INR", and provide formatted salary string.
-8. STRICT NO-FABRICATION RULE (KEEP MISSING FIELDS NULL):
-   - If a parameter (workMode, salary, deadline, applicationUrl, sourceUrl) is NOT mentioned by the user or in the JD, you MUST set it to null!
-   - Never invent default values.
+25 FIELDS TO EXTRACT (COMPREHENSIVE SCHEMA):
+A. Job Details:
+1. company_name / companyName — Name of company offering position. Extract only clean organization name (no location prefixes, divider characters ·, |, •, -).
+2. job_title / roleTitle — Position being offered.
+3. job_location / location — City, state, or country where job is based. Clean string without "Location:".
+4. work_mode / workMode — On-site, Hybrid, Remote, or null / Not Specified. STRICT RULE: Set to "Remote", "Hybrid", or "On-site" ONLY if explicitly mentioned in the text. IF NOT EXPLICITLY STATED IN THE JD OR BY USER, SET "work_mode": null and "workMode": null! NEVER default to "On-site" merely because a city was mentioned.
+5. experience_required / experienceRequired — Required experience (e.g., "0-1 year", "Fresher", "3+ years"). Set is_fresher_eligible (true/false) and min_years.
+6. employment_type / jobType — Full-time, Part-time, Internship, Contract, or other specified type.
+7. salary_ctc / salary — Offered compensation (minimum, maximum, currency, period). When LPA is mentioned (e.g. 3-4 LPA), convert to INR values (min 300000, max 400000). Keep null if not disclosed.
+8. required_skills / skills — Standard high-level tools & technologies (e.g., "Excel", "SQL", "Power BI", "Python"). NEVER extract function names (VLOOKUP, IF, etc.).
+9. job_responsibilities / responsibilities — Main duties and tasks from JD.
+10. educational_qualifications / eligibility — Required degrees, academic qualifications, and fields of study.
+11. required_certifications / certifications — Mandatory or preferred certifications (or null).
+12. additional_requirements / additionalRequirements — Shift timings, travel, language proficiency, relocation (or null).
+13. application_deadline / deadline — Last date to apply, if specified (YYYY-MM-DD or null).
+14. selection_process / selectionProcess — Interview rounds, assessments, and hiring stages if stated.
+15. notice_period_requirement / noticePeriod — Joining timeline or notice-period conditions (or null).
+16. recruiter_contact_details / recruiterDetails — Recruiter's name, email, phone number (or null).
+
+B. Job Discovery and Application Links (KEEP STRICTLY SEPARATE):
+17. job_source_platform / source — Platform where user discovered job (e.g., LinkedIn, Indeed, Naukri, Company Website, Referral).
+18. original_job_posting_url / sourceUrl — URL of original listing where user discovered the opportunity.
+19. application_portal / portalName — Platform where application is submitted (e.g., Company Career Portal, LinkedIn Easy Apply, Indeed, Naukri, Third-party, Email, Not Applied Yet, Not Specified).
+20. application_url / applicationUrl — Direct URL to application form or page.
+21. company_career_page_url / companyCareerUrl — Official careers page of hiring company (or null).
+
+C. Candidate and Application Tracking:
+22. date_of_application / appliedDate — Date application submitted (YYYY-MM-DD or null if not applied yet).
+23. application_status / status — Saved, Not Applied Yet, Applied, Assessment, Interview, Offer Received, Selected, Rejected, Withdrawn.
+24. expected_salary / expectedSalary — Salary the candidate expects. NEVER confuse company's offered salary with candidate's expected salary!
+25. personal_notes / notes — User notes, referral details, recruiter communications, or follow-up notes.
+
+EXTRACTION RULES:
+1. Extract only information explicitly provided in the JD or reliably confirmed.
+2. Never invent company details, salary, location, work mode, experience requirements, interview rounds, or application links.
+3. If a field is absent, set its value to null (or empty array []).
+4. Distinguish between: explicitly stated in JD, verified from link, provided by user, and unknown. Do not mark an inferred value as verified.
+5. If multiple salary figures or locations appear, preserve relevant context.
+6. Do not treat preferred qualifications as mandatory.
+7. Preserve original URLs. Do not guess or construct URLs.
+8. If the supplied text is a sample or test JD (e.g. contains "sample jd", "dummy", "example company", "abc technologies pvt. ltd."), set "verification_status": "Sample Data". Otherwise set "verification_status": "Job Posting".
+9. Do not ask the user to provide information already extracted correctly.
+
+MISSING INFORMATION DETECTION & 5-TIER PRIORITY:
+After extraction, check which fields are missing (populate "missing_fields" array):
+- Priority 1 — Essential Job Identification: company_name, job_title. (Ask only if cannot be identified reliably).
+- Priority 2 — Job Discovery & Application: job_source_platform, original_job_posting_url, application_portal, application_url. (Ask only when relevant and unavailable).
+- Priority 3 — Useful Job Details: job_location, work_mode, experience_required, employment_type, salary_ctc, application_deadline. (If absent from JD, do not assume user knows. Ask only if clarification is useful; otherwise leave unspecified).
+- Priority 4 — Optional Details: recruiter_contact_details, required_certifications, notice_period_requirement, company_career_page_url, additional_requirements. (Do not delay job tracking).
+- Priority 5 — Candidate Tracking: date_of_application, application_status, expected_salary, personal_notes.
+
+QUESTION-ASKING STRATEGY & CHATBOT COUNTER-QUESTIONS:
+1. Complete extraction before asking questions.
+2. Identify all missing fields and determine which ones genuinely need clarification.
+3. If only one essential detail is missing (e.g. work mode is null, as in the sample JD):
+   Ask ONE concise question:
+   "The job description doesn't specify the work mode. Do you know whether this role is On-site, Hybrid, or Remote? You can also skip this question."
+4. If multiple important fields are missing: ask related questions together concisely.
+5. Provide selectable options in "quick_options", e.g. for work mode:
+   [{"label": "🏠 Remote", "value": "It's Remote"}, {"label": "🔄 Hybrid", "value": "It's Hybrid"}, {"label": "🏢 On-site", "value": "It's On-site"}, {"label": "⏭️ Skip", "value": "Work mode not specified"}]
+6. Allow users to skip optional questions. If user does not know, retain null / Not Specified.
+7. Never repeatedly ask a question the user has already answered.
+8. Do not ask user to confirm every extracted field. Show extracted information for review before saving.
+9. Do not claim that a job has been applied for unless the user explicitly indicates they submitted an application.
 
 - Whenever the user pastes a job description (JD), job link, application confirmation email, or asks to track a job:
   Extract structured details into "data":
   {
-    "companyName": "Company name",
-    "roleTitle": "Role / Position title",
-    "jobType": "Full-time" | "Internship" | "Contract" | "Part-time",
-    "workMode": "Remote" | "Hybrid" | "On-site",
-    "location": "City, Country or Remote",
-    "salary": "Formatted salary string (e.g. '₹6,00,000 / year (6 LPA)' or '$120,000 / year') or null",
-    "salary_numeric": 600000 or null,
-    "currency": "INR" or "USD" or null,
-    "source": "Discovery platform where user saw the post (e.g. Indeed, LinkedIn, Glassdoor, Naukri, Wellfound)",
-    "portalName": "Portal or platform where user filled/applied (e.g. Company Portal, Greenhouse, Workday, Lever, Ashby)",
-    "applicationUrl": "Direct portal or ATS URL where application was filled or submitted",
-    "application_url": "Direct portal or ATS URL where application was filled or submitted",
-    "sourceUrl": "Listing URL on the discovery platform where job was originally seen",
-    "source_url": "Listing URL on the discovery platform where job was originally seen",
-    "status": "Saved" | "Applied" | "Interviewing" | "Offer" | "Rejected",
-    "isBookmarked": false,
-    "is_fresher_eligible": true | false,
-    "min_years": 0 or number or null,
-    "appliedDate": "YYYY-MM-DD" or null,
-    "appliedTime": "HH:MM AM/PM" or null,
-    "deadline": "YYYY-MM-DD" or null,
-    "skills": ["Excel", "PostgreSQL", ...],
-    "recruiterName": "Recruiter or caller name if mentioned or null",
-    "recruiterEmail": "Recruiter email if mentioned or null",
-    "recruiterPhone": "Recruiter phone number if mentioned or null",
-    "interviewQuestions": ["Questions or topics asked in the call"],
-    "callNotes": "Summary of discussion, HR details, notice period, and next interview round",
-    "notes": "Full notes (including formatted call log with questions and dates)"
+    "company_name": "ABC Technologies Pvt. Ltd.",
+    "companyName": "ABC Technologies Pvt. Ltd.",
+    "job_title": "Junior Data Analyst",
+    "roleTitle": "Junior Data Analyst",
+    "job_location": "Bengaluru, India",
+    "location": "Bengaluru, India",
+    "work_mode": null,
+    "workMode": null,
+    "experience_required": "0-1 year",
+    "experienceRequired": "0-1 year",
+    "employment_type": "Full-time",
+    "jobType": "Full-time",
+    "salary_ctc": {
+      "minimum": 300000,
+      "maximum": 400000,
+      "currency": "INR",
+      "period": "year"
+    },
+    "salary": "₹3,00,000 - ₹4,00,000 / year (3-4 LPA)",
+    "salary_numeric": 300000,
+    "currency": "INR",
+    "required_skills": ["Excel", "SQL", "Power BI", "Python"],
+    "skills": ["Excel", "SQL", "Power BI", "Python"],
+    "job_responsibilities": ["Collect, clean, and validate data..."],
+    "responsibilities": ["Collect, clean, and validate data..."],
+    "educational_qualifications": ["Bachelor's in Computer Science, Statistics, or related"],
+    "eligibility": "Bachelor's in Computer Science, Statistics, or related",
+    "required_certifications": [],
+    "certifications": [],
+    "additional_requirements": [],
+    "additionalRequirements": [],
+    "application_deadline": null,
+    "deadline": null,
+    "selection_process": ["1. Aptitude test", "2. Technical interview", "3. Practical analysis", "4. HR interview"],
+    "selectionProcess": ["1. Aptitude test", "2. Technical interview", "3. Practical analysis", "4. HR interview"],
+    "notice_period_requirement": null,
+    "noticePeriod": null,
+    "recruiter_contact_details": null,
+    "recruiterName": null,
+    "recruiterEmail": null,
+    "recruiterPhone": null,
+    "job_source_platform": "LinkedIn",
+    "source": "LinkedIn",
+    "original_job_posting_url": null,
+    "sourceUrl": null,
+    "application_portal": "Company Career Portal",
+    "portalName": "Company Career Portal",
+    "application_url": null,
+    "applicationUrl": null,
+    "company_career_page_url": null,
+    "companyCareerUrl": null,
+    "date_of_application": null,
+    "appliedDate": null,
+    "application_status": "Not Applied Yet",
+    "status": "Saved",
+    "expected_salary": null,
+    "expectedSalary": null,
+    "personal_notes": null,
+    "notes": "Full notes...",
+    "missing_fields": ["work_mode", "original_job_posting_url", "application_url", "company_career_page_url"],
+    "verification_status": "Sample Data",
+    "clarification_questions": [
+      "The job description doesn't specify the work mode. Do you know whether this role is On-site, Hybrid, or Remote? You can also skip this question."
+    ],
+    "quick_options": [
+      { "label": "🏠 Remote", "value": "It's Remote" },
+      { "label": "🔄 Hybrid", "value": "It's Hybrid" },
+      { "label": "🏢 On-site", "value": "It's On-site" },
+      { "label": "⏭️ Skip", "value": "Work mode not specified" }
+    ]
   }
 
 FEW-SHOT EXTRACTION EXAMPLES & EDGE CASES:
@@ -673,13 +758,27 @@ Ensure output is valid JSON.`;
             job_title: { type: "STRING" },
             companyName: { type: "STRING" },
             roleTitle: { type: "STRING" },
-            work_model: { type: "STRING", enum: ["Remote", "Hybrid", "On-site", "Unknown"] },
-            workMode: { type: "STRING" },
-            jobType: { type: "STRING" },
+            job_location: { type: "STRING", nullable: true },
             location: { type: "STRING", nullable: true },
+            work_model: { type: "STRING", enum: ["Remote", "Hybrid", "On-site", "Unknown"] },
+            work_mode: { type: "STRING", nullable: true },
+            workMode: { type: "STRING", nullable: true },
+            experience_required: { type: "STRING", nullable: true },
+            employment_type: { type: "STRING", nullable: true },
+            jobType: { type: "STRING", nullable: true },
             min_experience_years: { type: "NUMBER", nullable: true },
             max_experience_years: { type: "NUMBER", nullable: true },
             is_fresher_eligible: { type: "BOOLEAN", nullable: true },
+            salary_ctc: {
+              type: "OBJECT",
+              nullable: true,
+              properties: {
+                minimum: { type: "NUMBER", nullable: true },
+                maximum: { type: "NUMBER", nullable: true },
+                currency: { type: "STRING", nullable: true },
+                period: { type: "STRING", nullable: true }
+              }
+            },
             salary: {
               type: "OBJECT",
               nullable: true,
@@ -693,22 +792,15 @@ Ensure output is valid JSON.`;
               required: ["is_disclosed"]
             },
             salary_text: { type: "STRING", nullable: true },
+            required_skills: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
             skills: {
               type: "ARRAY",
               items: { type: "STRING" }
             },
-            application_url: { type: "STRING", nullable: true },
-            source_url: { type: "STRING", nullable: true },
-            portalName: { type: "STRING", nullable: true },
-            source: { type: "STRING", nullable: true },
-            status: { type: "STRING", nullable: true },
-            appliedDate: { type: "STRING", nullable: true },
-            appliedTime: { type: "STRING", nullable: true },
-            deadline: { type: "STRING", nullable: true },
-            recruiterName: { type: "STRING", nullable: true },
-            recruiterEmail: { type: "STRING", nullable: true },
-            recruiterPhone: { type: "STRING", nullable: true },
-            interviewQuestions: {
+            job_responsibilities: {
               type: "ARRAY",
               items: { type: "STRING" }
             },
@@ -716,13 +808,87 @@ Ensure output is valid JSON.`;
               type: "ARRAY",
               items: { type: "STRING" }
             },
-            selectionProcess: {
+            educational_qualifications: {
               type: "ARRAY",
               items: { type: "STRING" }
             },
             eligibility: { type: "STRING", nullable: true },
+            required_certifications: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            certifications: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            additional_requirements: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            additionalRequirements: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            application_deadline: { type: "STRING", nullable: true },
+            deadline: { type: "STRING", nullable: true },
+            selection_process: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            selectionProcess: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            notice_period_requirement: { type: "STRING", nullable: true },
+            noticePeriod: { type: "STRING", nullable: true },
+            recruiter_contact_details: { type: "STRING", nullable: true },
+            recruiterName: { type: "STRING", nullable: true },
+            recruiterEmail: { type: "STRING", nullable: true },
+            recruiterPhone: { type: "STRING", nullable: true },
+            job_source_platform: { type: "STRING", nullable: true },
+            source: { type: "STRING", nullable: true },
+            original_job_posting_url: { type: "STRING", nullable: true },
+            source_url: { type: "STRING", nullable: true },
+            sourceUrl: { type: "STRING", nullable: true },
+            application_portal: { type: "STRING", nullable: true },
+            portalName: { type: "STRING", nullable: true },
+            application_url: { type: "STRING", nullable: true },
+            applicationUrl: { type: "STRING", nullable: true },
+            company_career_page_url: { type: "STRING", nullable: true },
+            companyCareerUrl: { type: "STRING", nullable: true },
+            date_of_application: { type: "STRING", nullable: true },
+            appliedDate: { type: "STRING", nullable: true },
+            appliedTime: { type: "STRING", nullable: true },
+            application_status: { type: "STRING", nullable: true },
+            status: { type: "STRING", nullable: true },
+            expected_salary: { type: "STRING", nullable: true },
+            expectedSalary: { type: "STRING", nullable: true },
+            personal_notes: { type: "STRING", nullable: true },
             callNotes: { type: "STRING", nullable: true },
             notes: { type: "STRING", nullable: true },
+            missing_fields: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            verification_status: { type: "STRING", nullable: true },
+            clarification_questions: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
+            quick_options: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  label: { type: "STRING" },
+                  value: { type: "STRING" }
+                }
+              }
+            },
+            interviewQuestions: {
+              type: "ARRAY",
+              items: { type: "STRING" }
+            },
             updatedSummary: { type: "STRING", nullable: true }
           }
         }
@@ -1382,8 +1548,26 @@ function sanitizeBackendData(data) {
 
   // Map snake_case / schema properties to camelCase
   if (cleaned.company_name && !cleaned.companyName) cleaned.companyName = cleaned.company_name;
+  if (cleaned.companyName && !cleaned.company_name) cleaned.company_name = cleaned.companyName;
   if (cleaned.job_title && !cleaned.roleTitle) cleaned.roleTitle = cleaned.job_title;
+  if (cleaned.roleTitle && !cleaned.job_title) cleaned.job_title = cleaned.roleTitle;
+  if (cleaned.job_location && !cleaned.location) cleaned.location = cleaned.job_location;
+  if (cleaned.location && !cleaned.job_location) cleaned.job_location = cleaned.location;
+
+  // Work mode handling: strictly null if unspecified or unknown
+  if (cleaned.work_mode && !cleaned.workMode) cleaned.workMode = cleaned.work_mode;
   if (cleaned.work_model && !cleaned.workMode) cleaned.workMode = cleaned.work_model;
+  if (cleaned.workMode && /^(?:unknown|not\s+specified|n\/?a|-)$/i.test(cleaned.workMode)) {
+    cleaned.workMode = null;
+  }
+  cleaned.work_mode = cleaned.workMode || null;
+  cleaned.work_model = cleaned.workMode || 'Unknown';
+
+  if (cleaned.experience_required && !cleaned.experienceRequired) cleaned.experienceRequired = cleaned.experience_required;
+  if (cleaned.experienceRequired && !cleaned.experience_required) cleaned.experience_required = cleaned.experienceRequired;
+  if (cleaned.employment_type && !cleaned.jobType) cleaned.jobType = cleaned.employment_type;
+  if (cleaned.jobType && !cleaned.employment_type) cleaned.employment_type = cleaned.jobType;
+
   if (cleaned.min_experience_years !== undefined && cleaned.min_years === undefined) {
     cleaned.min_years = cleaned.min_experience_years;
     cleaned.minYears = cleaned.min_experience_years;
@@ -1394,25 +1578,45 @@ function sanitizeBackendData(data) {
   cleaned.companyName = strip(cleanComp);
   cleaned.company_name = strip(cleanComp);
   cleaned.location = strip(cleanLoc);
+  cleaned.job_location = strip(cleanLoc);
 
   if (cleaned.roleTitle) cleaned.roleTitle = strip(cleaned.roleTitle);
-  if (cleaned.workMode) cleaned.workMode = strip(cleaned.workMode);
   if (cleaned.jobType) cleaned.jobType = strip(cleaned.jobType);
   if (cleaned.source) cleaned.source = strip(cleaned.source);
+  cleaned.job_source_platform = cleaned.source || null;
   if (cleaned.portalName) cleaned.portalName = strip(cleaned.portalName);
+  cleaned.application_portal = cleaned.portalName || null;
   if (cleaned.status) cleaned.status = strip(cleaned.status);
+  cleaned.application_status = cleaned.status || 'Saved';
   if (cleaned.recruiterName) cleaned.recruiterName = strip(cleaned.recruiterName);
+  if (cleaned.deadline) cleaned.application_deadline = cleaned.deadline;
+  if (cleaned.appliedDate) cleaned.date_of_application = cleaned.appliedDate;
+  if (cleaned.expectedSalary) cleaned.expected_salary = cleaned.expectedSalary;
+  if (cleaned.noticePeriod) cleaned.notice_period_requirement = cleaned.noticePeriod;
+  if (cleaned.companyCareerUrl) cleaned.company_career_page_url = cleaned.companyCareerUrl;
 
   // Map URLs both ways
-  const finalSourceUrl = cleaned.source_url || cleaned.sourceUrl || null;
+  const finalSourceUrl = cleaned.source_url || cleaned.sourceUrl || cleaned.original_job_posting_url || null;
   const finalAppUrl = cleaned.application_url || cleaned.applicationUrl || null;
   cleaned.source_url = finalSourceUrl;
   cleaned.sourceUrl = finalSourceUrl;
+  cleaned.original_job_posting_url = finalSourceUrl;
   cleaned.application_url = finalAppUrl;
   cleaned.applicationUrl = finalAppUrl;
 
-  // Structured salary handling from Gemini Structured Outputs
-  if (cleaned.salary && typeof cleaned.salary === 'object') {
+  // Structured salary handling
+  if (cleaned.salary_ctc && typeof cleaned.salary_ctc === 'object' && !cleaned.salary) {
+    const s = cleaned.salary_ctc;
+    if (s.minimum && s.maximum) {
+      const minLpa = (s.minimum / 100000).toFixed(1).replace(/\.0$/, '');
+      const maxLpa = (s.maximum / 100000).toFixed(1).replace(/\.0$/, '');
+      cleaned.salary = (minLpa === maxLpa)
+        ? `₹${s.minimum.toLocaleString('en-IN')} / year (${minLpa} LPA)`
+        : `₹${s.minimum.toLocaleString('en-IN')} - ₹${s.maximum.toLocaleString('en-IN')} / year (${minLpa}-${maxLpa} LPA)`;
+      cleaned.salary_numeric = s.minimum;
+      cleaned.currency = s.currency || 'INR';
+    }
+  } else if (cleaned.salary && typeof cleaned.salary === 'object') {
     const sObj = cleaned.salary;
     if (sObj.is_disclosed) {
       cleaned.salary_numeric = sObj.min_amount || null;
@@ -1430,9 +1634,16 @@ function sanitizeBackendData(data) {
       } else {
         cleaned.salary = cleaned.salary_text || 'Disclosed';
       }
+      cleaned.salary_ctc = {
+        minimum: sObj.min_amount || null,
+        maximum: sObj.max_amount || sObj.min_amount || null,
+        currency: sObj.currency || 'INR',
+        period: sObj.period || 'year'
+      };
     } else {
       cleaned.salary = null;
       cleaned.salary_numeric = null;
+      cleaned.salary_ctc = null;
     }
   } else if (cleaned.salary && typeof cleaned.salary === 'string') {
     cleaned.salary = strip(cleaned.salary);
@@ -1444,6 +1655,12 @@ function sanitizeBackendData(data) {
       const maxAnnual = Math.round(maxLpa * 100000);
       cleaned.salary_numeric = minAnnual;
       cleaned.currency = 'INR';
+      cleaned.salary_ctc = {
+        minimum: minAnnual,
+        maximum: maxAnnual,
+        currency: 'INR',
+        period: 'year'
+      };
       if (minLpa === maxLpa) {
         cleaned.salary = `₹${minAnnual.toLocaleString('en-IN')} / year (${minLpa} LPA)`;
       } else {
@@ -1453,12 +1670,21 @@ function sanitizeBackendData(data) {
   } else if (!cleaned.salary) {
     cleaned.salary = null;
     cleaned.salary_numeric = null;
+    cleaned.salary_ctc = null;
   }
 
-  // Normalize skills with alias dictionary
-  if (Array.isArray(cleaned.skills)) {
-    cleaned.skills = normalizeSkills(cleaned.skills);
+  // Normalize skills
+  const skillsToNormalize = cleaned.skills || cleaned.required_skills || [];
+  if (Array.isArray(skillsToNormalize)) {
+    cleaned.skills = normalizeSkills(skillsToNormalize);
+    cleaned.required_skills = cleaned.skills;
   }
+
+  // Responsibilities & process
+  if (Array.isArray(cleaned.responsibilities)) cleaned.job_responsibilities = cleaned.responsibilities;
+  if (Array.isArray(cleaned.job_responsibilities)) cleaned.responsibilities = cleaned.job_responsibilities;
+  if (Array.isArray(cleaned.selectionProcess)) cleaned.selection_process = cleaned.selectionProcess;
+  if (Array.isArray(cleaned.selection_process)) cleaned.selectionProcess = cleaned.selection_process;
 
   // Experience & Fresher handling
   if (cleaned.is_fresher_eligible !== undefined) {
@@ -1486,6 +1712,45 @@ function sanitizeBackendData(data) {
     if (!cleaned.notes || !cleaned.notes.includes('[Eligibility]')) {
       cleaned.notes = (cleaned.notes ? `${cleaned.notes}\n\n` : '') + `[Eligibility]: ${eligText}`;
     }
+  }
+
+  // Missing fields detection according to priority
+  const missing = [];
+  if (!cleaned.company_name) missing.push('company_name');
+  if (!cleaned.job_title) missing.push('job_title');
+  if (!cleaned.job_location || cleaned.job_location === 'Not specified') missing.push('job_location');
+  if (!cleaned.work_mode) missing.push('work_mode');
+  if (!cleaned.original_job_posting_url) missing.push('original_job_posting_url');
+  if (!cleaned.application_url) missing.push('application_url');
+  if (!cleaned.application_portal) missing.push('application_portal');
+  if (!cleaned.job_source_platform || /^(?:portal|direct\s+portal)$/i.test(cleaned.job_source_platform)) missing.push('job_source_platform');
+  if (!cleaned.company_career_page_url) missing.push('company_career_page_url');
+  if (!cleaned.salary_ctc && (!cleaned.salary || /^(?:not\s+disclosed|undisclosed)$/i.test(cleaned.salary))) missing.push('salary_ctc');
+  if (!cleaned.application_deadline) missing.push('application_deadline');
+  if (!cleaned.notice_period_requirement) missing.push('notice_period_requirement');
+  if (!cleaned.recruiter_contact_details && !cleaned.recruiterName && !cleaned.recruiterEmail && !cleaned.recruiterPhone) missing.push('recruiter_contact_details');
+  cleaned.missing_fields = Array.isArray(cleaned.missing_fields) && cleaned.missing_fields.length > 0 ? cleaned.missing_fields : missing;
+
+  // Verification status (detect sample data)
+  if (!cleaned.verification_status) {
+    const textToCheck = `${cleaned.companyName || ''} ${cleaned.roleTitle || ''} ${cleaned.notes || ''}`;
+    const isSample = /\b(?:sample\s+jd|test\s+jd|dummy\s+jd|sample\s+job|example\s+company|abc\s+technologies)\b/i.test(textToCheck);
+    cleaned.verification_status = isSample ? 'Sample Data' : 'Job Posting';
+  }
+
+  // Generate clarification questions & quick options if work_mode is missing
+  if (!cleaned.work_mode && (!cleaned.clarification_questions || cleaned.clarification_questions.length === 0)) {
+    cleaned.clarification_questions = [
+      "The job description doesn't specify the work mode. Do you know whether this role is On-site, Hybrid, or Remote? You can also skip this question."
+    ];
+  }
+  if (!cleaned.work_mode && (!cleaned.quick_options || cleaned.quick_options.length === 0)) {
+    cleaned.quick_options = [
+      { label: '🏠 Remote', value: "It's Remote" },
+      { label: '🔄 Hybrid', value: "It's Hybrid" },
+      { label: '🏢 On-site', value: "It's On-site" },
+      { label: '⏭️ Skip', value: "Work mode not specified" }
+    ];
   }
 
   return cleaned;

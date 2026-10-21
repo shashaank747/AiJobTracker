@@ -3268,10 +3268,18 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
     // Work Mode detection
     if (/\bremote\b|\bwork from home\b|\bwfh\b/i.test(text)) {
       data.workMode = 'Remote';
+      summaryNotes.push('Set work mode to Remote.');
     } else if (/\bhybrid\b/i.test(text)) {
       data.workMode = 'Hybrid';
+      summaryNotes.push('Set work mode to Hybrid.');
     } else if (/\bon-?site\b|\bin-?office\b|\bin-?person\b/i.test(text)) {
       data.workMode = 'On-site';
+      summaryNotes.push('Set work mode to On-site.');
+    } else if (/\b(?:skip|not\s+specified|unspecified|don'?t\s+know|no\s+idea|none|n\/?a)\b/i.test(text)) {
+      if (data.workMode === null || !data.workMode) {
+        data.workMode = 'Not Specified';
+        summaryNotes.push('Work mode retained as Not Specified.');
+      }
     }
 
     // Job Type detection
@@ -3496,6 +3504,44 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
         .join(' · ');
     }
     data.eligibility = eligibility || null;
+    data.educational_qualifications = eligibility ? [eligibility] : [];
+
+    // Extract Certifications
+    const certMatch = text.match(/(?:required\s+certifications?|certifications?|mandatory\s+certifications?)\s*[:\-]?\s*\n([\s\S]*?)(?=\n\s*(?:required\s+skills|skills|eligibility|requirements|qualifications|selection\s+process|about\s+us|benefits|salary|$))/i);
+    let certifications = [];
+    if (certMatch) {
+      certifications = certMatch[1].split('\n').map(l => l.replace(/^[•\-\*\d.]+\s*/, '').trim()).filter(l => l.length > 3).slice(0, 5);
+    }
+    data.certifications = certifications;
+    data.required_certifications = certifications;
+
+    // Extract Additional Requirements
+    const addReqMatch = text.match(/(?:additional\s+requirements?|other\s+requirements?|conditions?|shift\s+timings?)\s*[:\-]?\s*\n([\s\S]*?)(?=\n\s*(?:required\s+skills|skills|eligibility|requirements|qualifications|selection\s+process|about\s+us|benefits|salary|$))/i);
+    let additionalRequirements = [];
+    if (addReqMatch) {
+      additionalRequirements = addReqMatch[1].split('\n').map(l => l.replace(/^[•\-\*\d.]+\s*/, '').trim()).filter(l => l.length > 3).slice(0, 5);
+    }
+    data.additionalRequirements = additionalRequirements;
+    data.additional_requirements = additionalRequirements;
+
+    // Extract Notice Period & Joining Timeline
+    const noticeMatch = text.match(/(?:notice\s+period|joining\s+timeline|immediate\s+joiner|join\s+in|available\s+in)\s*[:\-]?\s*([^\n,.]+)/i);
+    data.noticePeriod = noticeMatch ? noticeMatch[1].trim() : (existingJob?.noticePeriod || null);
+    data.notice_period_requirement = data.noticePeriod;
+
+    // Extract Company Career Page URL
+    const careerUrlMatch = text.match(/(?:careers?\s+(?:page|site|homepage|url)|company\s+careers?)\s*[:\-]?\s*(https?:\/\/[^\s]+)/i);
+    data.companyCareerUrl = careerUrlMatch ? careerUrlMatch[1].replace(/[.,;!?)]+$/, '') : (existingJob?.companyCareerUrl || null);
+    data.company_career_page_url = data.companyCareerUrl;
+
+    // Extract Expected Salary (Candidate expectations vs Company offered salary)
+    const expSalMatch = text.match(/(?:expected\s+salary|expecting|my\s+expected\s+ctc|asking\s+salary|target\s+salary)\s*[:\-]?\s*([^\n,.]+)/i);
+    data.expectedSalary = expSalMatch ? expSalMatch[1].trim() : (existingJob?.expectedSalary || null);
+    data.expected_salary = data.expectedSalary;
+
+    // Sample data detection
+    const isSample = /\b(?:sample\s+jd|test\s+jd|dummy\s+jd|sample\s+job|example\s+company|abc\s+technologies)\b/i.test(text);
+    data.verification_status = isSample ? 'Sample Data' : 'Job Posting';
 
     // Preserve in notes
     if (responsibilities.length > 0 && (!data.notes || !data.notes.includes('[Key Responsibilities]'))) {
@@ -3524,30 +3570,104 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
       eligSection = `\n\n### 🎓 Eligibility Criteria\n- ${eligibility}`;
     }
 
-    // Identify missing fields for conversational counter-questions
-    const missingQs = [];
-    const currentMode = (data.workMode || data.work_model || '').trim().toLowerCase();
-    if (!currentMode || currentMode === 'unknown' || currentMode === 'not specified') {
-      missingQs.push('• **Work Mode**: Is this position **On-site**, **Hybrid**, or **Remote**?');
-    }
-    const currentAppUrl = data.applicationUrl || data.application_url;
-    const currentSrcUrl = data.sourceUrl || data.source_url;
-    if (!currentAppUrl && !currentSrcUrl) {
-      missingQs.push('• **Application Link**: Do you have the careers page link or URL to apply?');
-    }
-    if (!data.deadline) {
-      missingQs.push('• **Application Deadline**: Did they mention a deadline or last date to apply?');
-    }
-    const currentSal = (data.salary || '').trim().toLowerCase();
-    if (!currentSal || currentSal === 'not disclosed' || currentSal === 'undisclosed') {
-      missingQs.push('• **Compensation**: Did the posting mention any salary, stipend, or CTC range?');
+    // Missing fields detection according to 5-Tier Priority
+    const missing_fields = [];
+    if (!data.companyName) missing_fields.push('company_name');
+    if (!data.roleTitle) missing_fields.push('job_title');
+    if (!data.location || data.location === 'Not specified') missing_fields.push('job_location');
+    if (!data.workMode) missing_fields.push('work_mode');
+    if (!data.sourceUrl) missing_fields.push('original_job_posting_url');
+    if (!data.applicationUrl) missing_fields.push('application_url');
+    if (!data.portalName) missing_fields.push('application_portal');
+    if (!data.source || /^(?:portal|direct\s+portal)$/i.test(data.source)) missing_fields.push('job_source_platform');
+    if (!data.companyCareerUrl) missing_fields.push('company_career_page_url');
+    if (!data.salary || /^(?:not\s+disclosed|undisclosed)$/i.test(data.salary)) missing_fields.push('salary_ctc');
+    if (!data.deadline) missing_fields.push('application_deadline');
+    if (!data.noticePeriod) missing_fields.push('notice_period_requirement');
+    if (!data.recruiterName && !data.recruiterEmail && !data.recruiterPhone) missing_fields.push('recruiter_contact_details');
+    data.missing_fields = missing_fields;
+
+    // Structured salary_ctc conversion
+    if (!data.salary_ctc && data.salary && data.salary !== 'Not disclosed') {
+      const lpaMatch = (data.salary || '').match(/\b(\d+(?:\.\d+)?)\s*(?:-|to)?\s*(\d+(?:\.\d+)?)?\s*LPA\b/i);
+      if (lpaMatch) {
+        const minLpa = parseFloat(lpaMatch[1]);
+        const maxLpa = lpaMatch[2] ? parseFloat(lpaMatch[2]) : minLpa;
+        data.salary_ctc = {
+          minimum: Math.round(minLpa * 100000),
+          maximum: Math.round(maxLpa * 100000),
+          currency: 'INR',
+          period: 'year'
+        };
+      }
     }
 
-    const counterQuestionsBlock = missingQs.length > 0
-      ? `\n\n❓ **A few details were missing from this posting:**\n` +
+    // Synchronize snake_case and camelCase fields
+    data.company_name = data.companyName;
+    data.job_title = data.roleTitle;
+    data.job_location = data.location;
+    data.work_mode = data.workMode || null;
+    data.experience_required = data.experienceRequired || expLabel;
+    data.employment_type = data.jobType || 'Full-time';
+    data.required_skills = data.skills;
+    data.job_responsibilities = data.responsibilities;
+    data.job_source_platform = data.source;
+    data.original_job_posting_url = data.sourceUrl || null;
+    data.application_portal = data.portalName || null;
+    data.application_url = data.applicationUrl || null;
+    data.date_of_application = data.appliedDate || null;
+    data.application_status = data.status || 'Saved';
+    data.personal_notes = data.notes || null;
+
+    // Formulate targeted clarification questions and quick options
+    const missingQs = [];
+    let quickOptions = [];
+
+    const currentMode = (data.workMode || '').trim().toLowerCase();
+    const isModeMissing = !currentMode || currentMode === 'unknown' || currentMode === 'not specified';
+    const isAppUrlMissing = !data.applicationUrl && !data.sourceUrl;
+    const isDeadlineMissing = !data.deadline;
+    const currentSal = (data.salary || '').trim().toLowerCase();
+    const isSalaryMissing = !currentSal || currentSal === 'not disclosed' || currentSal === 'undisclosed';
+
+    if (isModeMissing) {
+      quickOptions = [
+        { label: '🏠 Remote', value: "It's Remote" },
+        { label: '🔄 Hybrid', value: "It's Hybrid" },
+        { label: '🏢 On-site', value: "It's On-site" },
+        { label: '⏭️ Skip', value: "Work mode not specified" }
+      ];
+    }
+
+    // If only workMode is missing (like the sample JD scenario): ask ONE concise question
+    if (isModeMissing && !isSalaryMissing && (!isAppUrlMissing || data.companyName)) {
+      missingQs.push("The job description doesn't specify the work mode. Do you know whether this role is On-site, Hybrid, or Remote? You can also skip this question.");
+    } else {
+      if (isModeMissing) {
+        missingQs.push('• **Work Mode**: Is this position **On-site**, **Hybrid**, or **Remote**? (or skip)');
+      }
+      if (isAppUrlMissing) {
+        missingQs.push('• **Application Link**: Do you have the careers page link or URL to apply?');
+      }
+      if (isDeadlineMissing) {
+        missingQs.push('• **Application Deadline**: Did they mention a deadline or cutoff date to apply?');
+      }
+      if (isSalaryMissing) {
+        missingQs.push('• **Compensation**: Did the posting mention any salary, stipend, or CTC range?');
+      }
+    }
+
+    data.clarification_questions = missingQs;
+    data.quick_options = quickOptions;
+
+    let counterQuestionsBlock = '';
+    if (missingQs.length === 1 && isModeMissing) {
+      counterQuestionsBlock = `\n\n❓ **${missingQs[0]}**\n\n*(You can reply naturally, e.g. "It's hybrid", click an option below, or skip!)*`;
+    } else if (missingQs.length > 0) {
+      counterQuestionsBlock = `\n\n❓ **A few details were missing from this posting:**\n` +
         missingQs.join('\n') +
-        `\n\n*(You can reply naturally, e.g. "It's hybrid" or paste the application link, and I will update your tracker!)*`
-      : '';
+        `\n\n*(You can reply naturally, e.g. "It's hybrid" or paste the application link, and I will update your tracker!)*`;
+    }
 
     const displayMode = data.workMode || 'Not specified';
 

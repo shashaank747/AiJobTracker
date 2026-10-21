@@ -1836,6 +1836,71 @@ body {
   padding-left: 2px;
 }
 
+/* Interactive Chat Quick Options & Selectable Chips */
+.chat-quick-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+
+.quick-option-chip {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #c7d2fe;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  font-family: inherit;
+}
+
+.quick-option-chip:hover {
+  background: rgba(99, 102, 241, 0.28);
+  border-color: #818cf8;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.quick-option-chip:active {
+  transform: translateY(0);
+}
+
+.quick-option-chip.selected {
+  background: var(--primary, #6366f1);
+  color: #ffffff;
+  border-color: var(--primary, #6366f1);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+  pointer-events: none;
+}
+
+.quick-option-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+  transform: none;
+}
+
+body.theme-light .quick-option-chip {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #4f46e5;
+}
+
+body.theme-light .quick-option-chip:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: #6366f1;
+  color: #3730a3;
+}
+
 /* Structured AI Extraction Card inside Chat - Executive Redesign */
 .ai-extraction-card {
   background: linear-gradient(145deg, rgba(24, 27, 36, 0.98), rgba(15, 18, 25, 0.98));

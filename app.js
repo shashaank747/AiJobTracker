@@ -2828,16 +2828,50 @@ class JobTrackerApp {
 
     const formattedText = this.renderMarkdown(text);
 
+    // Render interactive quick response option chips (e.g. for work mode, skip, portal)
+    const quickOpts = (jobData?.quick_options || jobData?.quickOptions || specialCard?.quick_options || specialCard?.quickOptions || []);
+    let quickOptionsHtml = '';
+    if (Array.isArray(quickOpts) && quickOpts.length > 0) {
+      quickOptionsHtml = `
+        <div class="chat-quick-options" role="group" aria-label="Suggested responses">
+          ${quickOpts.map(opt => `
+            <button type="button" class="quick-option-chip" data-value="${this.escapeHtml(opt.value || opt.label)}" title="Reply: ${this.escapeHtml(opt.value || opt.label)}">
+              <span>${this.escapeHtml(opt.label || opt.value)}</span>
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
     msgDiv.innerHTML = `
       <div class="msg-avatar msg-avatar-zuno" title="Zuno AI"><img src="logo.png" alt="Zuno" class="zuno-avatar-img" /></div>
       <div class="msg-body">
         <div class="msg-assistant-text">${formattedText}</div>
         ${cardHtml}
+        ${quickOptionsHtml}
         <div class="msg-timestamp">${timeDisplay}</div>
       </div>
     `;
 
     this.chatMessagesEl.appendChild(msgDiv);
+
+    // Bind click events on quick response option chips
+    msgDiv.querySelectorAll('.quick-option-chip').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const val = btn.dataset.value;
+        if (!val) return;
+        const parent = btn.closest('.chat-quick-options');
+        if (parent) {
+          parent.querySelectorAll('.quick-option-chip').forEach(c => {
+            c.disabled = true;
+            if (c === btn) c.classList.add('selected');
+          });
+        }
+        this.chatInput.value = val;
+        await this.handleSendMessage();
+      });
+    });
 
     // Bind events inside the card
     if (jobData) {
@@ -3885,14 +3919,41 @@ class JobTrackerApp {
     if (!raw) return null;
     const clean = { ...raw };
     if (clean.company_name && !clean.companyName) clean.companyName = clean.company_name;
+    if (clean.companyName && !clean.company_name) clean.company_name = clean.companyName;
     if (clean.job_title && !clean.roleTitle) clean.roleTitle = clean.job_title;
+    if (clean.roleTitle && !clean.job_title) clean.job_title = clean.roleTitle;
+    if (clean.job_location && !clean.location) clean.location = clean.job_location;
+    if (clean.location && !clean.job_location) clean.job_location = clean.location;
+
+    // Work mode handling: strictly null if unspecified or unknown
+    if (clean.work_mode && !clean.workMode) clean.workMode = clean.work_mode;
     if (clean.work_model && !clean.workMode) clean.workMode = clean.work_model;
+    if (clean.workMode && /^(?:unknown|not\s+specified|n\/?a|-)$/i.test(clean.workMode)) {
+      clean.workMode = null;
+    }
+    clean.work_mode = clean.workMode || null;
+    clean.work_model = clean.workMode || 'Unknown';
+
+    if (clean.experience_required && !clean.experienceRequired) clean.experienceRequired = clean.experience_required;
+    if (clean.employment_type && !clean.jobType) clean.jobType = clean.employment_type;
+    if (clean.application_url && !clean.applicationUrl) clean.applicationUrl = clean.application_url;
+    if (clean.source_url && !clean.sourceUrl) clean.sourceUrl = clean.source_url;
+    if (clean.original_job_posting_url && !clean.sourceUrl) clean.sourceUrl = clean.original_job_posting_url;
+    if (clean.job_source_platform && !clean.source) clean.source = clean.job_source_platform;
+    if (clean.application_portal && !clean.portalName) clean.portalName = clean.application_portal;
+    if (clean.date_of_application && !clean.appliedDate) clean.appliedDate = clean.date_of_application;
+    if (clean.application_status && !clean.status) clean.status = clean.application_status;
+    if (clean.expected_salary && !clean.expectedSalary) clean.expectedSalary = clean.expected_salary;
+    if (clean.personal_notes && !clean.notes) clean.notes = clean.personal_notes;
+    if (clean.notice_period_requirement && !clean.noticePeriod) clean.noticePeriod = clean.notice_period_requirement;
+    if (clean.company_career_page_url && !clean.companyCareerUrl) clean.companyCareerUrl = clean.company_career_page_url;
 
     // Strict entity separation (prevent location from bleeding into company name)
     const { cleanComp, cleanLoc } = cleanCompanyAndLocation(clean.companyName, clean.location);
     clean.companyName = this.sanitizeJobField(cleanComp);
     clean.company_name = clean.companyName;
     clean.location = this.sanitizeJobField(cleanLoc);
+    clean.job_location = clean.location;
 
     if (clean.roleTitle) clean.roleTitle = this.sanitizeJobField(clean.roleTitle);
     if (clean.salary) clean.salary = this.sanitizeJobField(clean.salary);
