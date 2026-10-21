@@ -3709,7 +3709,7 @@ Return JSON with { "message": "...", "data": { ... } or null, "profileUpdate": {
         : `📋 **Job Opportunity Tracked: ${data.roleTitle} at ${data.companyName}**`;
       const statusSuffix = data.status === 'Applied'
         ? `✅ Marked as **Applied**${data.appliedDate ? ` on ${data.appliedDate}` : ''}.`
-        : `✅ Saved to your tracker board as an **Opportunity**.\n\n💡 *Ready to apply or prepare?* When you submit your application, type **/apply** to mark it as Applied today, or type **/interview Qs** anytime to generate targeted practice questions for this role!`;
+        : `✅ Saved to your tracker board as an **Opportunity**.`;
 
       message = `${titlePrefix}\n\n` +
         `• 🏢 **Role & Company:** ${data.roleTitle} at **${data.companyName}**\n` +
